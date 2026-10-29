@@ -51,3 +51,31 @@ test('sport : semaine type selon objectif et sport préféré', () => {
   assert.equal(plan.filter((d) => d.type === 'renfo').length, 2);
   assert.ok(plan.find((d) => d.today).day === 'Jeudi');
 });
+
+import * as W from '../src/workouts.js';
+
+test('séances : renforcement adapté au matériel, au niveau et à la durée', () => {
+  const zones = SP.hrZones(1990);
+  const s = W.buildSession({ activity: 'renfo', minutes: 40, level: 'intermediaire', equipment: 'halteres', goal: 'maintenir', zones });
+  assert.equal(s.title, 'Renforcement corps entier');
+  const main = s.blocks[1].items;
+  assert.ok(main.some((i) => i.label.includes('haltère')));
+  assert.ok(main.every((i) => i.sets === 3));
+  assert.ok(s.minutes >= 30 && s.minutes <= 60, `durée ${s.minutes}`);
+  const steps = W.flatten(s);
+  assert.ok(steps.filter((x) => x.isRest).length > 0);
+  const haut = W.buildSession({ activity: 'renfo', minutes: 50, level: 'avance', equipment: 'salle', goal: 'prendre', dayIndex: 0, zones });
+  assert.equal(haut.title, 'Renforcement haut du corps');
+});
+
+test('séances : fractionné débutant (10 × 1 min) et confirmé (4 × 4 min)', () => {
+  const zones = SP.hrZones(1990);
+  const deb = W.buildSession({ activity: 'course', intensity: 'intense', level: 'debutant', minutes: 25, zones });
+  assert.ok(deb.blocks.some((b) => b.title === '10 × 1 minute'));
+  const conf = W.buildSession({ activity: 'velo', intensity: 'intense', level: 'intermediaire', minutes: 40, zones });
+  assert.ok(conf.blocks.some((b) => b.title === '4 × 4 minutes'));
+  const circuit = W.buildSession({ activity: 'hiit', level: 'intermediaire', equipment: 'aucun', minutes: 20, zones });
+  const steps = W.flatten(circuit).filter((x) => x.block.startsWith('Circuit') && !x.isRest);
+  assert.equal(steps.length, 6 * 3);
+  assert.equal(steps[1].label, 'Squats sautés'); // un passage par exercice et par tour
+});

@@ -92,6 +92,12 @@ export const SOURCES = {
   knaier2021: { t: 'Knaier et al. – Force et endurance maximales en fin d’après-midi et le soir, méta-analyse (Med Sci Sports Exerc 2021)', u: 'https://doi.org/10.1249/MSS.0000000000002773' },
   bruggisser2023: { t: 'Bruggisser et al. – Pas de meilleur moment universel pour s’entraîner : la régularité prime (Sports Med Open 2023)', u: 'https://doi.org/10.1186/s40798-023-00577-5' },
   sorensen2020: { t: 'Sørensen et al. – Le « test de la parole » pour régler l’intensité (J Cardiopulm Rehabil Prev 2020)', u: 'https://doi.org/10.1097/HCR.0000000000000506' },
+  helgerud2007: { t: 'Helgerud et al. – Intervalles 4 × 4 min à 90–95 % FCmax : meilleur gain de VO2max (Med Sci Sports Exerc 2007)', u: 'https://doi.org/10.1249/mss.0b013e3180304570' },
+  gibala2012: { t: 'Gibala et al. – Fractionné court (10 × 1 min) : adaptations comparables à l’endurance (J Physiol 2012)', u: 'https://doi.org/10.1113/jphysiol.2011.224725' },
+  soligard2008: { t: 'Soligard et al. – Un échauffement structuré réduit les blessures d’environ un tiers, essai randomisé (BMJ 2008)', u: 'https://doi.org/10.1136/bmj.a2469' },
+  lauersen2014: { t: 'Lauersen et al. – Le renforcement musculaire divise par 3 le risque de blessure sportive ; l’étirement seul n’en protège pas (Br J Sports Med 2014)', u: 'https://doi.org/10.1136/bjsports-2013-092538' },
+  schoenfeld2017: { t: 'Schoenfeld et al. – ≥ 10 séries par muscle et par semaine pour maximiser le gain musculaire (J Sports Sci 2017)', u: 'https://doi.org/10.1080/02640414.2016.1210197' },
+  cramer2013: { t: 'Cramer et al. – Yoga et symptômes dépressifs, méta-analyse (Depress Anxiety 2013)', u: 'https://doi.org/10.1002/da.22166' },
 };
 
 export const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -339,6 +345,9 @@ export const EVIDENCE = [
     ['Musculation : 2–3 séances/semaine, 8–12 répétitions, chaque groupe musculaire 2 fois/semaine, 48 h de récupération entre deux séances du même muscle.', ['acsm2009', 'schoenfeld2016']],
     ['Force et endurance sont maximales en fin d’après-midi et le soir ; mais le meilleur moment pour progresser est celui où tu peux être régulier.', ['knaier2021', 'bruggisser2023']],
     ['Calories dépensées ≈ MET × poids (kg) × durée (h), d’après le Compendium des activités.', ['herrmann2024']],
+    ['Intervalles 4 × 4 min à 90–95 % de la FC max (récupération active 3 min) : le format qui améliore le plus la VO2max ; 10 × 1 min convient aux débutants.', ['helgerud2007', 'gibala2012']],
+    ['Un échauffement structuré de 10 min réduit les blessures d’environ un tiers ; le renforcement musculaire les divise par trois, l’étirement seul ne protège pas.', ['soligard2008', 'lauersen2014']],
+    ['Gain musculaire : viser au moins 10 séries par muscle et par semaine, réparties sur 2 séances.', ['schoenfeld2017', 'schoenfeld2016']],
   ] },
   { theme: 'Sommeil', icon: 'moon', color: 'var(--c-sleep)', facts: [
     ['7–9 h par nuit chez l’adulte (7–8 h après 65 ans).', ['watson2015']],
