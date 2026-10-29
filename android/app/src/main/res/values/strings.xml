@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">AppSanté</string>
+    <string name="title_activity_main">AppSanté</string>
+    <string name="package_name">com.stonetheking.appsante</string>
+    <string name="custom_url_scheme">com.stonetheking.appsante</string>
+    <string name="health_connect_privacy_policy_url">https://stonetheking.github.io/AppSante/privacy.html</string>
+</resources>

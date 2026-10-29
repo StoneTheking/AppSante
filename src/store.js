@@ -19,11 +19,21 @@ const DEFAULT = {
     smoker: false,
     preferredSport: '',
   },
-  settings: { apiKey: '', model: 'claude-opus-5-5' },
+  settings: {
+    apiKey: '',
+    model: 'claude-opus-5-5',
+    reminders: { enabled: false, kinds: { light: true, meal: false, coffee: true, walk: true, sport: true, screens: true, bed: true, water: false } },
+    autoSync: true,
+    webSearch: true, // le coach peut consulter PubMed, OMS, Lancet…
+  },
   days: {}, // 'AAAA-MM-JJ' -> check-in
   meals: [],
   weights: [], // { date, kg }
   chat: [],
+  plan: null, // menus de la semaine
+  shopChecked: {},
+  shopExtra: [],
+  lastSync: null,
   onboarded: false,
 };
 
@@ -33,7 +43,7 @@ function load() {
   try {
     const raw = localStorage.getItem(KEY);
     const s = raw ? JSON.parse(raw) : {};
-    return { ...structuredClone(DEFAULT), ...s, profile: { ...DEFAULT.profile, ...s.profile }, settings: { ...DEFAULT.settings, ...s.settings } };
+    return { ...structuredClone(DEFAULT), ...s, profile: { ...DEFAULT.profile, ...s.profile }, settings: { ...DEFAULT.settings, ...s.settings, reminders: { ...DEFAULT.settings.reminders, ...s.settings?.reminders } } };
   } catch {
     return structuredClone(DEFAULT);
   }

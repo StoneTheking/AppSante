@@ -25,7 +25,7 @@ export function summarize({ profile, days, meals, weights }, keys) {
   const d = (k) => days[k] || {};
   const mealsOf = (k) => meals.filter((m) => m.date === k);
 
-  const sleepH = (k) => S.sleepHours(d(k).bed, d(k).wake);
+  const sleepH = (k) => (d(k).sleepMinutes ? d(k).sleepMinutes / 60 : S.sleepHours(d(k).bed, d(k).wake));
   const today = d(todayKey);
   const lastNight = sleepH(todayKey);
   const totToday = S.sumNutrients(mealsOf(todayKey));
@@ -53,6 +53,8 @@ export function summarize({ profile, days, meals, weights }, keys) {
     energy: avg(week.map((k) => d(k).energy)),
     stress: avg(week.map((k) => d(k).stress)),
     alcohol: sum(week.map((k) => d(k).alcohol)),
+    restingHR: avg(week.map((k) => d(k).restingHR)),
+    hrv: avg(week.map((k) => d(k).hrv)),
     loggedDays: week.filter((k) => Object.keys(d(k)).length > 0).length,
   };
 
@@ -89,7 +91,8 @@ export function summarize({ profile, days, meals, weights }, keys) {
     goal: profile.goal,
   };
 
-  return { t, p, body, today, todayKey, lastNight, totToday, w, scores, dietAvg, kcalAvg, dietDaysCount: dietDays.length, ctx };
+  const lateMeals = week.flatMap(mealsOf).filter((m) => (m.time || '') >= '21:00').length;
+  return { lateMeals, t, p, body, today, todayKey, lastNight, totToday, w, scores, dietAvg, kcalAvg, dietDaysCount: dietDays.length, ctx };
 }
 
 // ---------- Activité physique recommandée ----------
@@ -149,6 +152,7 @@ export function dailyPlan(sm, profile) {
 
   const lunch = Math.max(wake + 4.5 * 60, 12 * 60 + 15);
   add(lunch, '🥗', 'Déjeuner — repas principal', 'Moitié légumes, un quart protéines, un quart féculents complets. Concentrer l’apport calorique le midi plutôt que le soir favorise la perte de poids.', ['garaulet2013']);
+  if ((sm.w.screenMin ?? 0) > 180 || ['sedentaire', 'leger'].includes(profile.activityLevel)) add(wake + 150, '⚡', 'Snack d’exercice (2 min)', 'Monte des escaliers ou marche très vite 1–2 min, à refaire 3× dans la journée. Et lève-toi 5 min toutes les 30 min assis.', ['stamatakis2022', 'duran2023']);
   add(lunch + 30, '🚶', 'Marche digestive 10–15 min', 'Une marche légère après le repas abaisse nettement le pic de glycémie.', ['buffey2022']);
 
   if (ctx.poorSleep && sm.lastNight != null) add(Math.min(lunch + 60, 15 * 60), '😴', 'Micro-sieste (10–20 min)', 'Nuit courte : une sieste brève avant 15 h restaure la vigilance sans perturber la nuit suivante.', ['watson2015']);
@@ -165,7 +169,11 @@ export function dailyPlan(sm, profile) {
   add(dinner, '🍽️', 'Dîner léger', 'Au moins 3 h avant le coucher, plus léger que le déjeuner : manger tard est associé à une moins bonne glycémie et une perte de poids plus difficile.', ['garaulet2013', 'sutton2018']);
 
   add(bed - 60, '📵', 'Écrans off — téléphone hors de la chambre', 'L’usage du téléphone au lit est associé à un endormissement plus tardif et un sommeil de moins bonne qualité.', ['exelmans2016']);
-  add(bed - 30, '🧘', 'Routine de détente', 'Lumière tamisée, lecture, respiration lente (4-6 cycles/min) ou étirements.', []);
+  add(bed - 30, '🧘', 'Routine de détente', ctx.highStress || ctx.lowMood
+    ? '5 min de « soupir cyclique » : deux inspirations par le nez, une longue expiration par la bouche. Améliore l’humeur et apaise (essai randomisé).'
+    : 'Lumière tamisée, lecture, respiration lente ou étirements.', ctx.highStress || ctx.lowMood ? ['balban2023'] : []);
+  const dow = new Date().getDay();
+  if (dow === 0 || dow === 6 || ctx.lowMood) add(Math.max(wake + 3 * 60, 10 * 60 + 30), '🌳', 'Temps dans la nature', 'Parc, forêt, bord de l’eau : viser 120 min sur la semaine est associé à une meilleure santé et un meilleur moral.', ['white2019']);
   add(bed, '🌙', 'Coucher', `Même heure chaque soir (±30 min) : la régularité du sommeil prédit la mortalité mieux que sa durée. Vise ${t.sleepMin}–${t.sleepMax} h.`, ['windred2024', 'watson2015']);
 
   return items.sort((a, b) => a.min - b.min);
@@ -201,6 +209,12 @@ export function insights(sm) {
     if (Math.abs(bal) > 250) push(bal > 0 ? 'attention' : 'bon', bal > 0 ? 'Excédent calorique' : 'Déficit calorique', `Environ ${bal > 0 ? '+' : ''}${Math.round(bal)} kcal/j par rapport à ta dépense estimée.`, ['hall2011']);
   }
   if (ctx.lowMood) push('attention', 'Humeur basse', 'Activité physique (surtout dehors), lumière du jour, contacts sociaux et alimentation de type méditerranéen ont tous un effet démontré. Si cela dure plus de 2 semaines, parles-en à un médecin ou appelle le 3114 (France) en cas d’idées noires.', ['noetel2024', 'jacka2017']);
+  if (w.restingHR != null && w.restingHR > 80) push('attention', 'Fréquence cardiaque au repos élevée', `${Math.round(w.restingHR)} bpm en moyenne. Chaque +10 bpm est associé à environ +9 % de mortalité ; l’endurance régulière la fait baisser.`, ['zhang2016', 'mandsager2018']);
+  else if (w.restingHR != null && w.restingHR < 60) push('bon', 'Cœur entraîné', `FC de repos de ${Math.round(w.restingHR)} bpm : signe d’une bonne forme cardio-respiratoire.`, []);
+  if (w.sleepH != null && w.sleepH < 7) push('attention', 'Sommeil et appétit', 'Le manque de sommeil fait manger en moyenne ~385 kcal de plus par jour ; dormir plus longtemps a réduit l’apport d’environ 270 kcal/j dans un essai randomisé. Ton sommeil est un levier de poids.', ['alkhatib2017', 'tasali2022']);
+  if ((w.screenMin != null && w.screenMin > 180) || (w.steps != null && w.steps < 6000)) push('attention', 'Casser la sédentarité', '5 min de marche toutes les 30 min assis réduisent glycémie et tension ; 3 « snacks d’exercice » d’1–2 min intenses par jour (escaliers, marche très rapide) sont associés à −38 % de mortalité.', ['duran2023', 'stamatakis2022']);
+  if (sm.lateMeals >= 3) push('attention', 'Dîners tardifs', `${sm.lateMeals} repas pris après 21 h cette semaine. Manger tard augmente la faim du lendemain et réduit la dépense énergétique.`, ['vujovic2022', 'garaulet2013']);
+  if (ctx.lowMood || (w.stress != null && w.stress >= 3.5)) push('attention', 'Recharger le moral', '120 min/semaine dans la nature, voir des proches (les liens sociaux pèsent autant que le tabac sur la longévité) et 5 min/jour de respiration lente (« soupir cyclique ») ont des effets démontrés.', ['white2019', 'holtlunstad2010', 'balban2023']);
   if (w.alcohol > 10) push('attention', 'Alcool', `${w.alcohol} verres cette semaine. Il n’existe pas de seuil sans risque ; l’alcool dégrade aussi le sommeil profond.`, ['gbd2018alcohol']);
   return out;
 }
@@ -216,6 +230,7 @@ export function projection(sm, profile, improve = {}) {
     strengthWeek: w.loggedDays >= 3 ? w.strength : null,
     alcoholWeek: w.alcohol,
     smoker: profile.smoker,
+    restingHR: w.restingHR,
   };
   const h = profile.height;
   const at = (years, bal, extra = {}) => {

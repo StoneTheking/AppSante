@@ -1,0 +1,9 @@
+{
+  "appId": "com.stonetheking.appsante",
+  "appName": "AppSanté",
+  "webDir": "dist",
+  "android": { "allowMixedContent": false },
+  "plugins": {
+    "LocalNotifications": { "smallIcon": "ic_stat_appsante", "iconColor": "#0d9488" }
+  }
+}

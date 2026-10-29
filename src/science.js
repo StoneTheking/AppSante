@@ -14,7 +14,7 @@ export const SOURCES = {
   cappuccio2010: { t: 'Cappuccio et al. – Durée de sommeil et mortalité, méta-analyse (Sleep 2010)', u: 'https://doi.org/10.1093/sleep/33.5.585' },
   windred2024: { t: 'Windred et al. – La régularité du sommeil prédit mieux la mortalité que sa durée (Sleep 2024)', u: 'https://doi.org/10.1093/sleep/zsad253' },
   gardiner2023: { t: 'Gardiner et al. – Caféine et sommeil, méta-analyse (Sleep Med Rev 2023)', u: 'https://doi.org/10.1016/j.smrv.2023.101764' },
-  exelmans2016: { t: "Exelmans & Van den Bulck – Téléphone au lit et sommeil de l'adulte (Soc Sci Med 2016)", u: 'https://doi.org/10.1016/j.socscimed.2016.01.022' },
+  exelmans2016: { t: "Exelmans & Van den Bulck – Téléphone au lit et sommeil de l'adulte (Soc Sci Med 2016)", u: 'https://doi.org/10.1016/j.socscimed.2015.11.037' },
   hunt2018: { t: 'Hunt et al. – Limiter les réseaux sociaux à 30 min/j réduit solitude et dépression (J Soc Clin Psychol 2018)', u: 'https://doi.org/10.1521/jscp.2018.37.10.751' },
   burns2023: { t: 'Burns et al. – Exposition à la lumière le jour/la nuit et santé mentale (Nature Mental Health 2023)', u: 'https://doi.org/10.1038/s44220-023-00135-8' },
   mifflin1990: { t: 'Mifflin et al. – Équation de dépense énergétique de repos (Am J Clin Nutr 1990)', u: 'https://doi.org/10.1093/ajcn/51.2.241' },
@@ -37,6 +37,33 @@ export const SOURCES = {
   garaulet2013: { t: 'Garaulet et al. – Le moment des repas prédit la perte de poids (Int J Obes 2013)', u: 'https://doi.org/10.1038/ijo.2012.229' },
   efsa2010water: { t: 'EFSA 2010 – Apports en eau : 2,0 L/j (femmes), 2,5 L/j (hommes), boissons + aliments', u: 'https://doi.org/10.2903/j.efsa.2010.1459' },
   gbd2018alcohol: { t: "GBD 2016 Alcohol Collaborators – Pas de niveau d'alcool sans risque (Lancet 2018)", u: 'https://doi.org/10.1016/S0140-6736(18)31310-2' },
+  stamatakis2022: { t: "Stamatakis et al. – Activité intense intermittente au quotidien (VILPA) et mortalité (Nature Medicine 2022)", u: 'https://doi.org/10.1038/s41591-022-02100-x' },
+  ekelund2016: { t: 'Ekelund et al. – 60-75 min/j d’activité modérée compensent la sédentarité (Lancet 2016)', u: 'https://doi.org/10.1016/S0140-6736(16)30370-1' },
+  duran2023: { t: 'Duran et al. – 5 min de marche toutes les 30 min réduisent glycémie et tension (Med Sci Sports Exerc 2023)', u: 'https://doi.org/10.1249/MSS.0000000000003109' },
+  dossantos2022: { t: 'dos Santos et al. – « Guerrier du week-end » : mêmes bénéfices que l’activité étalée (JAMA Intern Med 2022)', u: 'https://doi.org/10.1001/jamainternmed.2022.2488' },
+  mandsager2018: { t: 'Mandsager et al. – La condition cardio-respiratoire, premier prédicteur de longévité (JAMA Netw Open 2018)', u: 'https://doi.org/10.1001/jamanetworkopen.2018.3605' },
+  zhang2016: { t: 'Zhang et al. – FC de repos : +10 bpm = +9 % de mortalité, méta-analyse (CMAJ 2016)', u: 'https://doi.org/10.1503/cmaj.150535' },
+  kredlow2015: { t: 'Kredlow et al. – L’activité physique améliore le sommeil, méta-analyse (J Behav Med 2015)', u: 'https://doi.org/10.1007/s10865-015-9617-6' },
+  alkhatib2017: { t: 'Al Khatib et al. – Le manque de sommeil fait manger ~385 kcal de plus par jour (Eur J Clin Nutr 2017)', u: 'https://doi.org/10.1038/ejcn.2016.201' },
+  tasali2022: { t: 'Tasali et al. – Allonger son sommeil réduit l’apport calorique de ~270 kcal/j, essai randomisé (JAMA Intern Med 2022)', u: 'https://doi.org/10.1001/jamainternmed.2021.8098' },
+  vujovic2022: { t: 'Vujović et al. – Manger tard augmente la faim et réduit la dépense énergétique (Cell Metab 2022)', u: 'https://doi.org/10.1016/j.cmet.2022.09.007' },
+  hall2019: { t: 'Hall et al. – Essai contrôlé : les ultra-transformés font manger +500 kcal/j (Cell Metab 2019)', u: 'https://doi.org/10.1016/j.cmet.2019.05.008' },
+  aune2016grains: { t: 'Aune et al. – 90 g/j de céréales complètes : −17 % de mortalité (BMJ 2016)', u: 'https://doi.org/10.1136/bmj.i2716' },
+  aune2016nuts: { t: 'Aune et al. – 28 g/j de fruits à coque : −22 % de mortalité (BMC Med 2016)', u: 'https://doi.org/10.1186/s12916-016-0730-3' },
+  malik2019: { t: 'Malik et al. – Boissons sucrées et mortalité (Circulation 2019)', u: 'https://doi.org/10.1161/CIRCULATIONAHA.118.037401' },
+  poole2017: { t: 'Poole et al. – Café : 3-4 tasses/j associées à moins de mortalité, umbrella review (BMJ 2017)', u: 'https://doi.org/10.1136/bmj.j5024' },
+  schoenfeld2018: { t: 'Schoenfeld & Aragon – Répartir les protéines : ~0,4 g/kg par repas, 4 repas (JISSN 2018)', u: 'https://doi.org/10.1186/s12970-018-0215-1' },
+  white2019: { t: 'White et al. – 120 min/semaine dans la nature et bien-être (Scientific Reports 2019)', u: 'https://doi.org/10.1038/s41598-019-44097-3' },
+  holtlunstad2010: { t: 'Holt-Lunstad et al. – Liens sociaux et mortalité, méta-analyse (PLoS Med 2010)', u: 'https://doi.org/10.1371/journal.pmed.1000316' },
+  balban2023: { t: 'Balban et al. – Respiration « soupir cyclique » 5 min/j et humeur, essai randomisé (Cell Rep Med 2023)', u: 'https://doi.org/10.1016/j.xcrm.2022.100895' },
+  braghieri2022: { t: 'Braghieri et al. – L’arrivée de Facebook a dégradé la santé mentale des étudiants (American Economic Review 2022)', u: 'https://doi.org/10.1257/aer.20211218' },
+  lowe2020: { t: 'Lowe et al. – Jeûne intermittent 16:8 sans avantage sur le poids, essai TREAT (JAMA Intern Med 2020)', u: 'https://doi.org/10.1001/jamainternmed.2020.4153' },
+  firth2019: { t: 'Firth et al. – Interventions nutritionnelles et symptômes dépressifs, méta-analyse (Psychosom Med 2019)', u: 'https://doi.org/10.1097/PSY.0000000000000673' },
+  delpozo2022: { t: 'del Pozo Cruz et al. – ~9800 pas/j et cadence élevée : −50 % de risque de démence (JAMA Neurol 2022)', u: 'https://doi.org/10.1001/jamaneurol.2022.2672' },
+  drake2013: { t: 'Drake et al. – Caféine 6 h avant le coucher : −1 h de sommeil (J Clin Sleep Med 2013)', u: 'https://doi.org/10.5664/jcsm.3170' },
+  ebrahim2013: { t: 'Ebrahim et al. – Alcool et architecture du sommeil (Alcohol Clin Exp Res 2013)', u: 'https://doi.org/10.1111/acer.12006' },
+  chang2015: { t: 'Chang et al. – Lire sur écran le soir retarde l’horloge et la mélatonine (PNAS 2015)', u: 'https://doi.org/10.1073/pnas.1418490112' },
+  anses2016: { t: 'ANSES 2016 – Repères alimentaires (légumineuses 2×/sem, poisson 2×/sem, viande rouge ≤ 500 g/sem)', u: 'https://www.anses.fr/fr/content/les-nouveaux-rep%C3%A8res-de-consommation-alimentaires' },
 };
 
 export const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -208,7 +235,7 @@ export function dietScore(tot, t) {
 
 // ---------- Risques relatifs (mortalité toutes causes, profil de référence = 1) ----------
 // Approximations issues de méta-analyses ; associations observationnelles, pas des diagnostics.
-export function riskFactors({ steps, sleepH, bmiV, diet, strengthWeek, alcoholWeek, smoker }) {
+export function riskFactors({ steps, sleepH, bmiV, diet, strengthWeek, alcoholWeek, smoker, restingHR }) {
   const f = [];
   if (steps != null) {
     const s = clamp(steps, 2000, 12000);
@@ -239,6 +266,11 @@ export function riskFactors({ steps, sleepH, bmiV, diet, strengthWeek, alcoholWe
     const rr = d <= 1 ? 1 + 0.005 * d : d <= 2 ? 1.005 + 0.065 * (d - 1) : 1.07 + 0.1 * (d - 2);
     f.push({ key: 'alcohol', label: 'Alcool', value: `${alcoholWeek} verres/sem`, rr, src: ['gbd2018alcohol'] });
   }
+  if (restingHR != null) {
+    // +10 bpm ≈ RR 1,09 (Zhang 2016), référence 60 bpm, borné à 45-100
+    const r = clamp(restingHR, 45, 100);
+    f.push({ key: 'rhr', label: 'FC au repos', value: `${Math.round(restingHR)} bpm`, rr: 1.09 ** ((r - 60) / 10), src: ['zhang2016'] });
+  }
   if (smoker) f.push({ key: 'smoke', label: 'Tabac', value: 'fumeur', rr: 2.0, src: [] });
   return f;
 }
@@ -259,3 +291,66 @@ export function weightCurve(weight, kcalBalance, years = 5, step = 30) {
   for (let d = 0; d <= years * 365; d += step) pts.push({ d, w: projectWeight(weight, kcalBalance, d) });
   return pts;
 }
+
+// Bibliothèque : principaux résultats chiffrés, par thème. Utilisée par l'écran « Science » et le coach IA.
+export const EVIDENCE = [
+  { theme: 'Activité physique', icon: 'steps', color: 'var(--c-move)', facts: [
+    ['150–300 min/semaine d’activité modérée (ou 75–150 min intense) + 2 séances de renforcement : la base recommandée.', ['who2020']],
+    ['Chaque +1000 pas/jour ≈ −15 % de mortalité toutes causes ; bénéfice maximal vers 6000–8000 pas (≥ 60 ans) et 8000–10 000 pas (< 60 ans).', ['banach2023', 'paluch2022']],
+    ['≈ 9800 pas/jour, surtout à cadence soutenue, sont associés à un risque de démence divisé par deux.', ['delpozo2022']],
+    ['3 « snacks d’exercice » de 1–2 min intenses par jour (escaliers, marche très rapide) : −38 à −40 % de mortalité.', ['stamatakis2022']],
+    ['60–75 min/jour d’activité modérée effacent le sur-risque lié à 8 h assis.', ['ekelund2016']],
+    ['5 min de marche légère toutes les 30 min de position assise réduisent la glycémie et la tension.', ['duran2023']],
+    ['Concentrer son activité sur le week-end apporte les mêmes bénéfices que l’étaler : ce qui compte, c’est le volume.', ['dossantos2022']],
+    ['30–60 min/semaine de renforcement musculaire : −10 à −17 % de mortalité, cancers et maladies cardiovasculaires.', ['momma2022']],
+    ['La condition cardio-respiratoire est le facteur le plus fortement lié à la longévité, devant le tabac et le diabète.', ['mandsager2018']],
+    ['FC de repos : chaque +10 bpm ≈ +9 % de mortalité ; l’endurance la fait baisser.', ['zhang2016']],
+    ['Marche, footing, yoga et musculation réduisent les symptômes dépressifs autant qu’une psychothérapie.', ['noetel2024']],
+  ] },
+  { theme: 'Sommeil', icon: 'moon', color: 'var(--c-sleep)', facts: [
+    ['7–9 h par nuit chez l’adulte (7–8 h après 65 ans).', ['watson2015']],
+    ['Dormir < 6 h : +12 % de mortalité ; > 9 h : association à +30 % (souvent signe d’une maladie sous-jacente).', ['cappuccio2010']],
+    ['La régularité des horaires prédit mieux la mortalité que la durée de sommeil.', ['windred2024']],
+    ['Le manque de sommeil fait manger ~385 kcal de plus par jour ; allonger son sommeil réduit l’apport d’environ 270 kcal/j.', ['alkhatib2017', 'tasali2022']],
+    ['Caféine : 6 h avant le coucher, elle retire encore ~1 h de sommeil ; arrêter ~8 h avant pour un café.', ['drake2013', 'gardiner2023']],
+    ['L’alcool accélère l’endormissement mais fragmente la seconde moitié de nuit et réduit le sommeil paradoxal.', ['ebrahim2013']],
+    ['Lire sur écran le soir retarde la mélatonine et l’horloge interne ; le téléphone au lit dégrade le sommeil.', ['chang2015', 'exelmans2016']],
+    ['L’activité physique régulière améliore la qualité du sommeil ; le sport le soir ne gêne pas, sauf intense < 1 h avant le coucher.', ['kredlow2015', 'stutz2019']],
+    ['La lumière du jour le matin et l’obscurité le soir sont associées à moins de dépression et d’anxiété.', ['burns2023']],
+  ] },
+  { theme: 'Alimentation', icon: 'salad', color: 'var(--c-food)', facts: [
+    ['Les 3 premiers risques alimentaires mondiaux : trop de sel, pas assez de céréales complètes, pas assez de fruits.', ['gbd2019']],
+    ['Le modèle méditerranéen réduit d’environ 30 % les accidents cardiovasculaires (essai PREDIMED) ; +2 points d’adhésion ≈ −8 % de mortalité.', ['estruch2018', 'sofi2010']],
+    ['25–29 g de fibres/jour : −15 à −30 % de mortalité et de maladies chroniques.', ['reynolds2019']],
+    ['800 g/jour de fruits et légumes = risque le plus bas (au moins 400 g recommandés).', ['aune2017']],
+    ['90 g/jour de céréales complètes : −17 % de mortalité.', ['aune2016grains']],
+    ['Une poignée (28 g) de fruits à coque par jour : −22 % de mortalité.', ['aune2016nuts']],
+    ['Ultra-transformés : risques accrus de maladies cardiovasculaires, diabète, dépression ; en essai contrôlé, +500 kcal/jour consommées spontanément.', ['lane2024', 'hall2019']],
+    ['Boissons sucrées : associées à une mortalité plus élevée, dose-dépendante.', ['malik2019']],
+    ['Sucres libres < 10 % des calories (idéalement < 5 %) ; sel < 5 g/jour.', ['who2015sugar', 'who2012sodium']],
+    ['Viande transformée cancérogène avérée, viande rouge probable : ≤ 150 g de charcuterie et ≤ 500 g de viande rouge par semaine.', ['bouvard2015', 'anses2016']],
+    ['Légumineuses au moins 2×/semaine, poisson 2×/semaine dont un gras.', ['anses2016']],
+    ['Protéines : 1,6 g/kg pour progresser en musculation, ~0,4 g/kg par repas réparties sur la journée ; 1,0–1,2 g/kg après 65 ans.', ['morton2018', 'schoenfeld2018', 'bauer2013']],
+    ['Café : 3–4 tasses/jour associées à une mortalité plus faible (hors grossesse).', ['poole2017']],
+    ['Pas de niveau de consommation d’alcool sans risque.', ['gbd2018alcohol']],
+  ] },
+  { theme: 'Horaires des repas', icon: 'clock', color: 'var(--primary)', facts: [
+    ['Manger plus tôt dans la journée améliore la sensibilité à l’insuline et la tension, même sans perte de poids.', ['sutton2018']],
+    ['Déjeuner tardif (après 15 h) : perte de poids moins efficace à apports égaux.', ['garaulet2013']],
+    ['Manger tard augmente la faim, réduit la dépense énergétique et favorise le stockage des graisses.', ['vujovic2022']],
+    ['Le jeûne intermittent 16:8 n’a pas fait mieux qu’une répartition classique pour perdre du poids.', ['lowe2020']],
+    ['Une marche de 10–15 min après le repas réduit nettement le pic de glycémie.', ['buffey2022']],
+  ] },
+  { theme: 'Écrans & santé mentale', icon: 'phone', color: 'var(--c-screen)', facts: [
+    ['Limiter les réseaux sociaux à 30 min/jour pendant 3 semaines réduit solitude et symptômes dépressifs (essai contrôlé).', ['hunt2018']],
+    ['L’arrivée de Facebook dans les universités américaines a fait augmenter la dépression et l’anxiété des étudiants.', ['braghieri2022']],
+    ['120 min/semaine passées dans la nature sont associées à une meilleure santé et un meilleur bien-être.', ['white2019']],
+    ['Des liens sociaux solides augmentent de 50 % les chances de survie, autant qu’arrêter de fumer.', ['holtlunstad2010']],
+    ['5 min/jour de respiration lente (« soupir cyclique » : double inspiration, longue expiration) améliorent l’humeur.', ['balban2023']],
+    ['Améliorer son alimentation réduit les symptômes dépressifs (essai SMILES, méta-analyse de 16 essais).', ['jacka2017', 'firth2019']],
+  ] },
+];
+
+// Version texte pour le coach IA.
+export const evidenceText = (themes) => EVIDENCE.filter((t) => !themes || themes.includes(t.theme)).map((t) => `## ${t.theme}\n${t.facts.map(([f, src]) => `- ${f} [${src.map((id) => SOURCES[id].t.split(' – ')[0] + ' ' + (SOURCES[id].t.match(/\((.*)\)\s*$/)?.[1] || '')).join(' ; ')}]`).join('\n')}`).join('\n\n');
+export const EVIDENCE_TEXT = evidenceText();

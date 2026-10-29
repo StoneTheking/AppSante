@@ -1,0 +1,81 @@
+name: Application Android (APK)
+
+on:
+  push:
+    branches: [main, claude/wellness-app-personalized-dtyacm]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  HAS_SECRET: ${{ secrets.ANDROID_KEYSTORE_B64 != '' }}
+
+concurrency:
+  group: android
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npx cap sync android
+      # Clé de signature stable : secret GitHub si défini, sinon clé générée une fois et conservée en cache.
+      - name: Clé de signature (cache)
+        if: ${{ env.HAS_SECRET != 'true' }}
+        uses: actions/cache@v4
+        with:
+          path: ~/.appsante
+          key: appsante-keystore-v1
+      - name: Préparation de la clé de signature
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          mkdir -p ~/.appsante
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > ~/.appsante/appsante.keystore
+            echo "$KS_PASS" > ~/.appsante/password
+          elif [ ! -f ~/.appsante/appsante.keystore ]; then
+            openssl rand -hex 16 > ~/.appsante/password
+            keytool -genkeypair -keystore ~/.appsante/appsante.keystore -alias appsante -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$(cat ~/.appsante/password)" -keypass "$(cat ~/.appsante/password)" -dname "CN=AppSante, O=Personnel, C=FR"
+          fi
+          echo "::add-mask::$(cat ~/.appsante/password)"
+          echo "APPSANTE_KEYSTORE=$HOME/.appsante/appsante.keystore" >> "$GITHUB_ENV"
+          echo "APPSANTE_KEYSTORE_PASSWORD=$(cat ~/.appsante/password)" >> "$GITHUB_ENV"
+      - name: Compilation de l'APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk ../AppSante.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AppSante-apk
+          path: AppSante.apk
+      - name: Publication (Releases GitHub)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v2.0.${{ github.run_number }}
+          name: AppSanté 2.0.${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          files: AppSante.apk
+          body: |
+            Application Android d'AppSanté.
+            Sur ton téléphone : télécharge **AppSante.apk**, ouvre-le et autorise l'installation depuis ton navigateur.
+            Les mises à jour s'installent par-dessus la version précédente sans perdre tes données.

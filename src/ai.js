@@ -1,7 +1,11 @@
 // Intégration Claude : analyse de photos de repas, lecture de captures d'écran, coach conversationnel.
 // La clé API est stockée uniquement sur l'appareil et envoyée directement à l'API Anthropic.
-import Anthropic from '@anthropic-ai/sdk';
-import { SOURCES } from './science.js';
+import { SOURCES, EVIDENCE_TEXT, evidenceText } from './science.js';
+
+const FOOD_EVIDENCE = evidenceText(['Alimentation', 'Horaires des repas']);
+
+// Le SDK est chargé à la demande pour alléger le démarrage de l'application.
+let Anthropic = null;
 
 export const MODELS = [
   { id: 'claude-opus-5-5', label: 'Claude Opus 5.5 (le plus précis)' },
@@ -9,8 +13,9 @@ export const MODELS = [
   { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5 (le plus économique)' },
 ];
 
-function client(apiKey) {
+async function client(apiKey) {
   if (!apiKey) throw new Error('Ajoute ta clé API Anthropic dans Profil → Intelligence artificielle pour utiliser cette fonction.');
+  Anthropic ||= (await import('@anthropic-ai/sdk')).default;
   return new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
 }
 
@@ -20,6 +25,7 @@ function fallbackParams(model) {
 }
 
 export function friendlyError(e) {
+  if (!Anthropic) return e?.message || String(e);
   if (e instanceof Anthropic.AuthenticationError) return 'Clé API invalide. Vérifie-la dans Profil.';
   if (e instanceof Anthropic.PermissionDeniedError) return 'Cette clé n’a pas accès à ce modèle.';
   if (e instanceof Anthropic.RateLimitError) return 'Trop de requêtes, réessaie dans une minute.';
@@ -104,14 +110,14 @@ function imageBlock(dataUrl) {
 }
 
 export async function analyzePlate({ apiKey, model }, dataUrl, personContext, note = '') {
-  const c = client(apiKey);
+  const c = await client(apiKey);
   const resp = await c.beta.messages.create({
     model,
     max_tokens: 16000,
     ...fallbackParams(model),
     output_config: { effort: 'medium', format: { type: 'json_schema', schema: PLATE_SCHEMA } },
     system:
-      "Tu es un diététicien-nutritionniste expert. Tu analyses la photo d'un repas : identifie chaque aliment, estime les portions (utilise couverts, assiette, mains comme repères d'échelle), puis les nutriments en t'appuyant sur les tables CIQUAL/USDA. Évalue le repas pour la personne décrite (objectif, activité, sommeil, humeur, apports déjà consommés aujourd'hui, besoins restants). Sois honnête sur l'incertitude. Réponds en français.",
+      "Tu es un diététicien-nutritionniste expert. Tu analyses la photo d'un repas : identifie chaque aliment, estime les portions (utilise couverts, assiette, mains comme repères d'échelle), puis les nutriments en t'appuyant sur les tables CIQUAL/USDA. Évalue le repas pour la personne décrite (objectif, activité, sommeil, humeur, apports déjà consommés aujourd'hui, besoins restants). Sois honnête sur l'incertitude. Réponds en français.\n\nRepères scientifiques à appliquer dans ton évaluation :\n" + FOOD_EVIDENCE,
     messages: [
       {
         role: 'user',
@@ -126,7 +132,7 @@ export async function analyzePlate({ apiKey, model }, dataUrl, personContext, no
 }
 
 export async function readScreenshot({ apiKey, model }, dataUrl) {
-  const c = client(apiKey);
+  const c = await client(apiKey);
   const resp = await c.beta.messages.create({
     model,
     max_tokens: 4000,
@@ -141,36 +147,134 @@ export async function readScreenshot({ apiKey, model }, dataUrl) {
 
 const COACH_SYSTEM = `Tu es « Coach Santé », un coach personnel en nutrition, activité physique, sommeil et bien-être mental, rigoureux et bienveillant.
 Principes :
-- Appuie-toi sur les données scientifiques les plus solides (méta-analyses, essais contrôlés, recommandations OMS/ANSES/HAS/EFSA). Cite brièvement la source (auteur, revue, année) quand tu avances un chiffre.
-- Personnalise tout à partir des données de l'utilisateur fournies (profil, sommeil, humeur, écrans, activité, repas). Mentionne explicitement quelles données t'ont fait conclure.
-- Donne des conseils concrets et horodatés (quoi manger, à quelle heure, quelle activité, combien de temps, à quel moment).
-- Distingue association et causalité ; signale l'incertitude.
+- Appuie-toi sur les données scientifiques les plus solides, par ordre de préférence : recommandations officielles (OMS, ANSES, HAS, EFSA, PNNS), méta-analyses et revues systématiques, essais randomisés, puis grandes cohortes. Indique le niveau de preuve quand c'est utile.
+- Cite la source (auteur, revue, année) de chaque chiffre. Utilise d'abord la base de connaissances ci-dessous ; si la question sort de ce cadre ou demande des données récentes, utilise la recherche web (sources médicales et scientifiques uniquement).
+- Personnalise tout à partir des données de l'utilisateur fournies (profil, sommeil, humeur, écrans, activité, repas, fréquence cardiaque). Dis explicitement quelles données t'ont fait conclure.
+- Donne des conseils concrets et horodatés : quoi manger, à quelle heure, quelle activité, combien de temps, à quel moment de la journée.
+- Distingue association et causalité ; signale l'incertitude et les limites des études.
 - Tu n'es pas médecin : en cas de symptôme inquiétant, de trouble alimentaire suspecté, d'idées noires (3114 en France) ou de maladie chronique, oriente vers un professionnel.
-- Réponds en français, de façon concise et structurée (listes courtes), sans jargon inutile.
-Sources de référence intégrées à l'application :
+- Réponds en français, de façon concise et structurée (titres courts, listes), sans jargon inutile.
+
+# Base de connaissances scientifiques (résultats chiffrés)
+${EVIDENCE_TEXT}
+
+# Toutes les références intégrées à l'application
 ${Object.values(SOURCES).map((s) => `- ${s.t}`).join('\n')}`;
 
+// Recherche web limitée à des sources médicales et scientifiques reconnues.
+const SCIENCE_DOMAINS = [
+  'pubmed.ncbi.nlm.nih.gov', 'ncbi.nlm.nih.gov', 'cochranelibrary.com', 'who.int', 'anses.fr', 'has-sante.fr', 'santepubliquefrance.fr',
+  'mangerbouger.fr', 'inserm.fr', 'efsa.europa.eu', 'nih.gov', 'cdc.gov', 'thelancet.com', 'bmj.com', 'nejm.org', 'jamanetwork.com',
+  'nature.com', 'sciencedirect.com', 'academic.oup.com', 'link.springer.com', 'ahajournals.org', 'cell.com', 'frontiersin.org', 'mdpi.com',
+];
+
 // Conversation en streaming. history : [{role, content}] ; onText reçoit le texte cumulé.
-export async function coachChat({ apiKey, model }, history, personContext, onText) {
-  const c = client(apiKey);
+// Renvoie { text, sources } où sources liste les pages web citées par le coach.
+export async function coachChat({ apiKey, model }, history, personContext, onText, { webSearch = true } = {}) {
+  const c = await client(apiKey);
   const messages = history.map((m) => ({ role: m.role, content: m.content }));
   // Les données du jour sont jointes au dernier message utilisateur, le préfixe reste stable (cache).
   const last = messages.at(-1);
   last.content = `<donnees_utilisateur>\n${personContext}\n</donnees_utilisateur>\n\n${last.content}`;
+  const tools = webSearch && !model.startsWith('claude-haiku')
+    ? [{ type: 'web_search_20260209', name: 'web_search', max_uses: 4, allowed_domains: SCIENCE_DOMAINS }]
+    : undefined;
+  let acc = '';
+  const sources = new Map();
+  for (let i = 0; i < 4; i++) {
+    const stream = c.beta.messages.stream({
+      model,
+      max_tokens: 16000,
+      ...fallbackParams(model),
+      output_config: { effort: 'medium' },
+      system: [{ type: 'text', text: COACH_SYSTEM, cache_control: { type: 'ephemeral' } }],
+      ...(tools ? { tools } : {}),
+      messages,
+    });
+    stream.on('text', (t) => {
+      acc += t;
+      onText(acc);
+    });
+    const final = await stream.finalMessage();
+    if (final.stop_reason === 'refusal') throw new Error('La requête a été déclinée par le modèle.');
+    for (const b of final.content) {
+      if (b.type === 'text') for (const ci of b.citations || []) if (ci.url) sources.set(ci.url, ci.title || ci.url);
+    }
+    // La recherche web côté serveur peut mettre le tour en pause : on le relance tel quel.
+    if (final.stop_reason !== 'pause_turn') break;
+    messages.push({ role: 'assistant', content: final.content });
+  }
+  return { text: acc, sources: [...sources].map(([url, title]) => ({ url, title })) };
+}
+
+const AISLES = ['Fruits & légumes', 'Viande & poisson', 'Crèmerie & œufs', 'Épicerie', 'Boulangerie', 'Surgelés', 'Boissons', 'Divers'];
+const WEEK_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['days', 'tips'],
+  properties: {
+    tips: { type: 'string', description: 'Logique du menu et 2-3 conseils (batch cooking, restes…)' },
+    days: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['label', 'meals'],
+        properties: {
+          label: { type: 'string' },
+          meals: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['slot', 'name', 'kcal', 'protein', 'fiber', 'prep', 'ingredients', 'steps'],
+              properties: {
+                slot: { type: 'string', enum: ['petit-dej', 'dejeuner', 'collation', 'diner'] },
+                name: { type: 'string' },
+                kcal: { type: 'number' },
+                protein: { type: 'number' },
+                fiber: { type: 'number' },
+                prep: { type: 'number', description: 'minutes de préparation' },
+                steps: { type: 'string', description: 'Recette en 2-4 étapes courtes' },
+                ingredients: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    required: ['name', 'qty', 'unit', 'aisle'],
+                    properties: { name: { type: 'string' }, qty: { type: 'number' }, unit: { type: 'string', enum: ['g', 'mL', 'pièce', 'boîte', 'portion', 'c. à soupe'] }, aisle: { type: 'string', enum: AISLES } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+};
+
+// Menus de 7 jours personnalisés (quantités pour `people` personnes), avec recettes.
+export async function planWeek({ apiKey, model }, personContext, { days, people = 1, budget = 'moyen', cookTime = 30, wishes = '' }) {
+  const c = await client(apiKey);
   const stream = c.beta.messages.stream({
     model,
-    max_tokens: 16000,
+    max_tokens: 32000,
     ...fallbackParams(model),
-    output_config: { effort: 'medium' },
-    system: [{ type: 'text', text: COACH_SYSTEM, cache_control: { type: 'ephemeral' } }],
-    messages,
+    output_config: { effort: 'low', format: { type: 'json_schema', schema: WEEK_SCHEMA } },
+    system:
+      "Tu es diététicien. Tu composes des menus hebdomadaires réalistes, de saison, économiques et variés, inspirés du modèle méditerranéen et des repères du PNNS/ANSES (légumineuses 2×/semaine, poisson 2×/semaine dont 1 gras, viande rouge ≤ 500 g/semaine, charcuterie ≤ 150 g, céréales complètes, 5 fruits et légumes/jour). Respecte strictement régime, allergies et cibles nutritionnelles. Réutilise les ingrédients d'un jour à l'autre pour limiter le gaspillage. Quantités crues, pour le nombre de personnes indiqué.\n\nBase scientifique à respecter :\n" + FOOD_EVIDENCE,
+    messages: [{
+      role: 'user',
+      content: `Profil et données :\n${personContext}\n\nPrépare les menus pour : ${days.map((d) => d.label).join(', ')}.\nNombre de personnes : ${people}. Budget : ${budget}. Temps de cuisine max par repas : ${cookTime} min.${wishes ? `\nEnvies / contraintes : ${wishes}` : ''}\nPour chaque jour : petit-déjeuner, déjeuner, collation (si utile pour l'objectif) et dîner léger.`,
+    }],
   });
-  let acc = '';
-  stream.on('text', (t) => {
-    acc += t;
-    onText(acc);
-  });
-  const final = await stream.finalMessage();
-  if (final.stop_reason === 'refusal') throw new Error('La requête a été déclinée par le modèle.');
-  return acc;
+  const resp = await stream.finalMessage();
+  const plan = parseJson(resp);
+  return {
+    source: 'ia',
+    created: new Date().toISOString(),
+    tips: plan.tips,
+    days: plan.days.map((d, i) => ({ ...d, date: days[i]?.date, label: days[i]?.label || d.label })),
+  };
 }

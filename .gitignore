@@ -1,3 +1,7 @@
 node_modules/
 dist/
 .DS_Store
+
+# Clé de signature Android : jamais dans le dépôt
+*.keystore
+*.jks
