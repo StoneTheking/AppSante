@@ -349,9 +349,22 @@ function guided(ctx, view, session, activity, intensity) {
   const steps = W.flatten(session);
   let i = 0, left = 0, paused = false, tick = null;
   if (!store.get().workoutNow) SP.startWorkout(activity, intensity);
-  const body = sheet(`<div id="gd"></div>`, { title: session.title, full: true, onClose: () => { clearInterval(tick); render(view, ctx); } });
+  // écran allumé pendant la séance (repris au retour dans l'appli)
+  let lock = null;
+  const keepAwake = async () => { try { if (document.visibilityState === 'visible') lock = await navigator.wakeLock?.request('screen'); } catch { /* non pris en charge */ } };
+  keepAwake();
+  document.addEventListener('visibilitychange', keepAwake);
+  const body = sheet(`<div id="gd"></div>`, { title: session.title, full: true, onClose: () => { clearInterval(tick); lock?.release?.().catch(() => {}); document.removeEventListener('visibilitychange', keepAwake); render(view, ctx); } });
   const el = $('#gd', body);
-  const beep = () => { navigator.vibrate?.([120, 60, 120]); };
+  // fin d'étape : vibration + deux bips courts (le téléphone est souvent posé au sol)
+  let audio = null;
+  const beep = () => {
+    navigator.vibrate?.([120, 60, 120]);
+    try {
+      audio ||= new (window.AudioContext || window.webkitAudioContext)();
+      [0, 0.22].forEach((t) => { const o = audio.createOscillator(), g = audio.createGain(); o.frequency.value = 880; g.gain.setValueAtTime(0.0001, audio.currentTime + t); g.gain.exponentialRampToValueAtTime(0.25, audio.currentTime + t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + t + 0.15); o.connect(g).connect(audio.destination); o.start(audio.currentTime + t); o.stop(audio.currentTime + t + 0.16); });
+    } catch { /* pas de son */ }
+  };
   const draw = () => {
     const s = steps[i];
     const next = steps[i + 1];

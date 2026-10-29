@@ -25,8 +25,8 @@ export function meter(label, v, max, unit, color, inverse = false) {
 
 function headline(sm, profile = {}) {
   const s = sm.scores;
-  const entries = Object.entries(s).filter(([k, v]) => k !== 'global' && v != null);
-  if (!entries.length) return 'Fais ton check-in pour obtenir ton premier score.';
+  const entries = Object.entries(s).filter(([k, v]) => k !== 'global' && k !== 'humeur' && v != null);
+  if (entries.length < 2) return 'Note ta nuit et tes repas, synchronise tes pas : ton score se construit en quelques jours.';
   const worst = entries.sort((a, b) => a[1] - b[1])[0];
   const msgs = {
     sommeil: 'Ta priorité : le sommeil. Vise un coucher régulier ce soir.',

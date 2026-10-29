@@ -40,7 +40,7 @@ const ctx = {
     const at = new Date((ok ? alarm : target.getTime()) + 15 * 60000);
     const { LocalNotifications } = await import('@capacitor/local-notifications');
     await LocalNotifications.requestPermissions().catch(() => {});
-    await LocalNotifications.schedule({ notifications: [{ id: 900, title: 'Bien réveillé ? ☀︎', body: 'Ouvre Diana Health : ta nuit est enregistrée automatiquement.', schedule: { at, allowWhileIdle: true }, smallIcon: 'ic_stat_appsante' }] }).catch(() => {});
+    await LocalNotifications.schedule({ notifications: [{ id: 900, title: 'Bonjour ☀︎', body: 'Ouvre Diana Health : ta nuit est enregistrée automatiquement.', schedule: { at, allowWhileIdle: true }, smallIcon: 'ic_stat_appsante' }] }).catch(() => {});
   },
   action(a) {
     if (a === 'photo') A.openPhoto(ctx);

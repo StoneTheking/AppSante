@@ -240,7 +240,7 @@ export function activityScore({ steps, modMin, vigMin, strengthMin }, t) {
 }
 
 export function digitalScore({ screenMin, socialMin, phoneInBed, unlocks }) {
-  if (screenMin == null && socialMin == null && phoneInBed == null) return null;
+  if (screenMin == null && socialMin == null && !phoneInBed) return null; // pas de données ≠ 100/100
   let s = 100;
   if (screenMin != null && screenMin > 120) s -= Math.min(35, (screenMin - 120) / 6);
   if (socialMin != null && socialMin > 30) s -= Math.min(30, (socialMin - 30) / 3);

@@ -4,7 +4,7 @@ import * as C from '../coach.js';
 import * as AI from '../ai.js';
 import * as BC from '../barcode.js';
 import { summary, personContext } from '../context.js';
-import { icon, esc, fmt, sheet, toast, compressImage, pickImage, releaseCamera, BLANK, srcLinks, faces, bindFaces, $, $$ } from '../ui.js';
+import { icon, esc, fmt, fmtMin, sheet, toast, compressImage, pickImage, releaseCamera, BLANK, srcLinks, faces, bindFaces, $, $$ } from '../ui.js';
 import * as SL from '../sleep.js';
 import * as N from '../native.js';
 import * as D from '../digestion.js';
@@ -275,7 +275,7 @@ export function showMorning(ctx, r) {
       <div class="sleep-card" style="margin-top:0">
         <div class="tiny muted" style="font-weight:700;letter-spacing:.08em;text-transform:uppercase">Ta nuit</div>
         <div class="big">${Math.floor(h)} h ${String(r.sleepMinutes % 60).padStart(2, '0')}</div>
-        <div class="small muted">${r.bed} → ${r.wake} · ${Math.round(r.inBedMin / 6) / 10} h au lit, ~${SL.LATENCY_MIN} min d’endormissement estimées</div>
+        <div class="small muted">${r.bed} → ${r.wake} · ${fmtMin(r.inBedMin)} au lit, ~${SL.LATENCY_MIN} min d’endormissement estimées</div>
         ${r.source && r.source !== 'bouton' ? `<div class="small" style="margin-top:6px;color:#a5b4fc">${icon('sparkles', 14)} Réveil détecté automatiquement (${r.source === 'alarme' ? 'sonnerie de ton alarme' : r.source === 'téléphone' ? 'premier déverrouillage du matin' : esc(r.source)})${r.nightWakes ? ` · ${r.nightWakes} réveil(s) nocturne(s) avec le téléphone` : ''}</div>` : ''}
       </div>
       <div class="note ${verdict[0]}">${icon('info', 18)}<span>${verdict[1]} Ouvre les volets et prends la lumière du jour dans l’heure qui suit ton réveil.</span></div>
@@ -297,7 +297,7 @@ export function askWakeTime(ctx) {
   const target = new Date(now); target.setHours(wh, wm, 0, 0);
   const guess = target < now && now - target < 3 * 3600e3 ? target : now;
   const body = sheet(`
-    <p class="small muted" style="margin-top:0">Ta nuit est en cours depuis ${new Date(st.sleepNow).toTimeString().slice(0, 5)}. À quelle heure t’es-tu réveillé ?</p>
+    <p class="small muted" style="margin-top:0">Ta nuit est en cours depuis ${new Date(st.sleepNow).toTimeString().slice(0, 5)}. À quelle heure t’es-tu ${st.profile.sex === 'f' ? 'réveillée' : 'réveillé'} ?</p>
     <input type="time" id="wk" value="${guess.toTimeString().slice(0, 5)}">
     <button class="btn block" id="ok" style="margin-top:14px">${icon('sun', 18)} Valider</button>
     <p class="tiny muted">Dans l’application Android, avec l’accès « données d’utilisation », le réveil est détecté automatiquement (sonnerie de l’alarme ou premier déverrouillage).</p>`, { title: 'Bonjour' });

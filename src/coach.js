@@ -64,7 +64,7 @@ export function summarize({ profile, days, meals, weights, env, household = [], 
 
   const scores = {
     sommeil: S.sleepScore(w.sleepH, w.sleepQ, w.bedVar),
-    activite: S.activityScore({ steps: w.steps, modMin: w.modMin / 7, vigMin: w.vigMin / 7, strengthMin: w.strength >= 2 ? 1 : 0 }, t),
+    activite: w.steps == null && !w.modMin && !w.vigMin && !w.strength ? null : S.activityScore({ steps: w.steps, modMin: w.modMin / 7, vigMin: w.vigMin / 7, strengthMin: w.strength >= 2 ? 1 : 0 }, t),
     alimentation: dietAvg != null ? Math.round(dietAvg) : null,
     humeur: S.moodScore({ mood: w.mood, energy: w.energy, stress: w.stress }),
     numerique: S.digitalScore({ screenMin: w.screenMin, socialMin: w.socialMin, phoneInBed: w.phoneInBedDays >= 3, unlocks: w.unlocks }),

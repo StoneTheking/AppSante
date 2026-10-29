@@ -145,7 +145,7 @@ function renderTrack(el, ctx) {
       </div>
       ${d.topApps?.length ? `<p class="tiny muted" style="margin-top:8px">Applis les plus utilisées : ${d.topApps.map((a) => `${esc(a.name)} (${fmtMin(a.minutes)})`).join(', ')}</p>` : ''}
 
-      ${section('scale', 'Poids & boissons', 'var(--c-water)', due.due && dayOffset === 0 ? '<span class="badge moyen">pesée à faire</span>' : due.days != null ? `<span class="tiny muted">pesé il y a ${due.days} j</span>` : '')}
+      ${section('scale', 'Poids & boissons', 'var(--c-water)', due.due && dayOffset === 0 ? '<span class="badge moyen">pesée à faire</span>' : due.days != null ? `<span class="tiny muted">${due.days === 0 ? 'pesé aujourd’hui' : due.days === 1 ? 'pesé hier' : `pesé il y a ${due.days} j`}</span>` : '')}
       <div class="grid2">
         <div><label class="lbl" style="margin-top:0">Poids (kg)</label><input data-k="weight" type="number" inputmode="decimal" step="0.1" value="${esc(d.weight ?? '')}" placeholder="${due.last ? fmt(due.last.kg, 1) : ''}"></div>
         <div><label class="lbl" style="margin-top:0">Eau</label><div class="stepper"><button data-water="-250">−</button><input value="${fmt((d.waterMl || 0) / 10)} cL" readonly><button data-water="250">+</button></div></div>
