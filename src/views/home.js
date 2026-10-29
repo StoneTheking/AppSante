@@ -45,7 +45,10 @@ export function render(view, ctx) {
   const now = new Date();
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const plan = C.applyPlanEdits(C.dailyPlan(sm, profile), st.planEdits, store.today());
-  let nextIdx = plan.findIndex((p) => (p.min % 1440) >= nowMin);
+  // après minuit et avant le réveil, on est encore dans la journée d'hier (coucher à 00:30 = 24:30)
+  const [wh, wm] = (profile.wakeTime || '07:00').split(':').map(Number);
+  const nowAdj = nowMin < wh * 60 + wm - 60 ? nowMin + 1440 : nowMin;
+  let nextIdx = plan.findIndex((p) => p.min >= nowAdj);
   if (nextIdx === -1) nextIdx = plan.length;
   const order = { alerte: 0, attention: 1, bon: 2 };
   const ins = C.insights(sm).sort((a, b) => order[a.level] - order[b.level]).slice(0, 3);

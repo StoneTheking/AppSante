@@ -18,7 +18,7 @@ export function dayGoals(st, key) {
   return [
     { id: 'move', label: 'Bouger 30 min', icon: 'steps', color: 'var(--c-move)', progress: Math.min(1, Math.max(moveMin / 30, (d.steps || 0) / t.steps)), hint: `${Math.round(moveMin)} min · ${d.steps ? d.steps + ' pas' : 'pas non renseignés'}` },
     { id: 'food', label: 'Assiette équilibrée', icon: 'salad', color: 'var(--c-food)', progress: Math.min(1, Math.max(tot.fruitVeg / t.fruitVeg, diet != null ? diet / 70 : 0)), hint: `${Math.round(tot.fruitVeg)} g de fruits & légumes` },
-    { id: 'sleep', label: 'Nuit de 7 h', icon: 'moon', color: 'var(--c-sleep)', progress: sleepH ? Math.min(1, sleepH / 7) : 0, hint: sleepH ? `${S.round(sleepH, 1)} h` : 'nuit non notée' },
+    { id: 'sleep', label: 'Nuit de 7 h', icon: 'moon', color: 'var(--c-sleep)', progress: sleepH ? Math.min(1, sleepH / 7) : 0, hint: sleepH ? `${Math.floor(sleepH)} h ${String(Math.round((sleepH % 1) * 60) % 60).padStart(2, '0')}` : 'nuit non notée' },
     { id: 'water', label: 'Bien s’hydrater', icon: 'water', color: 'var(--c-water)', progress: Math.min(1, (d.waterMl || 0) / t.waterMl), hint: `${((d.waterMl || 0) / 1000).toLocaleString('fr-FR')} / ${t.waterMl / 1000} L` },
     { id: 'mood', label: 'Check-in humeur', icon: 'smile', color: 'var(--c-mood)', progress: d.mood ? 1 : 0, hint: d.mood ? 'fait' : 'à faire' },
   ].map((g) => ({ ...g, done: g.progress >= 1 }));

@@ -22,7 +22,7 @@ export function todayAdvice(sm, st) {
   const easy = () => SP.activity(SP.substitute('marche', st.profile)).label.toLowerCase();
   if (!slot?.type) { type = 'marche'; minutes = 30; intensity = 'legere'; why.push(`Jour de récupération dans ta semaine type : ${easy()} en douceur suffit.`); }
   if (sm.ctx.poorSleep && intensity === 'intense') { type = 'marche'; intensity = 'moderee'; minutes = 30; why.push(`Nuit courte : on remplace la séance intense par ${easy()} à allure modérée.`); }
-  if (slot?.matches) { type = 'yoga'; intensity = 'legere'; minutes = 20; why.push('Séance du jour déjà faite 👏 : mobilité ou étirements pour récupérer.'); }
+  if (slot?.matches) { type = 'yoga'; intensity = 'legere'; minutes = 20; why.length = 0; why.push('Séance du jour déjà faite 👏 : mobilité ou étirements pour récupérer.'); }
   if (sm.env && (sm.env.aqi > 60 || sm.env.tMax >= 33) && ['course', 'velo', 'randonnee', 'marche'].includes(type)) why.push('Air ou chaleur défavorables : fais-la en intérieur (tapis, vélo d’appartement, salle).');
   type = SP.substitute(type, st.profile);
   const ad = SP.adaptation(st.sportFeedback, type);
@@ -31,7 +31,7 @@ export function todayAdvice(sm, st) {
     if (ad.easier && intensity === 'intense') intensity = 'moderee';
     if (ad.note) why.unshift(ad.note);
   }
-  return { type, minutes, intensity, ad, when: when?.time, whenText: when?.text, reco, why: [...why, ...reco.why], src: [...new Set([...reco.src, ...(when?.src || [])])], plan };
+  return { type, minutes, intensity, ad, when: when?.time, whenText: when?.text, reco, why: slot?.matches ? why : [...why, ...reco.why], src: [...new Set([...reco.src, ...(when?.src || [])])], plan };
 }
 
 export function render(view, ctx) {
@@ -77,7 +77,7 @@ export function render(view, ctx) {
     </div>
 
     <div class="card">
-      <div class="card-head"><h2>${icon('calendar', 18)} Ta semaine type</h2><span class="row" style="gap:12px;flex-wrap:nowrap"><button class="link" id="edit-week">${icon('pencil', 14)} Modifier</button><button class="link" id="my-sports">${icon('settings', 14)} Mes sports</button></span></div>
+      <div class="card-head"><h2 style="white-space:nowrap">${icon('calendar', 18)} Ta semaine</h2><span class="row" style="gap:14px;flex-wrap:nowrap;white-space:nowrap"><button class="link" id="edit-week">${icon('pencil', 14)} Modifier</button><button class="link" id="my-sports">${icon('settings', 14)} Sports</button></span></div>
       ${adv.plan.map((d, i) => `<div class="list-item" data-day="${i}" style="cursor:pointer;grid-template-columns:76px 1fr auto;${d.today ? 'background:var(--primary-soft);border-radius:12px;padding-left:8px;padding-right:8px' : ''}">
         <b class="small">${d.day}</b>
         <div><div class="small" style="font-weight:600">${d.type ? esc(SP.activity(d.type).label) : 'Repos'}</div><div class="tiny muted">${d.type ? `${d.minutes} min · ${SP.INTENSITY[d.intensity].label.toLowerCase()}` : 'récupération'}${d.done.length ? ` · fait : ${d.done.map((w) => `${esc(SP.activity(w.type).label.split(' ')[0].toLowerCase())} ${w.minutes} min`).join(', ')}` : ''}</div></div>

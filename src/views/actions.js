@@ -10,6 +10,7 @@ import * as N from '../native.js';
 import * as D from '../digestion.js';
 import * as PT from '../pantry.js';
 import * as SN from '../snacks.js';
+import { allowedMeals } from '../meals.js';
 
 const VERDICT = { bon: 'Bon pour toi', moyen: 'Moyen', a_limiter: 'À limiter' };
 
@@ -66,6 +67,7 @@ const MEAL_TYPES = [['petit-dej', 'Petit-déj'], ['dejeuner', 'Déjeuner'], ['co
 
 export async function openPhoto(ctx, fromGallery = false, slot = null) {
   const st = store.get();
+  if (!st.settings.apiKey) return openQuickMeal(ctx, slot); // l'analyse photo demande une clé API
   const [file] = await pickImage({ camera: !fromGallery });
   if (!file) return;
   const dataUrl = await compressImage(file);
@@ -198,6 +200,40 @@ function productCard(out, prod, grams, body, slot) {
     addMeal({ title: `${prod.name}${prod.brand ? ' – ' + prod.brand.split(',')[0] : ''} (${g()} g)`, alcohol: prod.alcohol ? Math.round(((g() * prod.alcohol) / 100) * 0.8 / 10 * 10) / 10 : 0, nutrients: n, nova: prod.nova || 3, quality: v.score, verdict: v.verdict, nutriscore: prod.nutriscore, barcode: prod.code, thumb: prod.image, comment: [...v.pros, ...v.cons].join(' · '), slot: slot === 'grignotage' ? 'collation' : slot, snack: slot === 'grignotage' });
     body.close();
   };
+}
+
+// ---------- Ajout rapide sans IA : mes plats, repas récents, bibliothèque de plats équilibrés ----------
+export function openQuickMeal(ctx, slot = null) {
+  const st = store.get();
+  const norm = (x) => x.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const seen = new Set();
+  const pool = [
+    ...(st.dishes || []).map((d) => ({ name: d.name, n: d.nutrients, quality: d.quality, verdict: d.verdict, nova: d.nova, from: 'Mes plats' })),
+    ...[...st.meals].reverse().filter((m) => !m.snack).map((m) => ({ name: m.title, n: m.nutrients, quality: m.quality, verdict: m.verdict, nova: m.nova, from: 'Récent' })),
+    ...allowedMeals(st.profile.diet, st.profile.allergies).map((m) => ({ name: m.name, n: { kcal: m.kcal, protein: m.protein, fiber: m.fiber, fruitVeg: m.fruitVeg, carbs: 0, fat: 0, satFat: 0, sugar: 0, sodium: 0 }, quality: 75, verdict: 'bon', nova: 1, from: 'Idée' })),
+  ].filter((x) => x.n && !seen.has(norm(x.name)) && seen.add(norm(x.name)));
+  const body = sheet(`
+    <p class="small muted" style="margin-top:0">L’analyse photo demande une clé API (Profil). En attendant, retrouve ton repas ici :</p>
+    <input id="q" placeholder="Rechercher : pâtes, salade, omelette…" autocomplete="off">
+    <div id="list" style="margin-top:8px"></div>
+    <div class="grid2" style="margin-top:12px"><button class="btn ghost" id="scan">${icon('barcode', 18)} Code-barres</button><button class="btn ghost" id="manual">${icon('pencil', 18)} Manuel</button></div>`, { title: 'Ajouter un repas', full: true, onClose: () => ctx.render() });
+  const draw = () => {
+    const q = norm($('#q', body).value.trim());
+    const res = pool.filter((x) => !q || q.split(/\s+/).every((w) => norm(x.name).includes(w))).slice(0, 30);
+    $('#list', body).innerHTML = res.length ? res.map((x, i) => `<div class="qm" data-i="${pool.indexOf(x)}"><div style="flex:1;min-width:0"><div class="small" style="font-weight:600">${esc(x.name)}</div><div class="tiny muted">${x.from} · ${fmt(x.n.kcal)} kcal</div></div>
+      <div class="qm-por">${[0.5, 1, 1.5, 2].map((k) => `<button class="chip" data-k="${k}">${k === 0.5 ? '½' : k === 1.5 ? '1½' : k}</button>`).join('')}</div></div>`).join('')
+      : '<p class="small muted">Rien trouvé : utilise la saisie manuelle.</p>';
+  };
+  draw();
+  $('#q', body).oninput = draw;
+  $('#list', body).onclick = (e) => {
+    const b = e.target.closest('[data-k]'); if (!b) return;
+    const x = pool[Number(b.closest('[data-i]').dataset.i)], k = Number(b.dataset.k);
+    addMeal({ title: x.name, nutrients: Object.fromEntries(Object.entries(x.n).map(([a, v]) => [a, Math.round((v || 0) * k * 10) / 10])), quality: x.quality ?? 70, verdict: x.verdict || 'moyen', nova: x.nova || 1, ...(slot ? { slot } : {}) });
+    body.close();
+  };
+  $('#scan', body).onclick = () => { body.close(); setTimeout(() => ctx.action('scan'), 250); };
+  $('#manual', body).onclick = () => { body.close(); setTimeout(() => openManual(ctx), 250); };
 }
 
 // ---------- Saisie manuelle ----------

@@ -292,18 +292,18 @@ export function riskFactors({ steps, sleepH, bmiV, diet, strengthWeek, alcoholWe
   const f = [];
   if (steps != null) {
     const s = clamp(steps, 2000, 12000);
-    f.push({ key: 'steps', label: 'Pas quotidiens', value: `${Math.round(steps)} pas/j`, rr: 0.85 ** ((s - 8000) / 1000), src: ['banach2023', 'paluch2022'] });
+    f.push({ key: 'steps', label: 'Pas quotidiens', value: `${Math.round(steps).toLocaleString('fr-FR')} pas/j`, rr: 0.85 ** ((s - 8000) / 1000), src: ['banach2023', 'paluch2022'] });
   }
   if (sleepH != null) {
     const rr = sleepH < 6 ? 1.12 : sleepH > 9 ? 1.3 : 1;
-    f.push({ key: 'sleep', label: 'Durée de sommeil', value: `${round(sleepH, 1)} h/nuit`, rr, src: ['cappuccio2010'] });
+    f.push({ key: 'sleep', label: 'Durée de sommeil', value: `${round(sleepH, 1).toLocaleString('fr-FR')} h/nuit`, rr, src: ['cappuccio2010'] });
   }
   if (bmiV != null) {
     let rr = 1;
     if (bmiV >= 25) rr = 1.39 ** ((bmiV - 22.5) / 5) / 1.39 ** 0.5;
     if (bmiV < 18.5) rr = 1.51;
     else if (bmiV < 20) rr = 1.13;
-    f.push({ key: 'bmi', label: 'Corpulence (IMC)', value: round(bmiV, 1), rr: Math.max(1, rr), src: ['gbmc2016'] });
+    f.push({ key: 'bmi', label: 'Corpulence (IMC)', value: round(bmiV, 1).toLocaleString('fr-FR'), rr: Math.max(1, rr), src: ['gbmc2016'] });
   }
   if (diet != null) {
     // score alimentaire 0–100 ↔ adhésion méditerranéenne 0–9 ; +2 points = RR 0,92 (Sofi 2010)

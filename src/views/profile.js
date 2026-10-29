@@ -51,7 +51,7 @@ export function render(view, ctx) {
       <label class="lbl">Objectif</label>${sel('goal', { perdre: 'Perdre du poids', maintenir: 'Rester en forme', prendre: 'Prendre du muscle' })}
       <label class="lbl">Niveau d'activité habituel</label>${sel('activityLevel', { sedentaire: 'Sédentaire', leger: 'Légèrement actif', modere: 'Modérément actif (3-5 séances/sem)', actif: 'Actif (sport quotidien)', tres_actif: 'Très actif' })}
       <label class="lbl">Régime</label>${sel('diet', { omnivore: 'Omnivore', pescetarien: 'Pescétarien', vegetarien: 'Végétarien', vegan: 'Végan' })}
-      <button class="btn ghost block" id="my-sports" style="margin-top:12px">${icon('dumbbell', 18)} Mes sports, niveau et matériel</button>
+      <button class="btn ghost block" id="my-sports" style="margin-top:12px">${icon('dumbbell', 18)} Mes sports, temps et matériel</button>
       <div class="grid2">
         <div><label class="lbl">Réveil</label>${inp('wakeTime', 'time')}</div>
         <div><label class="lbl">Coucher visé</label>${inp('bedTime', 'time')}</div>
@@ -114,7 +114,7 @@ export function render(view, ctx) {
 
     <div class="section-title">Intelligence artificielle</div>
     <div class="card">
-      <p class="small muted" style="margin-top:0">Clé à créer sur <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> (stockée sur ce téléphone).</p>
+      <p class="small muted" style="margin-top:0">Clé à créer sur <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> (stockée sur ce téléphone). L’API se paie à l’usage, à part de l’abonnement Claude Pro : environ 1 centime par photo de repas. Sans clé, l’appli marche quand même (menus, scanner, plan, sport) ; seules l’analyse photo, les recettes et le coach IA en ont besoin.</p>
       <label class="lbl">Clé API</label><input id="key" type="password" autocomplete="off" placeholder="sk-ant-…" value="${esc(st.settings.apiKey)}">
       <label class="between" style="flex-wrap:nowrap;margin-top:14px"><span><b class="small">Recherche scientifique en ligne</b><div class="tiny muted">Le coach peut consulter PubMed, Cochrane, OMS, ANSES, Lancet, BMJ… (coût API légèrement supérieur)</div></span><span class="switch"><input type="checkbox" id="web" ${st.settings.webSearch ? 'checked' : ''}><span></span></span></label>
       <label class="lbl">Modèle</label><select id="model">${AI.MODELS.map((m) => `<option value="${m.id}" ${st.settings.model === m.id ? 'selected' : ''}>${m.label}</option>`).join('')}</select>

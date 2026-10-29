@@ -222,7 +222,7 @@ export function logo(size = 40) {
 
 // Visages 1 à 5 (plus rapide à remplir qu'une échelle chiffrée) ; onPick(valeur) à chaque choix.
 // Dessinés au trait comme les autres icônes (pas d'émojis) ; g = de 1 (mauvais) à 5 (très bien).
-const TONE = ['var(--bad)', 'var(--warn)', 'var(--muted)', 'var(--primary)', 'var(--good)'];
+const TONE = ['var(--bad)', 'var(--warn)', 'var(--text-2)', 'var(--primary)', 'var(--good)'];
 function faceSvg(g) {
   const c = (g - 3) * 1.6; // courbure de la bouche
   const brows = g === 1 ? '<path d="M7.5 8.2 10 9.2M16.5 8.2 14 9.2"/>' : '';
@@ -260,25 +260,29 @@ export function bindFaces(el, onPick) {
 }
 
 // Appui court / appui long sur un même bouton (ex. eau : +25 cL / −25 cL).
+// Appui court / appui long. Un appui long ne déclenche qu'une seule action, même si la page se redessine
+// sous le doigt (Android envoie alors « contextmenu » au nouveau bouton) : verrou commun à tous les boutons.
+let lastHold = 0;
 export function onTapHold(btn, tap, hold, ms = 420) {
-  let t = null, held = false, x0 = 0, y0 = 0;
-  const fire = () => { if (held) return; held = true; clearTimeout(t); navigator.vibrate?.(30); hold(); };
-  const start = (x, y) => { held = false; x0 = x; y0 = y; clearTimeout(t); t = setTimeout(fire, ms); };
+  let t = null, x0 = 0, y0 = 0;
+  const recent = () => Date.now() - lastHold < 900;
+  const fire = () => { clearTimeout(t); if (recent()) return; lastHold = Date.now(); navigator.vibrate?.(30); hold(); };
+  const start = (x, y) => { x0 = x; y0 = y; clearTimeout(t); t = setTimeout(fire, ms); };
   const move = (x, y) => { if (Math.hypot(x - x0, y - y0) > 12) clearTimeout(t); };
   const stop = () => clearTimeout(t);
   btn.classList.add('holdable');
   // au doigt : événements tactiles (le pointeur est annulé par Android dès que le système envisage un défilement)
   btn.addEventListener('touchstart', (e) => start(e.touches[0].clientX, e.touches[0].clientY), { passive: true });
   btn.addEventListener('touchmove', (e) => move(e.touches[0].clientX, e.touches[0].clientY), { passive: true });
-  btn.addEventListener('touchend', (e) => { stop(); if (held) e.preventDefault(); });
+  btn.addEventListener('touchend', (e) => { stop(); if (recent()) e.preventDefault(); });
   btn.addEventListener('touchcancel', stop);
   // à la souris
   btn.addEventListener('pointerdown', (e) => { if (e.pointerType === 'mouse') start(e.clientX, e.clientY); });
   btn.addEventListener('pointerup', (e) => { if (e.pointerType === 'mouse') stop(); });
   btn.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') stop(); });
-  // appui long système d'Android : même effet
+  // appui long système d'Android : même effet (ignoré si l'appui long vient d'être compté)
   btn.addEventListener('contextmenu', (e) => { e.preventDefault(); fire(); });
-  btn.addEventListener('click', (e) => { if (held) { e.preventDefault(); held = false; return; } tap(); });
+  btn.addEventListener('click', (e) => { if (recent()) { e.preventDefault(); return; } tap(); });
 }
 
 // Durées lisibles : 95 → « 1 h 35 », 40 → « 40 min ».

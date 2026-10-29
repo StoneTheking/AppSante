@@ -338,6 +338,9 @@ export function applyPlanEdits(plan, edits = {}, dateKey) {
   return [...out, ...custom].sort((a, b) => a.min - b.min);
 }
 
+// Durée lisible à partir d'heures : 6.6 → « 6 h 36 ».
+const hmDur = (h) => { const m = Math.round(h * 60); return m >= 60 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')}` : `${m} min`; };
+
 // ---------- Score d'hygiène de vie expliqué ----------
 // L’humeur est suivie mais ne compte pas : on ne la commande pas directement, on agit sur ce qui la fait bouger.
 export const SCORE_WEIGHTS = { sommeil: 0.3, activite: 0.3, alimentation: 0.25, humeur: 0, numerique: 0.15 };
@@ -346,7 +349,7 @@ export function scoreBreakdown(sm) {
   const { w, t, scores } = sm;
   const r = (x, d = 0) => (x == null ? '—' : S.round(x, d).toLocaleString('fr-FR'));
   return [
-    { k: 'sommeil', what: w.sleepH != null ? `${r(w.sleepH, 1)} h/nuit en moyenne${w.bedVar != null ? `, coucher ±${Math.round(w.bedVar)} min` : ''}${w.sleepQ ? `, qualité ${r(w.sleepQ, 1)}/5` : ''}` : 'Continue à noter ton sommeil chaque nuit', how: 'Durée (7–9 h), qualité ressentie et régularité de l’heure de coucher.', tip: w.sleepH != null && w.sleepH < 7 ? 'Avance ton coucher de 20 min.' : 'Garde la même heure de coucher, week-end compris.', src: ['watson2015', 'windred2024'] },
+    { k: 'sommeil', what: w.sleepH != null ? `${hmDur(w.sleepH)} par nuit en moyenne${w.bedVar != null ? `, coucher ±${Math.round(w.bedVar)} min` : ''}${w.sleepQ ? `, qualité ${r(w.sleepQ, 1)}/5` : ''}` : 'Continue à noter ton sommeil chaque nuit', how: 'Durée (7–9 h), qualité ressentie et régularité de l’heure de coucher.', tip: w.sleepH != null && w.sleepH < 7 ? 'Avance ton coucher de 20 min.' : 'Garde la même heure de coucher, week-end compris.', src: ['watson2015', 'windred2024'] },
     { k: 'activite', what: w.steps != null || w.modMin ? `${r(w.steps)} pas/j, ${Math.round(w.modMin + 2 * w.vigMin)} min d’activité/sem, ${w.strength} séance(s) de renfo` : 'Synchronise tes pas ou note une séance', how: `Pas (objectif ${t.steps}/j), 150 min d’activité modérée par semaine, 2 séances de renforcement.`, tip: (w.steps || 0) < t.steps ? 'Ajoute une marche de 15 min après le déjeuner.' : 'Ajoute une séance de renforcement.', src: ['paluch2022', 'who2020'] },
     { k: 'alimentation', what: sm.dietDaysCount ? `${sm.dietDaysCount} jour(s) de repas notés sur 14` : 'Photographie tes repas', how: 'Fibres, fruits & légumes, protéines, sucres, graisses saturées, sel et part d’ultra-transformés.', tip: 'Une portion de légumes en plus à chaque repas.', src: ['gbd2019', 'lane2024'] },
     { k: 'humeur', what: w.mood != null ? `humeur ${r(w.mood, 1)}/5, énergie ${r(w.energy, 1)}/5, stress ${r(w.stress, 1)}/5` : 'Réponds à la question du jour', how: 'Moyenne de ton humeur, ton énergie et ton stress déclarés chaque jour.', tip: '15 min dehors à la lumière du jour.', src: ['noetel2024', 'burns2023'] },
@@ -361,12 +364,12 @@ export function insights(sm) {
   const push = (level, title, text, src = []) => out.push({ level, title, text, src });
 
   if (w.sleepH != null) {
-    if (w.sleepH < 7) push('alerte', 'Dette de sommeil', `Tu dors ${S.round(w.sleepH, 1)} h en moyenne (objectif ${t.sleepMin}–${t.sleepMax} h). Le manque de sommeil augmente l’appétit pour les aliments sucrés et diminue la motivation à bouger.`, ['watson2015', 'cappuccio2010']);
-    else push('bon', 'Durée de sommeil OK', `${S.round(w.sleepH, 1)} h/nuit en moyenne cette semaine.`, ['watson2015']);
+    if (w.sleepH < 7) push('alerte', 'Dette de sommeil', `Tu dors ${hmDur(w.sleepH)} en moyenne (objectif ${t.sleepMin}–${t.sleepMax} h). Le manque de sommeil augmente l’appétit pour les aliments sucrés et diminue la motivation à bouger.`, ['watson2015', 'cappuccio2010']);
+    else push('bon', 'Durée de sommeil OK', `${hmDur(w.sleepH)} par nuit en moyenne cette semaine.`, ['watson2015']);
   }
   if (w.bedVar != null && w.bedVar > 45) push('attention', 'Horaires de coucher irréguliers', `Ton heure de coucher varie de ±${Math.round(w.bedVar)} min. Fixe une heure de coucher constante, même le week-end.`, ['windred2024']);
   if (w.socialMin != null && w.socialMin > 30) push('attention', 'Réseaux sociaux', `${Math.round(w.socialMin)} min/j en moyenne. Limiter à 30 min/j a réduit solitude et symptômes dépressifs en 3 semaines dans un essai contrôlé.`, ['hunt2018']);
-  if (w.screenMin != null && w.screenMin > 240) push('attention', 'Temps d’écran élevé', `${Math.round(w.screenMin / 60 * 10) / 10} h/j sur le téléphone. Remplacer 30 min d’écran par 30 min de marche = ~3000 pas de plus.`, ['banach2023']);
+  if (w.screenMin != null && w.screenMin > 240) push('attention', 'Temps d’écran élevé', `${hmDur(w.screenMin / 60)} par jour sur le téléphone. Remplacer 30 min d’écran par 30 min de marche = ~3000 pas de plus.`, ['banach2023']);
   if (w.phoneInBedDays >= 3) push('attention', 'Téléphone au lit', `Téléphone utilisé au lit ${w.phoneInBedDays} soirs sur 7.`, ['exelmans2016']);
   if (w.steps != null) {
     if (w.steps < t.steps) push('attention', 'Pas quotidiens', `${Math.round(w.steps)} pas/j en moyenne. Le bénéfice sur la mortalité continue jusqu’à ~${t.steps} pas/j pour ton âge.`, ['paluch2022']);
@@ -375,7 +378,7 @@ export function insights(sm) {
   const modEq = w.modMin + 2 * w.vigMin;
   if (w.loggedDays >= 3 && modEq < 150) push('attention', 'Activité modérée à soutenue', `${Math.round(modEq)} min cette semaine (équivalent modéré) sur 150 min recommandées.`, ['who2020']);
   if (w.loggedDays >= 3 && w.strength < 2) push('attention', 'Renforcement musculaire', `${w.strength} séance(s) cette semaine, 2 recommandées.`, ['who2020', 'momma2022']);
-  if (body.whtr != null && body.whtr >= 0.5) push('alerte', 'Tour de taille', `Rapport tour de taille/taille = ${S.round(body.whtr, 2)} (≥ 0,5) : signe de graisse abdominale, facteur de risque cardio-métabolique.`, ['ashwell2012']);
+  if (body.whtr != null && body.whtr >= 0.5) push('alerte', 'Tour de taille', `Rapport tour de taille/taille = ${S.round(body.whtr, 2).toLocaleString('fr-FR')} (≥ 0,5) : signe de graisse abdominale, facteur de risque cardio-métabolique.`, ['ashwell2012']);
   if (dietAvg != null && dietAvg < 60) push('attention', 'Qualité alimentaire à améliorer', `Score moyen ${Math.round(dietAvg)}/100. Les 3 premiers risques alimentaires mondiaux : trop de sel, pas assez de céréales complètes, pas assez de fruits.`, ['gbd2019']);
   if (totToday.kcal && totToday.sodium > t.sodiumMax) push('attention', 'Sel', `Déjà ${Math.round(totToday.sodium)} mg de sodium aujourd’hui (max ${t.sodiumMax} mg).`, ['who2012sodium']);
   if (totToday.kcal && totToday.upfShare > 0.4) push('attention', 'Ultra-transformés', `${Math.round(totToday.upfShare * 100)} % des calories du jour viennent d’aliments ultra-transformés.`, ['lane2024']);

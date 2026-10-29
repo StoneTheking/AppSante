@@ -583,3 +583,7 @@ span.qcam-side { background: none; }
 .edited-mark { color: var(--muted); vertical-align: -1px; }
 .ex-actions { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
 .ex-actions .tuto { margin: 0; }
+/* ajout rapide d'un repas : nom à gauche, portions à droite */
+.qm { display: flex; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.qm-por { display: flex; gap: 4px; flex: none; }
+.qm-por .chip { min-width: 34px; padding: 6px 8px; justify-content: center; }

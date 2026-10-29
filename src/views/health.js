@@ -115,7 +115,7 @@ function renderTrack(el, ctx) {
     <div class="card">
       <div class="between">
         <button class="icon-btn" id="prev" aria-label="Jour précédent">${icon('left')}</button>
-        <b style="text-transform:capitalize">${dayOffset === 0 ? "Aujourd'hui" : new Date(key).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</b>
+        <b style="text-transform:capitalize">${dayOffset === 0 ? 'Aujourd’hui' : new Date(key).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</b>
         <button class="icon-btn" id="next" aria-label="Jour suivant" ${dayOffset >= 0 ? 'disabled style="opacity:.3"' : ''}>${icon('right')}</button>
       </div>
 

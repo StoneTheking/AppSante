@@ -299,7 +299,7 @@ function openAiPlanner(done, { pantryFirst = store.get().pantry.length > 0, scop
     <label class="lbl">Temps de cuisine max par repas</label><select id="time"><option value="15">15 min</option><option value="30" selected>30 min</option><option value="45">45 min</option><option value="60">1 h</option></select>
     ${st.pantry.length ? `<label class="between" style="margin-top:14px;flex-wrap:nowrap"><span class="small">Cuisiner d’abord ce que j’ai déjà (${st.pantry.length} produits)</span><span class="switch"><input type="checkbox" id="pf" ${pantryFirst ? 'checked' : ''}><span></span></span></label>` : ''}
     <label class="lbl">Envies, contraintes (facultatif)</label><textarea id="wish" placeholder="ex. batch cooking le dimanche, pas de poisson le lundi…"></textarea>
-    ${!st.settings.apiKey ? `<div class="note warn" style="margin-top:12px">${icon('key', 18)}<span>Ajoute ta clé API dans Profil pour créer tes menus.</span></div>` : ''}
+    ${!st.settings.apiKey ? `<div class="note" style="margin-top:12px">${icon('key', 18)}<span>Sans clé API, les menus sont composés sur ton téléphone à partir de plats équilibrés (tes goûts et allergies sont respectés ; budget, temps et envies ne sont pas pris en compte). Avec une clé API, le coach IA les personnalise entièrement.</span></div>` : ''}
     <button class="btn block" id="go" style="margin-top:16px">${icon('sparkles', 18)} <span id="go-l">${sc === 'day' ? 'Créer le menu du jour' : 'Créer mes menus'}</span></button>
     <div id="st" style="margin-top:12px"></div>`, { title: 'Mes menus' });
   $$('[data-sc]', body).forEach((b) => (b.onclick = () => {
@@ -317,7 +317,10 @@ function openAiPlanner(done, { pantryFirst = store.get().pantry.length > 0, scop
     $('#st', body).innerHTML = `<div class="empty"><span class="spinner"></span><p>${sc === 'day' ? 'Le coach compose ta journée (environ 20 secondes)…' : 'Le coach compose ta semaine (environ 1 minute)…'}</p></div>`;
     try {
       const wishes = [$('#wish', body).value, pf ? `Construis les menus AUTOUR des produits du garde-manger (${PT.pantryText(st.pantry)}) : utilise-les en premier, avant leur péremption, et ajoute le moins d'achats possible.` : ''].filter(Boolean).join('\n');
-      const res = await AI.planWeek(st.settings, personContext(), { days, people, budget: $('#bud', body).value, cookTime: Number($('#time', body).value), wishes });
+      // sans clé API : menus composés sur le téléphone à partir de la bibliothèque de plats (équilibrés, goûts respectés)
+      const res = st.settings.apiKey
+        ? await AI.planWeek(st.settings, personContext(), { days, people, budget: $('#bud', body).value, cookTime: Number($('#time', body).value), wishes })
+        : (() => { const sm = summary(); const r = P.offlinePlan({ targets: sm.t, profile: st.profile, ctx: sm.ctx, household: st.household, taste: taste(), pantry: pf ? st.pantry : [] }, new Date(`${days[0].date}T12:00:00`)); return { ...r, days: r.days.filter((d) => days.some((x) => x.date === d.date)) }; })();
       store.update((s) => {
         if (sc === 'week' || !s.plan) { s.plan = { ...res, people }; }
         else {

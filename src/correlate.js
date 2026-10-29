@@ -9,6 +9,9 @@ const variance = (xs) => { const m = mean(xs); return xs.reduce((a, b) => a + (b
 // Minutes de sommeil de la nuit qui se termine le jour k.
 const sleepMin = (d) => (d?.sleepMinutes ? d.sleepMinutes : sleepHours(d?.bed, d?.wake) != null ? sleepHours(d.bed, d.wake) * 60 : null);
 
+const HARMFUL = new Set(['alcohol', 'late', 'screen', 'social']);
+
+// good = vrai pour ce qui t'aide, faux pour ce qui te pénalise.
 export function correlations(st, { days = 60, now = new Date() } = {}) {
   const keys = Array.from({ length: days }, (_, i) => { const d = new Date(now); d.setDate(d.getDate() - (days - 1) + i); return key(d); });
   const day = (k) => st.days[k] || {};
@@ -18,7 +21,7 @@ export function correlations(st, { days = 60, now = new Date() } = {}) {
   const trained = new Set((st.workouts || []).map((w) => w.date));
   const screens = keys.map((k) => day(k).screenMin).filter((x) => x != null).sort((a, b) => a - b);
   const screenCut = screens.length ? screens[Math.floor(screens.length / 2)] : null;
-  const h = (m) => `${Math.floor(m / 60)} h${m % 60 ? ' ' + String(m % 60).padStart(2, '0') : ''}`;
+  const h = (m) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ' ' + String(m % 60).padStart(2, '0') : ''}`);
 
   // Facteurs (vrai / faux / inconnu pour un jour donné)
   const drivers = [
@@ -51,11 +54,15 @@ export function correlations(st, { days = 60, now = new Date() } = {}) {
     const t = diff / Math.sqrt(variance(yes) / yes.length + variance(no) / no.length || 1e-9);
     if (Math.abs(diff) < oc.min || Math.abs(t) < 1.5) continue;
     const up = diff > 0;
+    // Avec quelques dizaines de jours, un lien à contre-courant des études (« mieux dormir après l'alcool ») est
+    // bien plus souvent du hasard qu'une vraie particularité : on ne montre que les liens dans le sens attendu.
+    const harmful = HARMFUL.has(dr.id);
+    if (harmful === up) continue;
     let text;
     if (oc.id === 'sleep') text = `Tu dors ${h(Math.round(Math.abs(diff) / 5) * 5)} de ${up ? 'plus' : 'moins'} les nuits qui suivent ${dr.on}.`;
     else if (oc.id === 'sleepQ') text = `Ton sommeil est ${up ? 'meilleur' : 'moins bon'} (${up ? '+' : '−'}${Math.abs(diff).toFixed(1).replace('.', ',')} pt sur 5) après ${dr.on}.`;
     else text = `${oc.id === 'mood' ? 'Ton humeur est' : 'Ton énergie est'} ${up ? 'meilleure' : 'moins bonne'} ${dr.days} (${up ? '+' : '−'}${Math.abs(diff).toFixed(1).replace('.', ',')} pt sur 5).`;
-    out.push({ driver: dr.id, outcome: oc.id, diff, t, nYes: yes.length, nNo: no.length, good: (dr.id === 'alcohol' || dr.id === 'late' || dr.id === 'screen' || dr.id === 'social') ? !up : up, text });
+    out.push({ driver: dr.id, outcome: oc.id, diff, t, nYes: yes.length, nNo: no.length, good: !harmful, text });
   }
   return out.sort((a, b) => Math.abs(b.t) - Math.abs(a.t));
 }
