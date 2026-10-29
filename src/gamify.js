@@ -47,7 +47,7 @@ export function streak(st, now = new Date()) {
   return { current, best: Math.max(best, current), todayOk, atRisk: !todayOk && run > 0, freezes, frozenDays };
 }
 
-// XP : quêtes (10 chacune, +20 si journée parfaite), séances (1/min, 60 max/jour), repas notés (2, 10 max/jour).
+// XP d'une journée validée : quêtes (10 chacune, +20 si journée parfaite), séances (1/min, 60 max/jour), repas notés (2, 10 max/jour).
 export function xpForDay(st, key) {
   const g = dayGoals(st, key);
   const done = g.filter((x) => x.done).length;
@@ -57,16 +57,39 @@ export function xpForDay(st, key) {
 }
 
 const LEVELS = ['Graine', 'Pousse', 'Jeune arbre', 'Arbre', 'Chêne', 'Forêt', 'Montagne', 'Légende'];
+// niveau n atteint à 50 × n × (n − 1) XP (100, 300, 600, 1000…)
+const levelOf = (xp) => { let l = 1; while (xp >= 50 * (l + 1) * l) l++; return l; };
+// Journée ratée : on perd des XP pour chaque quête manquante sous le seuil, et plus le niveau est haut, plus ça coûte.
+export const missPenalty = (level, done) => Math.max(0, VALIDATE - done) * 8 * level;
+
+// Les jours passés se jouent jour par jour : journée validée = XP gagnés, journée ratée = XP perdus
+// (sauf si un gel de série la protège). Aujourd'hui ne compte qu'en positif tant que la journée n'est pas finie.
 export function progress(st, now = new Date()) {
-  const keys = new Set([...Object.keys(st.days), ...st.meals.map((m) => m.date), ...st.workouts.map((w) => w.date)]);
   const today = dayKeyOffset(0, now);
-  let xp = 0;
-  for (const k of keys) if (k <= today) xp += xpForDay(st, k);
-  // niveau n atteint à 100 × n × (n − 1) / 2 XP (100, 300, 600, 1000…)
-  let level = 1;
-  while (xp >= 50 * (level + 1) * level) level++;
+  const keys = [...Object.keys(st.days), ...st.meals.map((m) => m.date), ...st.workouts.map((w) => w.date)].filter((k) => k < today).sort();
+  const frozen = new Set(streak(st, now).frozenDays);
+  let xp = 0, yesterday = 0;
+  if (keys.length) {
+    const d = new Date(`${keys[0]}T12:00:00`);
+    const from = new Date(now); from.setDate(from.getDate() - 365);
+    if (d < from) d.setTime(from.getTime());
+    for (let k = localKey(d); k < today; d.setDate(d.getDate() + 1), k = localKey(d)) {
+      const done = dayGoals(st, k).filter((g) => g.done).length;
+      const delta = done >= VALIDATE ? xpForDay(st, k) : frozen.has(k) ? 0 : -missPenalty(levelOf(xp), done);
+      xp = Math.max(0, xp + delta);
+      yesterday = delta;
+    }
+  }
+  const doneToday = dayGoals(st, today).filter((g) => g.done).length;
+  const todayXp = doneToday >= VALIDATE ? xpForDay(st, today) : 0;
+  const level0 = levelOf(xp);
+  xp += todayXp;
+  const level = levelOf(xp);
   const floor = 50 * level * (level - 1), next = 50 * (level + 1) * level;
-  return { xp, level, title: LEVELS[Math.min(LEVELS.length - 1, level - 1)], into: xp - floor, need: next - floor, today: xpForDay(st, today) };
+  return {
+    xp, level, title: LEVELS[Math.min(LEVELS.length - 1, level - 1)], into: xp - floor, need: next - floor,
+    today: todayXp, yesterday, atStake: doneToday >= VALIDATE ? 0 : missPenalty(level0, doneToday),
+  };
 }
 
 export const BADGES = [

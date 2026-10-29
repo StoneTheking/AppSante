@@ -131,10 +131,37 @@ export function currentTemplate(profile) {
   if (Array.isArray(profile.weekTemplate) && profile.weekTemplate.length === 7) return profile.weekTemplate;
   const fav = preferredActivity(profile);
   const tpl = TEMPLATES[profile.goal] || TEMPLATES.maintenir;
-  return tpl.map(([slot, minutes, intensity]) => {
+  return shapeWeek(tpl.map(([slot, minutes, intensity]) => {
     const raw = slot === 'cardio' ? fav && activity(fav).kind === 'cardio' ? fav : 'course' : slot === 'loisir' ? fav || 'velo' : slot === 'repos' ? null : slot;
     return { type: substitute(raw, profile), minutes, intensity };
-  });
+  }), profile);
+}
+
+// Temps disponible par jour et format préféré (tuto / Mes sports) :
+// « courtes » = 6 jours actifs, séances plus courtes ; « longues » = 3 à 4 grosses séances ; volume hebdo conservé.
+// Fractionner l'activité en séances courtes apporte des bénéfices comparables (Jakicic 2019, Murphy 2019).
+export function shapeWeek(tpl, profile) {
+  const cap = Number(profile.sportMinutes) || null;
+  const style = profile.sessionStyle || 'equilibre';
+  const r5 = (m) => Math.max(10, Math.round(m / 5) * 5);
+  const total = tpl.reduce((a, d) => a + (d.type ? d.minutes : 0), 0);
+  let out = tpl.map((d) => ({ ...d }));
+  if (style === 'courtes') {
+    const fav = preferredActivity(profile);
+    const filler = substitute(fav && activity(fav).kind === 'cardio' ? fav : 'marche', profile);
+    const rest = out.findLastIndex((d) => !d.type || d.intensity === 'legere');
+    out = out.map((d, i) => (i === rest ? { type: null, minutes: 0, intensity: 'legere' } : d.type ? d : { type: filler, minutes: 0, intensity: 'moderee' }));
+    const n = out.filter((d) => d.type).length;
+    out.forEach((d) => { if (d.type) d.minutes = Math.min(d.type === 'hiit' ? 20 : 60, r5(total / n)); });
+  } else if (style === 'longues') {
+    const want = profile.goal === 'prendre' ? 4 : 3;
+    const renfo = out.map((d, i) => [d, i]).filter(([d]) => d.type && activity(d.type).kind === 'renfo').slice(0, profile.goal === 'prendre' ? 3 : 2).map(([, i]) => i);
+    const others = out.map((d, i) => [d, i]).filter(([d, i]) => d.type && !renfo.includes(i) && d.type !== 'yoga').sort((a, b) => b[0].minutes - a[0].minutes).map(([, i]) => i);
+    const keep = new Set([...renfo, ...others].slice(0, want));
+    out = out.map((d, i) => (keep.has(i) ? { ...d, minutes: Math.min(90, r5(total / keep.size)), intensity: d.type === 'hiit' ? 'intense' : d.intensity } : { type: null, minutes: 0, intensity: 'legere' }));
+  }
+  if (cap) out.forEach((d) => { if (d.type) d.minutes = Math.min(d.minutes, Math.max(10, cap)); });
+  return out;
 }
 export function templateStats(tpl) {
   return {

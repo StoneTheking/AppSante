@@ -4,7 +4,7 @@ import {
   Droplet, Coffee, Dumbbell, Apple, Salad, ChefHat, ShoppingCart, CalendarDays, TrendingUp, Bell, Sparkles, ChevronLeft,
   ChevronRight, Check, X, Trash2, RefreshCw, Download, Upload, Settings, Activity, Brain, Bed, Clock, Scale, Wine, Info,
   TriangleAlert, CircleCheck, Send, Zap, BookOpen, Share2, Leaf, Watch, Link, ListChecks, Pencil, Image as ImageIcon, Lightbulb, Target,
-  Sunrise, Bike, Copy, ArrowRight, KeyRound, Shield, Star, Users, MapPin, Receipt, Palette,
+  Sunrise, Bike, Copy, ArrowRight, KeyRound, Shield, Star, Users, MapPin, Receipt, Palette, Briefcase, CirclePlay, EyeOff,
 } from 'lucide';
 import * as S from './science.js';
 
@@ -16,7 +16,7 @@ const ICONS = {
   settings: Settings, activity: Activity, brain: Brain, bed: Bed, clock: Clock, scale: Scale, wine: Wine, info: Info, alert: TriangleAlert,
   ok: CircleCheck, send: Send, zap: Zap, book: BookOpen, share: Share2, leaf: Leaf, watch: Watch, link: Link, list: ListChecks,
   pencil: Pencil, image: ImageIcon, bulb: Lightbulb, target: Target, sunrise: Sunrise, bike: Bike, copy: Copy, arrow: ArrowRight,
-  key: KeyRound, shield: Shield, star: Star, users: Users, pin: MapPin, receipt: Receipt, palette: Palette,
+  key: KeyRound, shield: Shield, star: Star, users: Users, pin: MapPin, receipt: Receipt, palette: Palette, work: Briefcase, video: CirclePlay, hide: EyeOff,
 };
 
 const attrs = (o) => Object.entries(o).map(([k, v]) => `${k}="${v}"`).join(' ');
@@ -213,12 +213,31 @@ function quickCamera() {
   });
 }
 
+// Logo : trois anneaux (activité, sommeil, alimentation) autour d'un point, comme le score.
+export function logo(size = 40) {
+  const a = (r, deg) => { const x = 256 + r * Math.cos((deg * Math.PI) / 180), y = 256 + r * Math.sin((deg * Math.PI) / 180); return `M256 ${256 - r}A${r} ${r} 0 ${deg > 90 ? 1 : 0} 1 ${x.toFixed(1)} ${y.toFixed(1)}`; };
+  const rings = [[150, '#fb923c', 200], [108, '#818cf8', 140], [66, '#4ade80', 230]];
+  return `<svg width="${size}" height="${size}" viewBox="60 60 392 392" aria-hidden="true">${rings.map(([r, c, d]) => `<circle cx="256" cy="256" r="${r}" fill="none" stroke="${c}" stroke-opacity=".18" stroke-width="30"/><path d="${a(r, d)}" fill="none" stroke="${c}" stroke-width="30" stroke-linecap="round"/>`).join('')}<circle cx="256" cy="256" r="20" fill="#2dd4bf"/></svg>`;
+}
+
 // Visages 1 à 5 (plus rapide à remplir qu'une échelle chiffrée) ; onPick(valeur) à chaque choix.
+// Dessinés au trait comme les autres icônes (pas d'émojis) ; g = de 1 (mauvais) à 5 (très bien).
+const TONE = ['var(--bad)', 'var(--warn)', 'var(--muted)', 'var(--primary)', 'var(--good)'];
+function faceSvg(g) {
+  const c = (g - 3) * 1.6; // courbure de la bouche
+  const brows = g === 1 ? '<path d="M7.5 8.2 10 9.2M16.5 8.2 14 9.2"/>' : '';
+  const eyes = g === 5 ? '<path d="M8 10.2q1-1.2 2 0M14 10.2q1-1.2 2 0"/>' : '<circle cx="9" cy="10.5" r=".9" fill="currentColor" stroke="none"/><circle cx="15" cy="10.5" r=".9" fill="currentColor" stroke="none"/>';
+  return `<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.2"/>${brows}${eyes}<path d="M8.2 ${15.4 - c / 2} Q12 ${15.4 + c * 1.3} 15.8 ${15.4 - c / 2}"/></svg>`;
+}
+function batterySvg(n) {
+  return `<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="7" width="17" height="10" rx="2.2"/><path d="M21.5 10.5v3"/>${Array.from({ length: n }, (_, i) => `<rect x="${4.3 + i * 2.9}" y="8.9" width="2" height="6.2" rx=".6" fill="currentColor" stroke="none"/>`).join('')}</svg>`;
+}
+// FACES[champ][i] = { svg, g } ; g sert à la couleur (stress : 1 = zen = très bien).
 export const FACES = {
-  mood: ['😣', '😕', '😐', '🙂', '😄'],
-  energy: ['🪫', '😴', '😐', '💪', '⚡'],
-  stress: ['😌', '🙂', '😐', '😬', '🤯'],
-  sleepQuality: ['😫', '😕', '😐', '🙂', '😴'],
+  mood: [1, 2, 3, 4, 5].map((g) => ({ svg: faceSvg(g), g })),
+  energy: [1, 2, 3, 4, 5].map((g) => ({ svg: batterySvg(g), g })),
+  stress: [5, 4, 3, 2, 1].map((g) => ({ svg: faceSvg(g), g })),
+  sleepQuality: [1, 2, 3, 4, 5].map((g) => ({ svg: faceSvg(g), g })),
 };
 export const FACE_LABELS = {
   mood: ['Très bas', 'Bas', 'Neutre', 'Bon', 'Très bon'],
@@ -227,7 +246,7 @@ export const FACE_LABELS = {
   sleepQuality: ['Très mal', 'Mal', 'Moyen', 'Bien', 'Très bien'],
 };
 export function faces(field, value) {
-  return `<div class="faces" data-faces="${field}">${FACES[field].map((f, i) => `<button type="button" class="${value === i + 1 ? 'on' : ''}" data-v="${i + 1}" aria-label="${FACE_LABELS[field][i]}"><span>${f}</span><small>${FACE_LABELS[field][i]}</small></button>`).join('')}</div>`;
+  return `<div class="faces" data-faces="${field}">${FACES[field].map((f, i) => `<button type="button" class="${value === i + 1 ? 'on' : ''}" data-v="${i + 1}" style="--tone:${TONE[f.g - 1]}" aria-label="${FACE_LABELS[field][i]}"><span>${f.svg}</span><small>${FACE_LABELS[field][i]}</small></button>`).join('')}</div>`;
 }
 export function bindFaces(el, onPick) {
   $$('[data-faces]', el).forEach((box) => box.addEventListener('click', (e) => {
@@ -242,13 +261,22 @@ export function bindFaces(el, onPick) {
 
 // Appui court / appui long sur un même bouton (ex. eau : +25 cL / −25 cL).
 export function onTapHold(btn, tap, hold, ms = 420) {
-  let t = null, held = false;
+  let t = null, held = false, x0 = 0, y0 = 0;
   const fire = () => { if (held) return; held = true; clearTimeout(t); navigator.vibrate?.(30); hold(); };
+  const start = (x, y) => { held = false; x0 = x; y0 = y; clearTimeout(t); t = setTimeout(fire, ms); };
+  const move = (x, y) => { if (Math.hypot(x - x0, y - y0) > 12) clearTimeout(t); };
+  const stop = () => clearTimeout(t);
   btn.classList.add('holdable');
-  btn.addEventListener('pointerdown', () => { held = false; clearTimeout(t); t = setTimeout(fire, ms); });
-  btn.addEventListener('pointerup', () => clearTimeout(t));
-  btn.addEventListener('pointerleave', () => clearTimeout(t));
-  // sur Android, l'appui long système annule le pointeur et déclenche « contextmenu » : c'est notre appui long
+  // au doigt : événements tactiles (le pointeur est annulé par Android dès que le système envisage un défilement)
+  btn.addEventListener('touchstart', (e) => start(e.touches[0].clientX, e.touches[0].clientY), { passive: true });
+  btn.addEventListener('touchmove', (e) => move(e.touches[0].clientX, e.touches[0].clientY), { passive: true });
+  btn.addEventListener('touchend', (e) => { stop(); if (held) e.preventDefault(); });
+  btn.addEventListener('touchcancel', stop);
+  // à la souris
+  btn.addEventListener('pointerdown', (e) => { if (e.pointerType === 'mouse') start(e.clientX, e.clientY); });
+  btn.addEventListener('pointerup', (e) => { if (e.pointerType === 'mouse') stop(); });
+  btn.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') stop(); });
+  // appui long système d'Android : même effet
   btn.addEventListener('contextmenu', (e) => { e.preventDefault(); fire(); });
   btn.addEventListener('click', (e) => { if (held) { e.preventDefault(); held = false; return; } tap(); });
 }

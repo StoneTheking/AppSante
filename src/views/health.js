@@ -179,9 +179,12 @@ function renderTrack(el, ctx) {
       const d0 = await N.healthDiagnose(); // toujours un état frais (pas celui de la dernière ouverture)
       store.update((s) => { s.healthDiag = { ...d0, at: Date.now() }; });
       if (['unavailable', 'update'].includes(d0.reason)) { res.innerHTML = ''; return openHealthHelp(d0, re); }
-      if (!d0.ok) { try { await N.connectHealth(); } catch (e) { res.innerHTML = ''; return openHealthHelp({ ...d0, reason: 'error', detail: e.message }, re); } }
+      if (!d0.ok) {
+        res.innerHTML = '<span class="spinner"></span> Ouverture de la fenêtre d’autorisation…';
+        try { await N.connectHealth(); } catch (e) { res.innerHTML = ''; return openHealthHelp({ ...d0, reason: d0.reason === 'error' ? 'error' : 'denied', detail: e.message }, re); }
+      }
       res.innerHTML = '<span class="spinner"></span> Synchronisation…';
-      await syncAll();
+      await Promise.race([syncAll(), new Promise((r) => setTimeout(r, 20000))]);
       res.innerHTML = '';
       if (!store.get().healthDiag?.ok) return openHealthHelp(store.get().healthDiag, re);
       toast('Health Connect synchronisé ✅');
@@ -221,6 +224,7 @@ function openHealthHelp(d = {}, done) {
     ${d.reason === 'unavailable' || d.reason === 'update' ? `<div class="note warn">${icon('shield', 18)}<span>${d.reason === 'update' ? 'Health Connect doit être <b>mis à jour</b> depuis le Play Store.' : inf.managedProfile ? 'Diana Health est installée dans un <b>profil géré par une organisation</b> (profil professionnel) : Health Connect n’y est pas disponible. Installe l’APK dans ton profil personnel.' : inf.sdk && inf.sdk < 34 && !inf.hcApp ? 'Sur ton Android, Health Connect est une application à installer depuis le Play Store.' : 'Health Connect n’est pas disponible sur ce téléphone.'}</span></div>`
       : `<p class="small" style="margin-top:0">${d.reason === 'denied' ? 'Diana Health n’a pas encore accès à tes données. Si aucune fenêtre ne s’est ouverte, c’est normal : <b>Android ne la réaffiche plus après deux refus</b>.' : 'La fenêtre d’autorisation n’a pas pu s’ouvrir.'}</p>
       <ol class="small" style="padding-left:20px;line-height:1.7;margin:6px 0 12px"><li>Touche <b>Ouvrir les autorisations</b> ci-dessous.</li><li>Active <b>Tout autoriser</b> (ou au moins Pas, Sommeil, Exercice, Poids).</li><li>Reviens dans Diana Health : la synchronisation se lance seule.</li></ol>
+      <p class="tiny muted">Sur Android en français, Health Connect s’appelle <b>« Connexion santé »</b> (Paramètres → Sécurité et confidentialité → Confidentialité → Connexion santé, ou Paramètres → Applications → Connexion santé). Ce n’est pas « Bien-être numérique », qui sert au temps d’écran.</p>
       <p class="tiny muted">Il faut aussi qu’une application <b>écrive</b> dans Health Connect (Samsung Health, Google Fit, Fitbit, ta montre…). Dans Samsung Health : Paramètres → Health Connect → autoriser l’écriture.</p>`}
     <button class="btn block" id="open-hc">${icon('settings', 18)} ${d.reason === 'unavailable' || d.reason === 'update' ? 'Ouvrir Health Connect / Play Store' : 'Ouvrir les autorisations'}</button>
     <div class="note" style="margin-top:12px">${icon('steps', 18)}<span>En attendant, le <b>podomètre du téléphone</b> compte tes pas sans Health Connect.</span></div>
@@ -345,8 +349,8 @@ function weightCard(we) {
 function linksCard(st) {
   const found = correlations(st).slice(0, 5);
   return `<div class="card"><div class="card-head"><h2>${icon('bulb', 18)} Ce qui joue sur ton sommeil et ton humeur</h2></div>
-    ${found.length ? found.map((c) => `<div class="link-row"><span>${c.good ? '✅' : '⚠️'}</span><div><div class="small" style="font-weight:600">${esc(c.text)}</div><div class="tiny muted">${c.nYes} jours comparés à ${c.nNo}</div></div></div>`).join('')
-      : '<p class="small muted" style="margin:0">Il faut quelques semaines de données (sommeil, pas, humeur…) pour repérer ce qui t’aide vraiment. Continue à utiliser « Je vais dormir » et à répondre à la question du jour.</p>'}
+    ${found.length ? found.map((c) => `<div class="link-row"><span style="color:var(${c.good ? '--good' : '--warn'})">${icon(c.good ? 'ok' : 'alert', 18)}</span><div><div class="small" style="font-weight:600">${esc(c.text)}</div><div class="tiny muted">${c.nYes} jours comparés à ${c.nNo}</div></div></div>`).join('')
+      : '<p class="small muted" style="margin:0">Il faut quelques semaines de données (sommeil, pas, humeur…) pour repérer ce qui t’aide vraiment. Continue à noter ton sommeil et à répondre à la question du jour.</p>'}
     <p class="tiny muted" style="margin:10px 0 0">Comparaison de tes propres jours sur 60 jours : c’est une piste, pas une preuve que l’un cause l’autre.</p></div>`;
 }
 

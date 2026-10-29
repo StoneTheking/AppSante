@@ -13,7 +13,7 @@ import { goodNightTips } from './actions.js';
 import { openWeigh } from './health.js';
 import { weighDue } from '../energy.js';
 
-const PLAN_ICONS = { '🌅': 'sunrise', '🌇': 'sun', '⭐': 'star', '⚡': 'zap', '🌳': 'leaf', '☀️': 'sunrise', '🍳': 'coffee', '☕': 'coffee', '🥗': 'salad', '🚶': 'steps', '😴': 'bed', '🏃': 'dumbbell', '🍎': 'apple', '🍽️': 'utensils', '📵': 'phone', '🧘': 'brain', '🌙': 'moon' };
+const PLAN_ICONS = { '🌅': 'sunrise', '🌇': 'sun', '⭐': 'star', '⚡': 'zap', '🌳': 'leaf', '☀️': 'sunrise', '🍳': 'coffee', '☕': 'coffee', '🥗': 'salad', '🚶': 'steps', '😴': 'bed', '🏃': 'dumbbell', '🍎': 'apple', '🍽️': 'utensils', '📵': 'phone', '🧘': 'brain', '🌙': 'moon', '💼': 'work' };
 const LEVEL_ICON = { bon: 'ok', attention: 'alert', alerte: 'alert' };
 let showAllPlan = false;
 
@@ -53,7 +53,8 @@ export function render(view, ctx) {
   const water = d.waterMl || 0;
   const visiblePlan = showAllPlan ? plan : plan.slice(Math.max(0, nextIdx - 1), nextIdx + 4);
 
-  const up = st.update?.available ? st.update : null;
+  // la bannière se fie à la version réellement installée : après la mise à jour, l’ancien « disponible » enregistré ne compte plus
+  const up = st.update?.available && N.installedVersion() && N.isNewer(st.update.latest, N.installedVersion()) ? st.update : null;
   view.innerHTML = `
     ${up ? `<div class="note" style="margin:4px 0 10px">${icon('download', 18)}<span style="flex:1"><b>Mise à jour ${esc(up.latest)} disponible</b><br><span class="tiny">Télécharge puis ouvre le fichier : elle s’installe par-dessus, tes données sont conservées.</span></span><button class="btn sm" data-update>Installer</button></div>` : ''}
     ${hero(sm, st)}
@@ -79,7 +80,7 @@ export function render(view, ctx) {
       <ul class="timeline">${visiblePlan.map((p) => {
         const i = plan.indexOf(p);
         return `<li class="${p.done ? 'done ok' : i === nextIdx ? 'now' : i < nextIdx ? 'done' : ''}" data-step="${i}"><span class="t">${p.time}</span><span class="dot">${icon(p.done ? 'check' : PLAN_ICONS[p.icon] || 'clock', 16)}</span>
-          <div class="step-main"><div class="ttl">${esc(p.title)}</div>${p.text ? `<div class="txt one">${esc(p.text)}</div>` : ''}</div></li>`;
+          <div class="step-main"><div class="ttl">${esc(p.title)}${p.edited || p.custom ? ` <span class="edited-mark">${icon('pencil', 11)}</span>` : ''}</div>${p.note || p.text ? `<div class="txt one">${esc(p.note || p.text)}</div>` : ''}</div></li>`;
       }).join('')}</ul>
     </div>
 
@@ -100,13 +101,13 @@ export function render(view, ctx) {
   onTapHold(wb, () => addWater(wb, 250, ctx), () => addWater(wb, -250, ctx));
   $('.hero', view).onclick = (e) => { if (e.target.closest('[data-hero-style]')) return; openScore(sm); };
   $('[data-hero-style]', view)?.addEventListener('click', () => {
-    const order = ['barres', 'meteo', 'anneaux'];
+    const order = ['barres', 'anneaux'];
     store.update((s2) => { s2.settings.heroStyle = order[(order.indexOf(heroStyle(s2)) + 1) % order.length]; });
-    toast(`Style : ${{ barres: 'barres', meteo: 'météo intérieure', anneaux: 'anneaux' }[heroStyle(store.get())]}`, 1200);
+    toast(`Style : ${{ barres: 'barres', anneaux: 'anneaux' }[heroStyle(store.get())]}`, 1200);
     render(view, ctx);
   });
   $$('[data-step]', view).forEach((li) => (li.onclick = () => openStep(plan[Number(li.dataset.step)], () => render(view, ctx))));
-  $('[data-add-step]', view).onclick = () => openAddStep(() => render(view, ctx));
+  $('[data-add-step]', view).onclick = () => openStep(null, () => render(view, ctx));
   view.querySelector('[data-review]')?.addEventListener('click', () => openReview(ctx, () => render(view, ctx)));
   view.querySelector('[data-goal]')?.addEventListener('click', () => openReview(ctx, () => render(view, ctx), { goalOnly: true }));
   bindQuests(view, ctx);
@@ -171,9 +172,9 @@ export function openScore(sm) {
   const [word, col] = C.scoreWord(g);
   sheet(`
     <div class="between" style="align-items:center"><div><div style="font-size:2.6rem;font-weight:800;line-height:1">${g ?? '–'}<small style="font-size:1rem;color:var(--muted)">/100</small></div><span class="score-word" style="background:color-mix(in srgb,${col} 18%,transparent);color:${col}">${word}</span></div>
-      <p class="small muted" style="max-width:60%;margin:0">Moyenne pondérée de 5 piliers sur les 7 derniers jours. Plus de 80 : excellent · 65–79 : bon · 50–64 : à améliorer.</p></div>
+      <p class="small muted" style="max-width:60%;margin:0">Moyenne pondérée de 4 piliers sur les 7 derniers jours (l’humeur est suivie à part : elle découle des autres). Plus de 80 : excellent · 65–79 : bon · 50–64 : à améliorer.</p></div>
     ${rows.map((r) => { const [w, c] = C.scoreWord(r.v); return `<div class="pillar">
-      <div class="between"><b>${icon(DOMAIN[r.k].icon, 16)} ${DOMAIN[r.k].label} <span class="tiny muted">· compte pour ${Math.round(r.weight * 100)} %</span></b><span style="font-weight:800;color:${c}">${r.v ?? '–'}</span></div>
+      <div class="between"><b>${icon(DOMAIN[r.k].icon, 16)} ${DOMAIN[r.k].label} <span class="tiny muted">· ${r.weight ? `compte pour ${Math.round(r.weight * 100)} %` : 'suivie, ne compte pas'}</span></b><span style="font-weight:800;color:${c}">${r.v ?? '–'}</span></div>
       <div class="bar-mini"><div style="width:${r.v ?? 0}%;background:${c}"></div></div>
       <div class="small" style="margin-top:6px">${esc(r.what)}</div>
       <div class="tiny muted">${esc(r.how)}</div>
@@ -198,23 +199,18 @@ function envCard(env, location) {
 }
 
 // ---------- Score d'hygiène de vie : trois présentations au choix ----------
-const heroStyle = (st) => st.settings?.heroStyle || 'barres';
-const WEATHER = (v) => (v == null ? ['🌫️', 'Pas encore de données'] : v >= 80 ? ['☀️', 'Grand beau'] : v >= 65 ? ['🌤️', 'Plutôt beau'] : v >= 50 ? ['⛅', 'Variable'] : ['🌧️', 'Couvert']);
+const heroStyle = (st) => (st.settings?.heroStyle === 'anneaux' ? 'anneaux' : 'barres');
 function hero(sm, st) {
   const g = sm.scores.global;
   const [word, col] = C.scoreWord(g);
   const prev = R.weekReview(st).prevGlobal;
   const delta = g != null && prev != null ? g - prev : null;
   const trend = delta == null ? '' : `<span class="hero-trend ${delta >= 0 ? 'up' : 'down'}">${delta > 0 ? '↗ +' : delta < 0 ? '↘ ' : '→ '}${delta} <small>vs sem. dernière</small></span>`;
-  const keys = ['sommeil', 'activite', 'alimentation', 'humeur', 'numerique'];
+  const keys = ['sommeil', 'activite', 'alimentation', 'numerique'];
   const style = heroStyle(st);
   let main;
   if (style === 'anneaux') {
-    main = `<div class="hero-grid">${rings(sm.scores, g)}<div class="legend-rows">${keys.map((k) => `<div class="legend-row"><i style="background:${k === 'humeur' || k === 'numerique' ? 'rgba(255,255,255,.55)' : DOMAIN[k].color}"></i><span>${DOMAIN[k].label}</span><b>${sm.scores[k] ?? '–'}</b></div>`).join('')}</div></div>`;
-  } else if (style === 'meteo') {
-    const [em, sky] = WEATHER(g);
-    main = `<div class="hero-weather"><span class="wx">${em}</span><div><div class="hero-score">${esc(sky)}</div><div class="hero-sub">${g ?? '–'}/100 · ${esc(word.toLowerCase())} ${trend}</div></div></div>
-      <div class="hero-dots">${keys.map((k) => `<span><b style="color:${C.scoreWord(sm.scores[k])[1]}">${WEATHER(sm.scores[k])[0]}</b><small>${DOMAIN[k].label}</small></span>`).join('')}</div>`;
+    main = `<div class="hero-grid">${rings(sm.scores, g)}<div class="legend-rows">${keys.map((k) => `<div class="legend-row"><i style="background:${k === 'numerique' ? 'rgba(255,255,255,.55)' : DOMAIN[k].color}"></i><span>${DOMAIN[k].label}</span><b>${sm.scores[k] ?? '–'}</b></div>`).join('')}</div></div>`;
   } else {
     main = `<div class="hero-line"><span class="hero-score">${g ?? '–'}<small>/100</small></span><span class="score-word" style="background:color-mix(in srgb,${col} 22%,transparent);color:${col}">${esc(word)}</span>${trend}</div>
       <div class="hero-bars">${keys.map((k) => `<div class="hb"><span>${icon(DOMAIN[k].icon, 13)} ${DOMAIN[k].label}</span><div class="bar-mini"><div style="width:${sm.scores[k] ?? 0}%;background:${DOMAIN[k].color}"></div></div><b>${sm.scores[k] ?? '–'}</b></div>`).join('')}</div>`;
@@ -227,41 +223,68 @@ function hero(sm, st) {
 }
 
 // ---------- Plan du jour : détail, masquer, ajouter ----------
-function openStep(p, done) {
-  if (!p) return;
-  const body = sheet(`
-    <div class="between"><span class="badge neutral">${icon('clock', 12)} ${p.time}</span>${p.done ? `<span class="badge" style="color:var(--good)">${icon('check', 12)} fait</span>` : ''}</div>
-    <h2 style="margin:10px 0 6px">${esc(p.title)}</h2>
-    ${p.text ? `<p class="small" style="color:var(--text-2);line-height:1.55">${esc(p.text)}</p>` : ''}
-    ${srcLinks(p.src)}
-    ${p.custom ? `<button class="btn ghost block" id="del" style="margin-top:16px;color:var(--bad)">${icon('trash', 18)} Supprimer cette étape${p.daily ? ' (tous les jours)' : ''}</button>`
-      : `<div class="grid2" style="margin-top:16px"><button class="btn ghost" id="hide-today">${icon('x', 16)} Pas aujourd’hui</button><button class="btn ghost" id="hide-always" style="color:var(--bad)">${icon('trash', 16)} Ne plus proposer</button></div>`}`, { title: 'Étape du plan', onClose: done });
-  const edit = (f) => { store.update((s) => { s.planEdits = s.planEdits || { hidden: {}, hiddenOn: {}, custom: [] }; s.planEdits.hidden ||= {}; s.planEdits.hiddenOn ||= {}; s.planEdits.custom ||= []; f(s.planEdits); }); body.close(); };
-  $('#del', body)?.addEventListener('click', () => edit((e) => { e.custom = e.custom.filter((c) => c.id !== p.id); }));
-  $('#hide-today', body)?.addEventListener('click', () => edit((e) => { const k = store.today(); e.hiddenOn = { [k]: [...(e.hiddenOn[k] || []), p.key] }; }));
-  $('#hide-always', body)?.addEventListener('click', () => { edit((e) => { e.hidden[p.key] = p.title; }); toast('Étape retirée de ton plan (rétablissable via « Ajouter »)', 2200); });
-}
+const DOW = [[1, 'L'], [2, 'M'], [3, 'M'], [4, 'J'], [5, 'V'], [6, 'S'], [0, 'D']];
+const ensureEdits = (s) => { s.planEdits = { hidden: {}, hiddenOn: {}, over: {}, overOn: {}, custom: [], ...(s.planEdits || {}) }; for (const k of ['hidden', 'hiddenOn', 'over', 'overOn']) s.planEdits[k] ||= {}; s.planEdits.custom ||= []; return s.planEdits; };
 
-function openAddStep(done) {
+// Une étape du plan : détail, puis modification (nom, heure, note, fréquence) ou suppression.
+// p = null → nouvelle étape.
+function openStep(p, done) {
+  const isNew = !p;
   const st = store.get();
-  const hidden = Object.entries(st.planEdits?.hidden || {});
   const now = new Date(Date.now() + 30 * 60000);
+  const step = p || { custom: true, title: '', time: `${String(now.getHours()).padStart(2, '0')}:${String(Math.floor(now.getMinutes() / 5) * 5).padStart(2, '0')}`, note: '', daily: false, days: null };
+  // fréquence : today | daily | days
+  let freq = step.custom ? (step.daily ? (step.days ? 'days' : 'daily') : 'today') : step.edited === 'today' ? 'today' : step.days ? 'days' : 'daily';
+  let days = new Set(step.days || [new Date().getDay()]);
+  const hidden = Object.entries(st.planEdits?.hidden || {});
   const body = sheet(`
-    <label class="lbl" style="margin-top:0">Quoi ?</label><input id="t" placeholder="ex. Méditation, appeler maman, vitamines…" maxlength="60">
-    <div class="grid2"><div><label class="lbl">Heure</label><input id="h" type="time" value="${String(now.getHours()).padStart(2, '0')}:${String(Math.floor(now.getMinutes() / 5) * 5).padStart(2, '0')}"></div>
-      <div><label class="lbl">Répéter</label><div class="seg"><button data-rep="0" class="on">Aujourd’hui</button><button data-rep="1">Tous les jours</button></div></div></div>
-    <label class="lbl">Détail (facultatif)</label><input id="x" placeholder="Note pour toi" maxlength="140">
-    <button class="btn block" id="ok" style="margin-top:14px">${icon('plus', 18)} Ajouter au plan</button>
-    ${hidden.length ? `<h3 style="font-size:.9rem;margin:20px 0 6px">Étapes retirées</h3>${hidden.map(([k, t]) => `<div class="between" style="padding:6px 0;border-top:1px solid var(--line)"><span class="small">${esc(typeof t === 'string' ? t : k)}</span><button class="btn sm soft" data-restore="${esc(k)}">Rétablir</button></div>`).join('')}` : ''}`, { title: 'Ajouter une étape', onClose: done });
-  let daily = false;
-  $$('[data-rep]', body).forEach((b) => (b.onclick = () => { daily = b.dataset.rep === '1'; $$('[data-rep]', body).forEach((x) => x.classList.toggle('on', x === b)); }));
-  $('#ok', body).onclick = () => {
-    const title = $('#t', body).value.trim();
-    if (!title) return toast('Donne un nom à l’étape');
-    store.update((s) => { s.planEdits = { hidden: {}, hiddenOn: {}, ...(s.planEdits || {}) }; s.planEdits.custom = [...(s.planEdits.custom || []), { id: crypto.randomUUID(), time: $('#h', body).value || '12:00', title, text: $('#x', body).value.trim(), date: daily ? null : store.today() }]; });
-    toast('Étape ajoutée ⭐', 1200);
-    body.close();
+    ${isNew ? '' : `<div class="between"><span class="badge neutral">${icon('clock', 12)} ${step.time}</span>${step.done ? `<span class="badge" style="color:var(--good)">${icon('check', 12)} fait</span>` : ''}</div>
+    ${step.text ? `<p class="small" style="color:var(--text-2);line-height:1.55;margin:10px 0 4px">${esc(step.text)}</p>` : ''}
+    ${srcLinks(step.src)}`}
+    <label class="lbl"${isNew ? ' style="margin-top:0"' : ''}>Nom</label><input id="t" value="${esc(step.title)}" placeholder="ex. Méditation, vitamines, appeler maman…" maxlength="60">
+    <div class="grid2"><div><label class="lbl">Heure</label><input id="h" type="time" value="${esc(step.time)}"></div>
+      <div><label class="lbl">Note</label><input id="x" value="${esc(step.note || '')}" placeholder="facultatif" maxlength="140"></div></div>
+    <label class="lbl">Fréquence</label>
+    <div class="seg" id="freq"><button data-f="today">Aujourd’hui</button><button data-f="daily">Tous les jours</button><button data-f="days">Certains jours</button></div>
+    <div class="chips" id="days" style="margin-top:8px">${DOW.map(([d, l]) => `<button class="chip" data-d="${d}" style="min-width:38px;justify-content:center">${l}</button>`).join('')}</div>
+    <button class="btn block" id="ok" style="margin-top:14px">${icon('check', 18)} ${isNew ? 'Ajouter au plan' : 'Enregistrer'}</button>
+    ${isNew ? '' : step.custom
+      ? `<button class="btn ghost block" id="del" style="margin-top:8px;color:var(--bad)">${icon('trash', 18)} Supprimer cette étape</button>`
+      : `<div class="grid2" style="margin-top:8px"><button class="btn ghost" id="hide-today">${icon('x', 16)} Pas aujourd’hui</button><button class="btn ghost" id="hide-always" style="color:var(--bad)">${icon('trash', 16)} Ne plus proposer</button></div>
+        ${step.edited ? `<button class="btn ghost block" id="reset" style="margin-top:8px">${icon('refresh', 16)} Revenir à la proposition du coach</button>` : ''}`}
+    ${isNew && hidden.length ? `<h3 style="font-size:.9rem;margin:20px 0 6px">Étapes retirées</h3>${hidden.map(([k, t]) => `<div class="between" style="padding:6px 0;border-top:1px solid var(--line)"><span class="small">${esc(typeof t === 'string' ? t : k)}</span><button class="btn sm soft" data-restore="${esc(k)}">Rétablir</button></div>`).join('')}` : ''}`,
+  { title: isNew ? 'Ajouter une étape' : 'Étape du plan', onClose: done });
+  const paint = () => {
+    $$('[data-f]', body).forEach((b) => b.classList.toggle('on', b.dataset.f === freq));
+    $('#days', body).style.display = freq === 'days' ? '' : 'none';
+    $$('[data-d]', body).forEach((b) => b.classList.toggle('on', days.has(Number(b.dataset.d))));
   };
+  paint();
+  $$('[data-f]', body).forEach((b) => (b.onclick = () => { freq = b.dataset.f; paint(); }));
+  $$('[data-d]', body).forEach((b) => (b.onclick = () => { const d = Number(b.dataset.d); days.has(d) ? days.delete(d) : days.add(d); paint(); }));
+  const edit = (f) => { store.update((s) => f(ensureEdits(s))); body.close(); };
+  const today = store.today();
+  $('#ok', body).onclick = () => {
+    const title = $('#t', body).value.trim(), time = $('#h', body).value || step.time, note = $('#x', body).value.trim();
+    if (!title) return toast('Donne un nom à l’étape');
+    if (freq === 'days' && !days.size) return toast('Choisis au moins un jour');
+    const dl = freq === 'days' ? [...days].sort() : null;
+    edit((e) => {
+      if (step.custom) {
+        const c = { id: step.id || crypto.randomUUID(), time, title, text: note, date: freq === 'today' ? today : null, days: dl };
+        e.custom = [...e.custom.filter((x) => x.id !== c.id), c];
+      } else {
+        const o = { title, time, text: note };
+        if (freq === 'today') { e.overOn = { [today]: { ...(e.overOn[today] || {}), [step.key]: o } }; }
+        else { e.over[step.key] = { ...o, ...(dl ? { days: dl } : {}) }; if (e.overOn[today]) delete e.overOn[today][step.key]; }
+      }
+    });
+    toast(isNew ? 'Étape ajoutée ⭐' : 'Étape modifiée', 1200);
+  };
+  $('#del', body)?.addEventListener('click', () => edit((e) => { e.custom = e.custom.filter((c) => c.id !== step.id); }));
+  $('#hide-today', body)?.addEventListener('click', () => edit((e) => { e.hiddenOn = { [today]: [...(e.hiddenOn[today] || []), step.key] }; }));
+  $('#hide-always', body)?.addEventListener('click', () => { edit((e) => { e.hidden[step.key] = step.title; }); toast('Étape retirée (rétablissable via « Ajouter »)', 2200); });
+  $('#reset', body)?.addEventListener('click', () => edit((e) => { delete e.over[step.key]; if (e.overOn[today]) delete e.overOn[today][step.key]; }));
   $$('[data-restore]', body).forEach((b) => (b.onclick = () => { store.update((s) => { delete s.planEdits.hidden[b.dataset.restore]; }); b.closest('.between').remove(); toast('Étape rétablie', 1000); }));
 }
 
@@ -298,7 +321,7 @@ export function openReview(ctx, done, { goalOnly = false } = {}) {
       <div class="stat"><div class="k">${icon('utensils', 14)} Repas notés</div><div class="v">${rv.stats.mealDays}<small>/7 j</small></div></div>
     </div>
     ${rv.best ? `<div class="note" style="margin-top:12px">${icon('trend', 18)}<span><b>Ton plus beau progrès :</b> ${DOMAIN[rv.best.k].label.toLowerCase()} (+${rv.best.delta} points). Bravo 👏</span></div>` : ''}
-    ${corr.length ? `<h3 style="font-size:.9rem;margin:16px 0 6px">Ce que tes données révèlent</h3>${corr.map((c) => `<p class="small" style="margin:4px 0">${c.good ? '✅' : '⚠️'} ${esc(c.text)}</p>`).join('')}` : ''}
+    ${corr.length ? `<h3 style="font-size:.9rem;margin:16px 0 6px">Ce que tes données révèlent</h3>${corr.map((c) => `<p class="small row" style="margin:4px 0;gap:8px;flex-wrap:nowrap;align-items:flex-start"><span style="color:var(${c.good ? '--good' : '--warn'});flex:none">${icon(c.good ? 'ok' : 'alert', 16)}</span><span>${esc(c.text)}</span></p>`).join('')}` : ''}
     <h3 style="font-size:.9rem;margin:18px 0 6px">${icon('target', 14)} Un seul objectif pour la semaine qui vient</h3>
     <div class="card" style="padding:14px;border-color:color-mix(in srgb,var(--primary) 40%,transparent)"><b>${esc(rv.goal.text)}</b><div class="tiny muted" style="margin-top:4px">Choisi sur ton point le plus faible : ${DOMAIN[rv.weakest].label.toLowerCase()}. Un objectif unique, précis et suivi chaque jour marche mieux qu’une liste de bonnes résolutions.</div></div>
     <button class="btn block" id="commit" style="margin-top:12px">${icon('check', 18)} Je m’engage</button>

@@ -1,18 +1,20 @@
 // Premier lancement : présentation et profil en 5 étapes.
 import * as store from '../store.js';
-import { icon, esc, toast, $, $$ } from '../ui.js';
-import { sportPrefsHtml, bindSportPrefs, applySportPref } from './sport.js';
+import { icon, esc, toast, logo, $, $$ } from '../ui.js';
+import { sportPrefsHtml, bindSportPrefs, applySportPref, sportTimeHtml } from './sport.js';
 import { tastePanel } from './tastes.js';
+import { DEFAULT_WORK } from '../schedule.js';
 
 let step = 0;
 const draft = {};
+const work = (p) => ({ ...DEFAULT_WORK, ...(p.work || {}) });
 
 // dir : 'l' (page suivante), 'r' (page précédente) ou rien (pas d'animation).
 export function render(root, done, dir) {
   document.body.classList.add('onb-mode');
   const p = { ...store.get().profile, ...draft };
   const steps = [
-    () => `<div class="logo">${icon('heart', 42)}</div>
+    () => `<div class="logo">${logo(56)}</div>
       <h1>Ton coach santé,<br>fondé sur la science.</h1>
       <p class="lead">Diana Health croise ton sommeil, ton humeur, tes écrans, ton activité et ce que tu manges pour te dire quoi faire, et quand.</p>
       ${[['camera', 'var(--c-food)', 'Photo ou code-barres', 'Calories, Nutri-Score et additifs en un geste'],
@@ -36,10 +38,18 @@ export function render(root, done, dir) {
       <label class="lbl">Régime</label><select data-d="diet">${Object.entries({ omnivore: 'Omnivore', pescetarien: 'Pescétarien', vegetarien: 'Végétarien', vegan: 'Végan' }).map(([v, l]) => `<option value="${v}" ${p.diet === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`,
     () => `<h1>Ton rythme</h1><p class="lead">Ton plan du jour et tes rappels s’organisent autour de ces horaires.</p>
       <div class="grid2"><div><label class="lbl">Réveil</label><input data-d="wakeTime" type="time" value="${esc(p.wakeTime)}"></div><div><label class="lbl">Coucher visé</label><input data-d="bedTime" type="time" value="${esc(p.bedTime)}"></div></div>
+      <label class="lbl">Travail ou études</label>
+      <div class="seg"><button data-work-on="0" class="${work(p).enabled ? '' : 'on'}">Pas d’horaires fixes</button><button data-work-on="1" class="${work(p).enabled ? 'on' : ''}">J’ai des horaires</button></div>
+      <div id="work-f" style="${work(p).enabled ? '' : 'display:none'}">
+        <div class="chips" style="margin-top:10px">${[[1, 'L'], [2, 'M'], [3, 'M'], [4, 'J'], [5, 'V'], [6, 'S'], [0, 'D']].map(([d, l]) => `<button class="chip ${work(p).days.includes(d) ? 'on' : ''}" data-wday="${d}" style="min-width:38px;justify-content:center">${l}</button>`).join('')}</div>
+        <div class="grid3"><div><label class="lbl">Début</label><input type="time" data-w="start" value="${esc(work(p).start)}"></div><div><label class="lbl">Fin</label><input type="time" data-w="end" value="${esc(work(p).end)}"></div>
+          <div><label class="lbl">Trajet</label><select data-w="commute">${[0, 15, 30, 45, 60, 90].map((m) => `<option value="${m}" ${Number(work(p).commute) === m ? 'selected' : ''}>${m} min</option>`).join('')}</select></div></div>
+      </div>
       <div class="note" style="margin-top:18px">${icon('shield', 18)}<span>Tes données restent sur ton téléphone. Rien n’est envoyé sauf aux fonctions IA que tu utilises.</span></div>`,
     () => `<h1>Ton sport</h1><p class="lead">Pour te proposer des séances à ta mesure.</p>
       <label class="lbl">Ton niveau</label>
       <div class="choice">${[['debutant', 'Débutant', 'Peu ou pas de sport ces derniers mois'], ['intermediaire', 'Intermédiaire', '1 à 3 séances par semaine'], ['avance', 'Avancé', 'Entraînement régulier depuis plus d’un an']].map(([v, t, d]) => `<button data-pick="fitnessLevel" data-v="${v}" class="${(p.fitnessLevel || 'debutant') === v ? 'on' : ''}" style="padding:10px 14px"><span><b>${t}</b><br><span class="small muted" style="font-weight:500">${d}</span></span></button>`).join('')}</div>
+      ${sportTimeHtml(p, 'data-pick')}
       <label class="lbl">Matériel</label>
       <div class="seg">${[['aucun', 'Aucun'], ['halteres', 'Haltères'], ['salle', 'Salle']].map(([v, l]) => `<button data-pick="equipment" data-v="${v}" class="${(p.equipment || 'aucun') === v ? 'on' : ''}">${l}</button>`).join('')}</div>
       <label class="lbl">Les sports que tu aimes… ou jamais</label>
@@ -61,9 +71,21 @@ export function render(root, done, dir) {
   $$('[data-d]', root).forEach((el) => el.addEventListener('change', save));
   // choix simples : on met à jour le bouton sans redessiner la page (pas d'animation qui rejoue)
   $$('[data-pick]', root).forEach((b) => (b.onclick = () => {
-    draft[b.dataset.pick] = b.dataset.v;
+    draft[b.dataset.pick] = b.dataset.pick === 'sportMinutes' ? Number(b.dataset.v) : b.dataset.v;
     $$(`[data-pick="${b.dataset.pick}"]`, root).forEach((x) => x.classList.toggle('on', x === b));
   }));
+  const setWork = (f) => { draft.work = work({ ...store.get().profile, ...draft }); f(draft.work); };
+  $$('[data-work-on]', root).forEach((b) => (b.onclick = () => {
+    setWork((w) => { w.enabled = b.dataset.workOn === '1'; });
+    $$('[data-work-on]', root).forEach((x) => x.classList.toggle('on', x === b));
+    $('#work-f', root).style.display = draft.work.enabled ? '' : 'none';
+  }));
+  $$('[data-wday]', root).forEach((b) => (b.onclick = () => {
+    const d = Number(b.dataset.wday);
+    setWork((w) => { w.days = w.days.includes(d) ? w.days.filter((x) => x !== d) : [...w.days, d]; });
+    b.classList.toggle('on', draft.work.days.includes(d));
+  }));
+  $$('[data-w]', root).forEach((el) => (el.onchange = () => setWork((w) => { w[el.dataset.w] = el.dataset.w === 'commute' ? Number(el.value) : el.value; })));
   bindSportPrefs(root, (id, v) => Object.assign(draft, applySportPref({ ...store.get().profile, ...draft }, id, v)));
   const tp = $('#tastes', root);
   if (tp) tastePanel(tp, { tabs: ['aliments', 'allergies', 'cuisines'] });

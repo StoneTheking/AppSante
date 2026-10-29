@@ -274,25 +274,79 @@ export function dailyPlan(sm, profile) {
   if (dow === 0 || dow === 6 || ctx.lowMood) add(Math.max(wake + 3 * 60, 10 * 60 + 30), '🌳', 'Temps dans la nature', 'Parc, forêt, bord de l’eau : viser 120 min sur la semaine est associé à une meilleure santé et un meilleur moral.', ['white2019']);
   add(bed, '🌙', 'Coucher', `Même heure chaque soir (±30 min) : la régularité du sommeil prédit la mortalité mieux que sa durée. Vise ${t.sleepMin}–${t.sleepMax} h.`, ['windred2024', 'watson2015']);
 
+  fitAroundWork(items, profile, { wake, bed, add });
+  for (const i of items) i.time = hm(i.min);
   return items.sort((a, b) => a.min - b.min);
 }
 
-// Étapes masquées (aujourd'hui ou toujours) et étapes ajoutées par l'utilisateur.
-// edits = { hidden: { clé: true }, hiddenOn: { date: [clés] }, custom: [{ id, time, title, text, date|null }] }
+// Journée de travail : on ajoute le bloc « Travail » et on déplace ce qui ne peut pas se faire au bureau.
+function fitAroundWork(items, profile, { wake, bed, add }) {
+  const w = profile.work;
+  if (!w?.enabled || !(w.days || []).includes(new Date().getDay())) return;
+  const start = toMin(w.start), end = toMin(w.end), commute = w.commute || 0;
+  const leave = start - commute, back = end + commute;
+  const at = (it) => !it.done && it.min >= leave && it.min < back;
+  const one = (k) => items.find((i) => i.key === k);
+  const drop = (it) => items.splice(items.indexOf(it), 1);
+  const bf = one('🍳');
+  if (bf && !bf.done && bf.min > leave - 20) { bf.min = Math.max(wake + 15, leave - 25); bf.text = `Avant de partir. ${bf.text}`; }
+  const light = one('☀️');
+  if (light && at(light)) { light.min = commute ? leave : Math.max(wake + 15, leave - 15); light.title = commute ? 'Lumière du jour sur le trajet' : light.title; light.text = commute ? 'Fais une partie du trajet dehors, à pied ou à vélo si possible : 10–15 min de lumière du matin calent ton horloge interne.' : light.text; }
+  for (const it of [...items]) {
+    if (!at(it)) continue;
+    if (it.key === '🥗') it.text = `À ta pause. ${it.text}`;
+    else if (it.key === '🚶') { it.title = 'Marche 10 min à la pause déjeuner'; }
+    else if (it.key === '⚡') it.text = `Au travail : escaliers plutôt qu’ascenseur, appels debout. ${it.text}`;
+    else if (it.key === '😴') drop(it);
+    else if (it.key === '🌳') { it.min = back + 30; if (it.min > bed - 120) drop(it); }
+    else if (it.key === '🏃') {
+      const dur = Number((it.title.match(/\((\d+) min\)/) || [])[1] || 30);
+      if (back + 15 + dur <= bed - 75) { it.min = back + 15; it.text = `Après le travail. ${it.text}`; }
+      else if (leave - dur - 15 >= wake + 30) { it.min = leave - dur - 15; it.text = `Avant le travail. ${it.text}`; }
+      else { it.min = start + 5 * 60 > end ? end - 60 : start + 4 * 60; it.title = it.title.replace(/\(\d+ min\)/, '(20 min)'); it.text = `Journée chargée : version courte à la pause déjeuner. ${it.text}`; }
+    }
+  }
+  const sport = one('🏃'), dinner = one('🍽️');
+  if (dinner && !dinner.done) {
+    const after = sport && !sport.done && sport.min >= back ? sport.min + Number((sport.title.match(/\((\d+) min\)/) || [])[1] || 30) + 30 : back + 30;
+    if (dinner.min < after) dinner.min = Math.min(after, bed - 120);
+  }
+  const snack = one('🍎');
+  if (snack && !snack.done && sport && sport.min >= back && snack.min < back - 60) snack.min = Math.max(snack.min, back - 60);
+  add(leave, '💼', `Travail ${hm(start)}–${hm(end)}`, commute ? `${commute} min de trajet à l’aller et au retour. Le plan place le reste autour.` : 'Le plan place le reste autour de ta journée de travail.');
+}
+
+// Retouches de l'utilisateur sur le plan :
+// edits = { hidden: { clé: titre }, hiddenOn: { date: [clés] },
+//           over: { clé: { title, time, text, days } }, overOn: { date: { clé: {…} } },
+//           custom: [{ id, time, title, text, date|null, days|null }] }
+// days = jours de la semaine (0 = dimanche) où l'étape apparaît ; absent = tous les jours.
 export function applyPlanEdits(plan, edits = {}, dateKey) {
+  const dow = new Date(`${dateKey}T12:00:00`).getDay();
   const off = new Set([...Object.keys(edits.hidden || {}), ...((edits.hiddenOn || {})[dateKey] || [])]);
-  const custom = (edits.custom || []).filter((c) => !c.date || c.date === dateKey).map((c) => ({ key: 'c:' + c.id, id: c.id, custom: true, daily: !c.date, min: toMin(c.time), time: c.time, icon: '⭐', title: c.title, text: c.text || '', src: [] }));
-  return [...plan.filter((p) => !off.has(p.key)), ...custom].sort((a, b) => a.min - b.min);
+  const today = (edits.overOn || {})[dateKey] || {};
+  const out = [];
+  for (const p of plan) {
+    if (off.has(p.key)) continue;
+    const o = { ...(edits.over || {})[p.key], ...today[p.key] };
+    if (o.days && !o.days.includes(dow) && !today[p.key]) continue;
+    out.push(Object.keys(o).length ? { ...p, ...(o.title ? { title: o.title } : {}), ...(o.text != null ? { note: o.text } : {}), ...(o.time ? { time: o.time, min: toMin(o.time) } : {}), days: o.days || null, edited: today[p.key] ? 'today' : 'always' } : p);
+  }
+  const custom = (edits.custom || [])
+    .filter((c) => (c.date ? c.date === dateKey : !c.days || c.days.includes(dow)))
+    .map((c) => ({ key: 'c:' + c.id, id: c.id, custom: true, daily: !c.date, days: c.days || null, min: toMin(c.time), time: c.time, icon: '⭐', title: c.title, text: '', note: c.text || '', src: [] }));
+  return [...out, ...custom].sort((a, b) => a.min - b.min);
 }
 
 // ---------- Score d'hygiène de vie expliqué ----------
-export const SCORE_WEIGHTS = { sommeil: 0.25, activite: 0.25, alimentation: 0.25, humeur: 0.15, numerique: 0.1 };
+// L’humeur est suivie mais ne compte pas : on ne la commande pas directement, on agit sur ce qui la fait bouger.
+export const SCORE_WEIGHTS = { sommeil: 0.3, activite: 0.3, alimentation: 0.25, humeur: 0, numerique: 0.15 };
 export const scoreWord = (v) => (v == null ? ['Pas de données', 'var(--muted)'] : v >= 80 ? ['Excellent', 'var(--good)'] : v >= 65 ? ['Bon', 'var(--good)'] : v >= 50 ? ['À améliorer', 'var(--warn)'] : ['Faible', 'var(--bad)']);
 export function scoreBreakdown(sm) {
   const { w, t, scores } = sm;
   const r = (x, d = 0) => (x == null ? '—' : S.round(x, d).toLocaleString('fr-FR'));
   return [
-    { k: 'sommeil', what: w.sleepH != null ? `${r(w.sleepH, 1)} h/nuit en moyenne${w.bedVar != null ? `, coucher ±${Math.round(w.bedVar)} min` : ''}${w.sleepQ ? `, qualité ${r(w.sleepQ, 1)}/5` : ''}` : 'Utilise « Je vais dormir » le soir', how: 'Durée (7–9 h), qualité ressentie et régularité de l’heure de coucher.', tip: w.sleepH != null && w.sleepH < 7 ? 'Avance ton coucher de 20 min.' : 'Garde la même heure de coucher, week-end compris.', src: ['watson2015', 'windred2024'] },
+    { k: 'sommeil', what: w.sleepH != null ? `${r(w.sleepH, 1)} h/nuit en moyenne${w.bedVar != null ? `, coucher ±${Math.round(w.bedVar)} min` : ''}${w.sleepQ ? `, qualité ${r(w.sleepQ, 1)}/5` : ''}` : 'Continue à noter ton sommeil chaque nuit', how: 'Durée (7–9 h), qualité ressentie et régularité de l’heure de coucher.', tip: w.sleepH != null && w.sleepH < 7 ? 'Avance ton coucher de 20 min.' : 'Garde la même heure de coucher, week-end compris.', src: ['watson2015', 'windred2024'] },
     { k: 'activite', what: w.steps != null || w.modMin ? `${r(w.steps)} pas/j, ${Math.round(w.modMin + 2 * w.vigMin)} min d’activité/sem, ${w.strength} séance(s) de renfo` : 'Synchronise tes pas ou note une séance', how: `Pas (objectif ${t.steps}/j), 150 min d’activité modérée par semaine, 2 séances de renforcement.`, tip: (w.steps || 0) < t.steps ? 'Ajoute une marche de 15 min après le déjeuner.' : 'Ajoute une séance de renforcement.', src: ['paluch2022', 'who2020'] },
     { k: 'alimentation', what: sm.dietDaysCount ? `${sm.dietDaysCount} jour(s) de repas notés sur 14` : 'Photographie tes repas', how: 'Fibres, fruits & légumes, protéines, sucres, graisses saturées, sel et part d’ultra-transformés.', tip: 'Une portion de légumes en plus à chaque repas.', src: ['gbd2019', 'lane2024'] },
     { k: 'humeur', what: w.mood != null ? `humeur ${r(w.mood, 1)}/5, énergie ${r(w.energy, 1)}/5, stress ${r(w.stress, 1)}/5` : 'Réponds à la question du jour', how: 'Moyenne de ton humeur, ton énergie et ton stress déclarés chaque jour.', tip: '15 min dehors à la lumière du jour.', src: ['noetel2024', 'burns2023'] },

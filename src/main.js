@@ -165,6 +165,8 @@ async function onForeground() {
   }
   await detectMorning();
   await Sport.refreshCalendar?.().catch(() => {});
+  if (N.isNative && !N.installedVersion()) await N.appVersion().catch(() => {});
+  if (N.isNative && store.get().update?.available && !N.isNewer(store.get().update.latest, N.installedVersion())) store.update((s) => { s.update.available = false; });
   if (N.isNative && (store.get().update?.available || Date.now() - (store.get().update?.checked || 0) > 12 * 3600e3)) {
     N.checkUpdate().then((u) => { store.update((s) => { s.update = { ...u, checked: Date.now() }; }); if (u.available && tab === 'home') renderView(); }).catch(() => {});
   }

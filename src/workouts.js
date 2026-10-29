@@ -66,7 +66,7 @@ const itemSeconds = (i) => { const sets = i.sets || 1; return sets * (i.kind ===
 export const minutesOf = (blocks) => Math.round(blocks.flatMap((b) => b.items).reduce((a, i) => a + itemSeconds(i), 0) / 60);
 
 // Séance de renforcement : sélection d'exercices selon le focus, ajustée à la durée.
-function strengthSession({ level, equipment, goal, minutes, focus }) {
+function strengthSession({ level, equipment, goal, minutes, focus, hidden = new Set() }) {
   const L = LEVEL[level] || LEVEL.debutant;
   const circuit = goal === 'perdre';
   const pools = {
@@ -76,8 +76,10 @@ function strengthSession({ level, equipment, goal, minutes, focus }) {
   };
   const rest = circuit ? 45 : L.rest;
   const perEx = L.sets * (45 + rest) / 60; // minutes par exercice
-  const n = Math.max(4, Math.min(pools[focus].length, Math.round((minutes - 12) / perEx)));
-  const items = pools[focus].slice(0, n).map((id) => {
+  // exercices retirés par l'utilisateur : on prend les suivants de la liste (puis ceux des autres groupes)
+  const pool = [...new Set([...pools[focus], ...pools.full, ...pools.haut, ...pools.bas])].filter((id) => !hidden.has(EXERCISES[id].equip[equipment] || EXERCISES[id].equip.aucun));
+  const n = Math.max(Math.min(4, pool.length), Math.min(pools[focus].length, pool.length, Math.round((minutes - 12) / perEx)));
+  const items = pool.slice(0, n).map((id) => {
     const e = EXERCISES[id];
     const label = e.equip[equipment] || e.equip.aucun;
     const detail = `${e.cue} Muscles : ${e.muscles}. Plus facile : ${e.easier}. Plus dur : ${e.harder}.`;
@@ -174,12 +176,13 @@ const NO_TUTO = /^(Marche|Footing|Pédalage|Allure|Course|Vélo|Randonnée|Respi
 export const hasTuto = (it) => !NO_TUTO.test(it.label);
 
 // Point d'entrée : construit la séance du jour (ou d'un jour de la semaine type).
-export function buildSession({ activity, minutes = 30, intensity = 'moderee', level = 'debutant', equipment = 'aucun', goal = 'maintenir', dayIndex = 0, zones }) {
+// hidden : libellés d'exercices que l'utilisateur a retirés.
+export function buildSession({ activity, minutes = 30, intensity = 'moderee', level = 'debutant', equipment = 'aucun', goal = 'maintenir', dayIndex = 0, zones, hidden = new Set() }) {
   let blocks, title, src;
   if (activity === 'renfo') {
     // prise de muscle : haut / bas en alternance ; sinon corps entier (2–3 séances/sem, chaque muscle 2×)
     const focus = goal === 'prendre' ? (dayIndex % 4 === 0 ? 'haut' : dayIndex % 4 === 2 ? 'bas' : 'full') : 'full';
-    blocks = strengthSession({ level, equipment, goal, minutes, focus });
+    blocks = strengthSession({ level, equipment, goal, minutes, focus, hidden });
     title = { full: 'Renforcement corps entier', haut: 'Renforcement haut du corps', bas: 'Renforcement bas du corps' }[focus];
     src = ['acsm2009', 'schoenfeld2016', 'schoenfeld2017', 'lauersen2014', 'soligard2008'];
   } else if (activity === 'hiit') {
@@ -199,6 +202,7 @@ export function buildSession({ activity, minutes = 30, intensity = 'moderee', le
     title = { raquette: 'Sport de raquette', collectif: 'Sport collectif', danse: 'Danse' }[activity] || 'Séance';
     src = ['soligard2008'];
   }
+  if (hidden.size) blocks = blocks.map((b) => ({ ...b, items: b.items.filter((it) => !hidden.has(it.label)) })).filter((b) => b.items.length);
   return { title, blocks, minutes: Math.max(minutes, minutesOf(blocks)), src };
 }
 

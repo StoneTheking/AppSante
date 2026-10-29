@@ -21,17 +21,33 @@ export async function healthStatus() {
   return H.isAvailable();
 }
 
+// Une promesse du plugin qui ne revient jamais ne doit pas bloquer l'écran (« Connexion… » à l'infini).
+const timeout = (p, ms, msg) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error(msg)), ms))]);
+
+// Demande d'accès : si la fenêtre de Health Connect ne s'ouvre pas ou ne rend pas la main,
+// on abandonne 3 s après le retour dans l'application (ou au bout de 15 s si on n'est jamais parti).
 export async function connectHealth() {
   const H = await health();
-  const a = await H.isAvailable();
+  const a = await timeout(H.isAvailable(), 5000, 'Health Connect ne répond pas');
   if (!a.available) throw new Error('Health Connect n’est pas disponible. Installe « Health Connect » depuis le Play Store (inclus d’office depuis Android 14).');
-  return H.requestAuthorization({ read: HEALTH_READ });
+  let left = false, cleanup = () => {};
+  const guard = new Promise((_, no) => {
+    const fail = () => no(new Error('La fenêtre d’autorisation ne s’est pas ouverte'));
+    let t = setTimeout(() => { if (!left) fail(); }, 15000);
+    const vis = () => {
+      if (document.visibilityState === 'hidden') { left = true; clearTimeout(t); }
+      else if (left) { clearTimeout(t); t = setTimeout(fail, 3000); }
+    };
+    document.addEventListener('visibilitychange', vis);
+    cleanup = () => { clearTimeout(t); document.removeEventListener('visibilitychange', vis); };
+  });
+  try { return await Promise.race([H.requestAuthorization({ read: HEALTH_READ }), guard]); } finally { cleanup(); }
 }
 
 export const openHealthSettings = async () => (await health()).openHealthConnectSettings();
 // Page « Autorisations » de Diana Health dans Health Connect (repli : réglages de Health Connect, puis Play Store).
 export const openHealthPermissions = () => UsageStats.openHealthPermissions().then((r) => r.opened);
-const healthInfo = () => UsageStats.healthInfo().catch(() => ({}));
+const healthInfo = () => timeout(UsageStats.healthInfo(), 3000, '').catch(() => ({}));
 
 // État détaillé de Health Connect pour expliquer ce qui bloque.
 export async function healthDiagnose() {
@@ -39,9 +55,9 @@ export async function healthDiagnose() {
   const info = await healthInfo();
   try {
     const H = await health();
-    const a = await H.isAvailable();
+    const a = await timeout(H.isAvailable(), 5000, 'Health Connect ne répond pas (disponibilité)');
     if (!a.available) return { ok: false, reason: /update/i.test(a.reason || '') ? 'update' : 'unavailable', detail: a.reason || '', info };
-    const st = await H.checkAuthorization({ read: HEALTH_READ });
+    const st = await timeout(H.checkAuthorization({ read: HEALTH_READ }), 8000, 'Health Connect ne répond pas (autorisations)');
     const granted = st.readAuthorized || [];
     return { ok: granted.length > 0, reason: granted.length ? 'ok' : 'denied', granted, steps: granted.includes('steps'), info };
   } catch (e) { return { ok: false, reason: 'error', detail: e.message || String(e), info }; }
@@ -171,11 +187,15 @@ export const nextAlarm = () => (isNative ? SleepWidget.nextAlarm().then((r) => r
 const RELEASES = 'https://api.github.com/repos/StoneTheking/AppSante/releases/latest';
 export const APK_URL = 'https://github.com/StoneTheking/AppSante/releases/latest/download/AppSante.apk';
 
+let installed = null;
 export async function appVersion() {
   if (!isNative) return null;
   const { App } = await import('@capacitor/app');
-  return (await App.getInfo()).version;
+  installed = (await App.getInfo()).version;
+  return installed;
 }
+// Version installée, connue une fois appVersion() appelée (null avant).
+export const installedVersion = () => installed;
 
 const parse = (v) => (v || '').replace(/^v/, '').split('.').map(Number);
 export const isNewer = (a, b) => {

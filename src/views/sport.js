@@ -173,6 +173,37 @@ export function openWorkout(ctx, view, live) {
 }
 
 const level = (st) => st.profile.fitnessLevel || 'debutant';
+// Exercices personnalisés : { [libellé]: { video: url, hidden: true } }
+const exCustom = () => store.get().exerciseCustom || {};
+const hiddenEx = () => new Set(Object.entries(exCustom()).filter(([, v]) => v.hidden).map(([k]) => k));
+const videoFor = (label) => exCustom()[label]?.video || W.tutoUrl(label);
+const setEx = (label, patch) => store.update((s) => { s.exerciseCustom = s.exerciseCustom || {}; const v = { ...(s.exerciseCustom[label] || {}), ...patch }; for (const k of Object.keys(v)) if (v[k] == null) delete v[k]; if (Object.keys(v).length) s.exerciseCustom[label] = v; else delete s.exerciseCustom[label]; });
+
+// Choisir sa propre vidéo pour un exercice (lien copié depuis YouTube ou ailleurs).
+function openVideoPicker(label, done) {
+  const cur = exCustom()[label]?.video || '';
+  const body = sheet(`
+    <p class="small" style="margin-top:0"><b>${esc(label)}</b></p>
+    <ol class="small" style="padding-left:18px;line-height:1.6;margin:0 0 10px">
+      <li><a class="tuto" href="${W.tutoUrl(label)}" target="_blank" rel="noopener" style="margin:0">Chercher sur YouTube</a> (ou ailleurs)</li>
+      <li>Sous la vidéo qui te plaît : <b>Partager → Copier le lien</b></li>
+      <li>Reviens ici et colle le lien</li>
+    </ol>
+    <div class="row" style="flex-wrap:nowrap;gap:8px"><input id="u" type="url" inputmode="url" placeholder="https://youtu.be/…" value="${esc(cur)}" style="flex:1"><button class="btn soft sm" id="paste">Coller</button></div>
+    <button class="btn block" id="ok" style="margin-top:12px">${icon('check', 18)} Utiliser cette vidéo</button>
+    ${cur ? `<button class="btn ghost block" id="reset" style="margin-top:8px">${icon('refresh', 16)} Revenir à la recherche automatique</button>` : ''}`, { title: 'Ma vidéo pour cet exercice', onClose: done });
+  $('#paste', body).onclick = async () => {
+    try { const t = await navigator.clipboard.readText(); if (t) $('#u', body).value = t.trim(); else toast('Presse-papiers vide'); } catch { toast('Appui long dans le champ → Coller'); $('#u', body).focus(); }
+  };
+  $('#ok', body).onclick = () => {
+    const m = $('#u', body).value.match(/https?:\/\/\S+/);
+    if (!m) return toast('Colle un lien qui commence par https://');
+    setEx(label, { video: m[0] });
+    toast('Vidéo enregistrée 🎬', 1200);
+    body.close();
+  };
+  $('#reset', body)?.addEventListener('click', () => { setEx(label, { video: null }); body.close(); });
+}
 const equip = (st) => st.profile.equipment || 'aucun';
 const fmtDur = (sec) => (sec >= 60 ? `${Math.floor(sec / 60)} min${sec % 60 ? ` ${sec % 60} s` : ''}` : `${sec} s`);
 
@@ -186,22 +217,27 @@ export function openSession(ctx, view, { activity, minutes, intensity, dayIndex 
   const body = sheet('<div id="ss"></div>', { title: 'Séance', full: true });
   const el = $('#ss', body);
   const draw = () => {
-    const session = W.buildSession({ activity, minutes: chosen, intensity, level: lvl, equipment: equip(st), goal: st.profile.goal, dayIndex, zones: SP.hrZones(st.profile.birthYear) });
+    const hidden = hiddenEx();
+    const session = W.buildSession({ activity, minutes: chosen, intensity, level: lvl, equipment: equip(st), goal: st.profile.goal, dayIndex, zones: SP.hrZones(st.profile.birthYear), hidden });
     const opts = [...new Set([15, 20, 30, 45, 60, advised])].sort((a, b) => a - b);
     el.innerHTML = `
       <div class="between"><div><div class="tiny muted" style="font-weight:700;text-transform:uppercase;letter-spacing:.06em">${esc(day || 'Aujourd’hui')} · ${{ debutant: 'débutant', intermediaire: 'intermédiaire', avance: 'avancé' }[lvl]}</div><h2 style="margin:2px 0">${esc(session.title)}</h2></div>
         <div style="text-align:right"><div style="font-size:1.4rem;font-weight:800">${session.minutes}<small style="font-size:.75rem;color:var(--muted)"> min</small></div><div class="tiny muted">~${SP.kcal(activity, intensity, session.minutes, st.profile.weight || 70)} kcal</div></div></div>
       <label class="lbl">Durée</label>
       <div class="chips">${opts.map((m) => `<button class="chip ${m === chosen ? 'on' : ''}" data-min="${m}">${m} min${m === advised ? ' ★' : ''}</button>`).join('')}</div>
-      <p class="tiny muted" style="margin:2px 0 0">★ conseillé${ad.note ? ` · ${esc(ad.note)}` : ' d’après ta semaine type et ton ressenti'}</p>
+      <p class="tiny muted" style="margin:2px 0 0">★ conseillé${ad.note ? ` · ${esc(ad.note)}` : ' d’après ta semaine type et ton ressenti'} · touche un exercice pour sa vidéo, choisir la tienne ou le retirer</p>
       ${session.blocks.map((b) => `<div class="card" style="margin:12px 0;padding:14px">
         <div class="between"><b>${esc(b.title)}</b><span class="tiny muted">${W.minutesOf([b])} min</span></div>
         ${b.note ? `<p class="tiny muted" style="margin:4px 0 6px">${esc(b.note)}</p>` : ''}
-        ${b.items.map((it) => `<details style="padding:8px 0;border-top:1px solid var(--line)"><summary><span class="small" style="font-weight:600">${esc(it.label)}</span><span class="tiny muted" style="white-space:nowrap;margin-left:8px">${it.sets && !b.circuit ? `${it.sets} × ` : ''}${it.kind === 'reps' ? `${esc(String(it.reps))}${String(it.reps).includes('m') ? '' : ' rép.'}` : it.seconds ? fmtDur(it.seconds) : ''}${it.rest && !b.circuit ? ` · repos ${it.rest} s` : ''}</span></summary>${it.detail ? `<p class="tiny muted" style="margin:6px 0 0">${esc(it.detail)}</p>` : ''}${W.hasTuto(it) ? `<a class="tuto" href="${W.tutoUrl(it.label)}" target="_blank" rel="noopener">▶ Voir des tutos vidéo</a>` : ''}</details>`).join('')}
+        ${b.items.map((it) => `<details style="padding:8px 0;border-top:1px solid var(--line)"><summary><span class="small" style="font-weight:600">${esc(it.label)}</span><span class="tiny muted" style="white-space:nowrap;margin-left:8px">${it.sets && !b.circuit ? `${it.sets} × ` : ''}${it.kind === 'reps' ? `${esc(String(it.reps))}${String(it.reps).includes('m') ? '' : ' rép.'}` : it.seconds ? fmtDur(it.seconds) : ''}${it.rest && !b.circuit ? ` · repos ${it.rest} s` : ''}</span></summary>${it.detail ? `<p class="tiny muted" style="margin:6px 0 0">${esc(it.detail)}</p>` : ''}<div class="ex-actions">${W.hasTuto(it) || exCustom()[it.label]?.video ? `<a class="tuto" href="${esc(videoFor(it.label))}" target="_blank" rel="noopener">▶ ${exCustom()[it.label]?.video ? 'Ma vidéo' : 'Tutos vidéo'}</a><button class="link tiny" data-vid="${esc(it.label)}">${icon('pencil', 12)} ${exCustom()[it.label]?.video ? 'Changer' : 'Choisir ma vidéo'}</button>` : ''}<button class="link tiny" data-hide-ex="${esc(it.label)}" style="color:var(--bad)">${icon('trash', 12)} Retirer</button></div></details>`).join('')}
       </div>`).join('')}
+      ${hidden.size ? `<details class="small" style="margin:8px 0"><summary class="muted">${hidden.size} exercice${hidden.size > 1 ? 's' : ''} retiré${hidden.size > 1 ? 's' : ''}</summary>${[...hidden].map((l) => `<div class="between" style="padding:6px 0;border-top:1px solid var(--line)"><span class="small">${esc(l)}</span><button class="btn sm soft" data-unhide-ex="${esc(l)}">Rétablir</button></div>`).join('')}</details>` : ''}
       ${srcLinks([...session.src, ...(ad.note ? ['foster2001', 'greig2020'] : [])])}
       <button class="btn block" id="start-guided" style="margin-top:12px">${icon('zap', 18)} Lancer le mode guidé</button>`;
     $$('[data-min]', el).forEach((b) => (b.onclick = () => { chosen = Number(b.dataset.min); draw(); }));
+    $$('[data-vid]', el).forEach((b) => (b.onclick = () => openVideoPicker(b.dataset.vid, draw)));
+    $$('[data-hide-ex]', el).forEach((b) => (b.onclick = () => { setEx(b.dataset.hideEx, { hidden: true }); toast('Exercice retiré : il ne te sera plus proposé', 1800); draw(); }));
+    $$('[data-unhide-ex]', el).forEach((b) => (b.onclick = () => { setEx(b.dataset.unhideEx, { hidden: null }); draw(); }));
     $('#start-guided', el).onclick = () => { body.close(); setTimeout(() => guided(ctx, view, session, activity, intensity), 250); };
   };
   draw();
@@ -279,6 +315,15 @@ export function applySportPref(p, id, v) {
   return { favSports: [...f], excludedSports: [...x] };
 }
 
+// Temps dispo par jour et format de séance (tuto et Mes sports) : la semaine type s'y adapte.
+export function sportTimeHtml(p, attr) {
+  return `<label class="lbl">Temps dispo pour le sport, par jour</label>
+    <div class="chips">${[15, 20, 30, 45, 60, 90].map((m) => `<button class="chip ${Number(p.sportMinutes || 45) === m ? 'on' : ''}" ${attr}="sportMinutes" data-v="${m}">${m === 90 ? '1 h 30+' : m === 60 ? '1 h' : `${m} min`}</button>`).join('')}</div>
+    <label class="lbl">Tu préfères</label>
+    <div class="choice">${[['courtes', 'Des séances courtes, souvent', '5–6 jours par semaine'], ['equilibre', 'Un peu des deux', '4–5 séances moyennes'], ['longues', 'Quelques grosses séances', '3–4 jours par semaine']].map(([v, t, d]) => `<button ${attr}="sessionStyle" data-v="${v}" class="${(p.sessionStyle || 'equilibre') === v ? 'on' : ''}" style="padding:10px 14px"><span><b>${t}</b><br><span class="small muted" style="font-weight:500">${d}</span></span></button>`).join('')}</div>
+    ${p.weekTemplate ? '<p class="tiny muted" style="margin:6px 0 0">Tu as modifié ta semaine à la main : ces choix s’appliqueront si tu la réinitialises.</p>' : ''}`;
+}
+
 // Mes sports : préférés (proposés en priorité), exclus (jamais proposés, remplacés par un équivalent).
 export function openMySports(done) {
   const body = sheet('<div id="ms"></div>', { title: 'Mes sports', onClose: done });
@@ -287,13 +332,12 @@ export function openMySports(done) {
     const p = store.get().profile;
     el.innerHTML = `<p class="small muted" style="margin-top:0">« Jamais » : ce sport n’est plus proposé et il est remplacé par une activité équivalente.</p>
       ${sportPrefsHtml(p.favSports, p.excludedSports)}
-      <label class="lbl">Niveau</label>
-      <div class="seg">${[['debutant', 'Débutant'], ['intermediaire', 'Intermédiaire'], ['avance', 'Avancé']].map(([v, l]) => `<button data-level="${v}" class="${(p.fitnessLevel || 'debutant') === v ? 'on' : ''}">${l}</button>`).join('')}</div>
+      ${sportTimeHtml(p, 'data-sp')}
       <label class="lbl">Matériel</label>
       <div class="seg">${[['aucun', 'Sans matériel'], ['halteres', 'Haltères'], ['salle', 'Salle']].map(([v, l]) => `<button data-equip="${v}" class="${(p.equipment || 'aucun') === v ? 'on' : ''}">${l}</button>`).join('')}</div>
       <button class="btn block" id="ok" style="margin-top:16px">${icon('check', 18)} Terminé</button>`;
     bindSportPrefs(el, (id, v) => store.update((s) => { Object.assign(s.profile, applySportPref(s.profile, id, v)); }));
-    $$('[data-level]', el).forEach((b) => (b.onclick = () => { store.update((s) => { s.profile.fitnessLevel = b.dataset.level; }); draw(); }));
+    $$('[data-sp]', el).forEach((b) => (b.onclick = () => { store.update((s) => { s.profile[b.dataset.sp] = b.dataset.sp === 'sportMinutes' ? Number(b.dataset.v) : b.dataset.v; }); draw(); }));
     $$('[data-equip]', el).forEach((b) => (b.onclick = () => { store.update((s) => { s.profile.equipment = b.dataset.equip; }); draw(); }));
     $('#ok', el).onclick = () => body.close();
   };
@@ -320,7 +364,7 @@ function guided(ctx, view, session, activity, intensity) {
         <div style="font-size:3.4rem;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums;color:${s.isRest ? 'var(--c-sleep)' : 'var(--c-move)'}" id="big">${s.kind === 'time' ? fmtClock(left) : `${esc(String(s.reps))}${String(s.reps).includes('m') ? '' : ' rép.'}`}</div>
       </div>
       ${s.detail ? `<p class="small muted" style="text-align:center">${esc(s.detail)}</p>` : ''}
-      ${!s.isRest && W.hasTuto(s) ? `<p style="text-align:center;margin:4px 0"><a class="tuto" href="${W.tutoUrl(s.label)}" target="_blank" rel="noopener">▶ Tuto vidéo</a></p>` : ''}
+      ${!s.isRest && (W.hasTuto(s) || exCustom()[s.label]?.video) ? `<p style="text-align:center;margin:4px 0"><a class="tuto" href="${esc(videoFor(s.label))}" target="_blank" rel="noopener">▶ ${exCustom()[s.label]?.video ? 'Ma vidéo' : 'Tuto vidéo'}</a></p>` : ''}
       ${next && !s.isRest ? `<p class="tiny muted" style="text-align:center;margin-top:10px">Ensuite : ${esc(next.label)}</p>` : ''}
       <div class="row" style="flex-wrap:nowrap;margin-top:16px">
         <button class="btn ghost" id="prev" ${i === 0 ? 'disabled' : ''} aria-label="Précédent">${icon('left', 18)}</button>
@@ -395,7 +439,7 @@ function sessionEvents(plan) {
     if (!slot) continue;
     const start = new Date(d.date + 'T00:00'); start.setMinutes(slot.start);
     if (start < new Date()) continue;
-    const session = W.buildSession({ activity: d.type, minutes: d.minutes, intensity: d.intensity, level: level(st), equipment: equip(st), goal: p.goal, dayIndex: plan.indexOf(d), zones: SP.hrZones(p.birthYear) });
+    const session = W.buildSession({ activity: d.type, minutes: d.minutes, intensity: d.intensity, level: level(st), equipment: equip(st), goal: p.goal, dayIndex: plan.indexOf(d), zones: SP.hrZones(p.birthYear), hidden: hiddenEx() });
     const end = new Date(start.getTime() + session.minutes * 60000);
     const details = session.blocks.map((b) => `${b.title} : ${b.items.map((i) => i.label).join(', ')}`).join('\n') + '\n\nOuvre Diana Health pour le mode guidé.';
     out.push({ title: `${SP.activity(d.type).label} (${session.minutes} min) · Diana Health`, start, end, details, day: d.day, why: slot.why });
