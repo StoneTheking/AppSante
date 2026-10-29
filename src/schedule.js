@@ -73,7 +73,7 @@ export function googleCalendarUrl({ title, start, end, details = '' }) {
 }
 
 export function toIcs(events) {
-  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//AppSante//Seances//FR', 'CALSCALE:GREGORIAN'];
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//DianaHealth//Seances//FR', 'CALSCALE:GREGORIAN'];
   for (const e of events) {
     lines.push('BEGIN:VEVENT', `UID:${e.uid || crypto.randomUUID()}@appsante`, `DTSTAMP:${icsDate(new Date())}`, `DTSTART:${icsDate(e.start)}`, `DTEND:${icsDate(e.end)}`, `SUMMARY:${icsEsc(e.title)}`, `DESCRIPTION:${icsEsc(e.details || '')}`, 'BEGIN:VALARM', 'TRIGGER:-PT30M', 'ACTION:DISPLAY', `DESCRIPTION:${icsEsc(e.title)}`, 'END:VALARM', 'END:VEVENT');
   }

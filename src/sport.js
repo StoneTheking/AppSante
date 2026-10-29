@@ -119,6 +119,8 @@ const TEMPLATES = {
 const PREFERRED = { course: 'course', courir: 'course', running: 'course', footing: 'course', velo: 'velo', vélo: 'velo', natation: 'natation', nage: 'natation', piscine: 'natation', tennis: 'raquette', padel: 'raquette', badminton: 'raquette', foot: 'collectif', basket: 'collectif', hand: 'collectif', rugby: 'collectif', volley: 'collectif', danse: 'danse', yoga: 'yoga', muscu: 'renfo', musculation: 'renfo', rando: 'randonnee', marche: 'marche', crossfit: 'hiit' };
 
 export function preferredActivity(profile) {
+  const fav = (profile.favSports || []).find((id) => !(profile.excludedSports || []).includes(id));
+  if (fav) return fav;
   const p = (profile.preferredSport || '').toLowerCase();
   const hit = Object.keys(PREFERRED).find((k) => p.includes(k));
   return hit ? PREFERRED[hit] : null;
@@ -131,7 +133,8 @@ export function weekPlan(profile, workouts, now = new Date(), days = {}) {
   return tpl.map(([slot, minutes, intensity], i) => {
     const d = new Date(monday); d.setDate(d.getDate() + i);
     const date = localKey(d);
-    const type = slot === 'cardio' ? fav && activity(fav).kind === 'cardio' ? fav : 'course' : slot === 'loisir' ? fav || 'velo' : slot === 'repos' ? null : slot;
+    const raw = slot === 'cardio' ? fav && activity(fav).kind === 'cardio' ? fav : 'course' : slot === 'loisir' ? fav || 'velo' : slot === 'repos' ? null : slot;
+    const type = substitute(raw, profile);
     const done = workouts.filter((w) => w.date === date);
     // séance enregistrée du même type, ou minutes saisies à la main / synchronisées pour ce jour
     const d0 = days[date] || {};
@@ -139,3 +142,40 @@ export function weekPlan(profile, workouts, now = new Date(), days = {}) {
     return { day: DAYS[i], date, type, minutes, intensity, done, matches, today: date === localKey(now), past: d < new Date(now.toDateString()) };
   });
 }
+
+// Sports exclus par l'utilisateur : remplacés par une activité de même nature qu'il accepte.
+const ALTERNATIVES = {
+  cardio: ['course', 'velo', 'natation', 'marche', 'danse', 'randonnee', 'collectif', 'raquette', 'hiit'],
+  renfo: ['renfo', 'hiit', 'yoga'],
+  souplesse: ['yoga', 'marche'],
+};
+export function substitute(type, profile) {
+  const ex = profile.excludedSports || [];
+  if (!type || !ex.includes(type)) return type;
+  const favs = (profile.favSports || []).filter((id) => !ex.includes(id));
+  const kind = activity(type).kind;
+  const pool = [...favs.filter((id) => activity(id).kind === kind), ...ALTERNATIVES[kind] || [], ...favs, ...ALTERNATIVES.cardio];
+  return pool.find((id) => !ex.includes(id)) || 'marche';
+}
+
+// ---------- Adaptation au ressenti (auto-régulation) ----------
+// Après chaque séance : « trop dur » (−1), « bien » (0), « pas assez dur » (+1).
+// On ajuste volume et niveau de la séance suivante, comme l'auto-régulation par l'effort perçu
+// (Foster 2001, Helms 2016, Greig 2020) ; une intensité ressentie comme agréable favorise la régularité (Ekkekakis 2011).
+export const LEVELS = ['debutant', 'intermediaire', 'avance'];
+export function adaptation(feedback = [], type) {
+  const kind = activity(type).kind;
+  const mine = feedback.filter((f) => activity(f.type).kind === kind).slice(-3);
+  if (!mine.length) return { volume: 1, levelShift: 0, easier: false, note: '' };
+  const last = mine.at(-1).rating;
+  const two = mine.length >= 2 && mine.at(-2).rating === last;
+  if (last < 0) return { volume: 0.85, levelShift: two ? -1 : 0, easier: true, note: 'Séance allégée : tu as trouvé la dernière trop dure.' };
+  if (last > 0) return { volume: 1.1, levelShift: two ? 1 : 0, easier: false, note: two ? 'Niveau supérieur : tes dernières séances étaient trop faciles.' : 'Un peu plus de volume : la dernière séance était trop facile.' };
+  return { volume: 1, levelShift: 0, easier: false, note: '' };
+}
+export function adaptedLevel(base, ad) {
+  const i = Math.max(0, Math.min(2, LEVELS.indexOf(base || 'debutant') + (ad?.levelShift || 0)));
+  return LEVELS[i];
+}
+// Durée conseillée selon la semaine type et le ressenti (arrondie à 5 min).
+export const adaptedMinutes = (minutes, ad) => Math.max(10, Math.round((minutes * (ad?.volume || 1)) / 5) * 5);

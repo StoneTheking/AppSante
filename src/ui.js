@@ -107,7 +107,29 @@ export function compressImage(file, max = 1280, quality = 0.82) {
   });
 }
 
-export function pickImage({ camera = true, multiple = false } = {}) {
+// Choix d'image. Photo : caméra intégrée (aperçu immédiat, sans ouvrir l'appli Appareil photo) ;
+// galerie : sélecteur natif dans l'application Android, sélecteur de fichiers sinon.
+export async function pickImage({ camera = true, multiple = false } = {}) {
+  if (camera && navigator.mediaDevices?.getUserMedia) {
+    const r = await quickCamera().catch(() => null);
+    if (r === 'gallery') return pickImage({ camera: false, multiple });
+    if (r) return [r];
+    if (r === null && quickCamera.denied) { /* repli ci-dessous */ } else return [];
+  }
+  if (window.Capacitor?.isNativePlatform?.()) {
+    try {
+      const { Camera, CameraResultType, CameraSource } = await import('@capacitor/camera');
+      const toFile = async (path) => (await fetch(path)).blob();
+      if (multiple && !camera) {
+        const r = await Camera.pickImages({ quality: 85, limit: 6 });
+        return Promise.all(r.photos.map((ph) => toFile(ph.webPath)));
+      }
+      const ph = await Camera.getPhoto({ quality: 85, resultType: CameraResultType.Uri, source: camera ? CameraSource.Camera : CameraSource.Photos, saveToGallery: false });
+      return [await toFile(ph.webPath)];
+    } catch (e) {
+      if (/cancel/i.test(e?.message || '')) return [];
+    }
+  }
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -117,6 +139,103 @@ export function pickImage({ camera = true, multiple = false } = {}) {
     input.onchange = () => resolve([...input.files]);
     input.click();
   });
+}
+
+// Caméra plein écran dans l'application : renvoie un Blob JPEG, 'gallery', ou undefined si annulé.
+let camStream = null, camStop = null;
+function quickCamera() {
+  return new Promise(async (resolve, reject) => {
+    const root = document.createElement('div');
+    root.className = 'qcam';
+    root.innerHTML = `<video playsinline muted autoplay></video><div class="qcam-flash"></div>
+      <button class="qcam-x" aria-label="Fermer">${icon('x', 26)}</button>
+      <div class="qcam-bar"><button class="qcam-side" data-gal aria-label="Galerie">${icon('image', 24)}</button><button class="qcam-shot" aria-label="Prendre la photo"></button><span class="qcam-side"></span></div>`;
+    document.body.appendChild(root);
+    const video = root.querySelector('video');
+    const close = (v) => { clearTimeout(camStop); camStop = setTimeout(() => { camStream?.getTracks().forEach((t) => t.stop()); camStream = null; }, 20000); root.remove(); resolve(v); };
+    root.querySelector('.qcam-x').onclick = () => close(undefined);
+    root.querySelector('[data-gal]').onclick = () => close('gallery');
+    try {
+      clearTimeout(camStop);
+      // le flux reste ouvert 20 s après fermeture : la photo suivante s'ouvre instantanément
+      if (!camStream || !camStream.active) camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+      video.srcObject = camStream;
+      await video.play().catch(() => {});
+    } catch (e) {
+      quickCamera.denied = true;
+      root.remove();
+      reject(e);
+      return;
+    }
+    root.querySelector('.qcam-shot').onclick = () => {
+      if (!video.videoWidth) return;
+      const c = document.createElement('canvas');
+      c.width = video.videoWidth; c.height = video.videoHeight;
+      c.getContext('2d').drawImage(video, 0, 0);
+      root.querySelector('.qcam-flash').classList.add('on');
+      navigator.vibrate?.(15);
+      c.toBlob((b) => close(b), 'image/jpeg', 0.9);
+    };
+  });
+}
+
+// Visages 1 à 5 (plus rapide à remplir qu'une échelle chiffrée) ; onPick(valeur) à chaque choix.
+export const FACES = {
+  mood: ['😣', '😕', '😐', '🙂', '😄'],
+  energy: ['🪫', '😴', '😐', '💪', '⚡'],
+  stress: ['😌', '🙂', '😐', '😬', '🤯'],
+  sleepQuality: ['😫', '😕', '😐', '🙂', '😴'],
+};
+export const FACE_LABELS = {
+  mood: ['Très bas', 'Bas', 'Neutre', 'Bon', 'Très bon'],
+  energy: ['Épuisé', 'Fatigué', 'Moyen', 'En forme', 'Plein'],
+  stress: ['Zen', 'Calme', 'Moyen', 'Tendu', 'Très tendu'],
+  sleepQuality: ['Très mal', 'Mal', 'Moyen', 'Bien', 'Très bien'],
+};
+export function faces(field, value) {
+  return `<div class="faces" data-faces="${field}">${FACES[field].map((f, i) => `<button type="button" class="${value === i + 1 ? 'on' : ''}" data-v="${i + 1}" aria-label="${FACE_LABELS[field][i]}"><span>${f}</span><small>${FACE_LABELS[field][i]}</small></button>`).join('')}</div>`;
+}
+export function bindFaces(el, onPick) {
+  $$('[data-faces]', el).forEach((box) => box.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    $$('button', box).forEach((x) => x.classList.toggle('on', x === b));
+    b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop');
+    navigator.vibrate?.(10);
+    onPick(box.dataset.faces, Number(b.dataset.v));
+  }));
+}
+
+// Appui court / appui long sur un même bouton (ex. eau : +25 cL / −25 cL).
+export function onTapHold(btn, tap, hold, ms = 500) {
+  let t = null, held = false;
+  const start = () => { held = false; t = setTimeout(() => { held = true; navigator.vibrate?.(30); hold(); }, ms); };
+  const cancel = () => clearTimeout(t);
+  btn.addEventListener('pointerdown', start);
+  btn.addEventListener('pointerup', cancel);
+  btn.addEventListener('pointerleave', cancel);
+  btn.addEventListener('pointercancel', cancel);
+  btn.addEventListener('contextmenu', (e) => e.preventDefault());
+  btn.addEventListener('click', (e) => { if (held) { e.preventDefault(); held = false; return; } tap(); });
+}
+
+// Durées lisibles : 95 → « 1 h 35 », 40 → « 40 min ».
+export function fmtMin(min) {
+  if (min == null || Number.isNaN(min)) return '—';
+  const m = Math.round(min);
+  return m >= 60 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')}` : `${m} min`;
+}
+
+// Nombre qui « monte » jusqu'à sa valeur (petite récompense visuelle).
+export function countUp(el, to, ms = 700) {
+  if (!el || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  const t0 = performance.now();
+  const step = (t) => {
+    const k = Math.min(1, (t - t0) / ms);
+    el.textContent = Math.round(to * (1 - (1 - k) ** 3));
+    if (k < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
 }
 
 export const DOMAIN = {
@@ -139,7 +258,7 @@ export function rings(scores, global) {
   });
   return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" role="img" aria-label="Score global ${global ?? 'inconnu'} sur 100">${out.join('')}
     <text x="50%" y="49%" text-anchor="middle" class="ring-num">${global ?? '–'}</text>
-    <text x="50%" y="63%" text-anchor="middle" class="ring-sub">score santé</text></svg>`;
+    <text x="50%" y="63%" text-anchor="middle" class="ring-sub">hygiène de vie</text></svg>`;
 }
 
 export function donut(value, max, { size = 120, color = 'var(--c-food)', label = '', sub = '', overColor = 'var(--bad)' } = {}) {
@@ -153,7 +272,8 @@ export function donut(value, max, { size = 120, color = 'var(--c-food)', label =
 }
 
 // Barres simples (une série) ; toucher une barre affiche la valeur dans .tip de la carte.
-export function barChart(points, { ref, unit = '', digits = 0, color = 'var(--primary)' } = {}) {
+export function barChart(points, { ref, unit = '', digits = 0, color = 'var(--primary)', type = 'bar', fmtV = null } = {}) {
+  const show = (v) => (fmtV ? fmtV(v) : fmt(v, digits) + (unit ? ' ' + unit : ''));
   const W = 320, H = 130, pad = 20, n = points.length;
   const max = Math.max(ref || 0, ...points.map((p) => p.v || 0)) * 1.15 || 1;
   const bw = (W - 8) / n;
@@ -161,8 +281,10 @@ export function barChart(points, { ref, unit = '', digits = 0, color = 'var(--pr
   const bars = points.map((p, i) => {
     const x = 4 + i * bw, has = p.v != null;
     const h = has ? Math.max(3, H - pad - y(p.v)) : 3;
-    const tip = `${p.label} : ${has ? fmt(p.v, digits) + ' ' + unit : 'pas de données'}`;
-    return `<rect x="${x + 3}" y="${has ? y(p.v) : H - pad - 3}" width="${bw - 6}" height="${h}" rx="4" fill="${has ? color : 'var(--line)'}"/>
+    const tip = `${p.label} : ${has ? show(p.v) : 'pas de données'}`;
+    if (type === 'line') return `${has ? `<circle cx="${x + bw / 2}" cy="${y(p.v)}" r="3.5" fill="${color}" stroke="var(--card)" stroke-width="2"/>` : ''}<rect class="hit" x="${x}" y="0" width="${bw}" height="${H}" data-tip="${esc(tip)}"><title>${esc(tip)}</title></rect>
+      ${n <= 7 || i % 2 === (n - 1) % 2 ? `<text x="${x + bw / 2}" y="${H - 5}" text-anchor="middle">${esc(p.short)}</text>` : ''}`;
+    return `<rect class="bar" style="animation-delay:${i * 25}ms" x="${x + 3}" y="${has ? y(p.v) : H - pad - 3}" width="${bw - 6}" height="${h}" rx="4" fill="${has ? color : 'var(--line)'}"/>
       <rect class="hit" x="${x}" y="0" width="${bw}" height="${H}" data-tip="${esc(tip)}"><title>${esc(tip)}</title></rect>
       ${n <= 7 || i % 2 === (n - 1) % 2 ? `<text x="${x + bw / 2}" y="${H - 5}" text-anchor="middle">${esc(p.short)}</text>` : ''}`;
   });
@@ -171,8 +293,9 @@ export function barChart(points, { ref, unit = '', digits = 0, color = 'var(--pr
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img">
     <line class="grid" x1="0" x2="${W}" y1="${H - pad}" y2="${H - pad}"/>
     ${ref ? `<line class="ref" x1="0" x2="${W}" y1="${y(ref)}" y2="${y(ref)}"/><text x="6" y="${y(ref) - 4}">objectif ${fmt(ref, digits)}</text>` : ''}
+    ${type === 'line' ? (() => { const pts = points.map((p, i) => (p.v != null ? `${4 + i * bw + bw / 2},${y(p.v)}` : null)).filter(Boolean); return pts.length > 1 ? `<path d="M${pts.join(' L')} L${pts.at(-1).split(',')[0]},${H - pad} L${pts[0].split(',')[0]},${H - pad} Z" fill="${color}" opacity=".12"/><polyline class="draw" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" points="${pts.join(' ')}"/>` : ''; })() : ''}
     ${bars.join('')}
-    ${last ? `<text class="val" x="${4 + li * bw + bw / 2}" y="${y(last.v) - 5}" text-anchor="middle">${fmt(last.v, digits)}</text>` : ''}
+    ${last ? `<text class="val" x="${4 + li * bw + bw / 2}" y="${y(last.v) - 7}" text-anchor="middle">${esc(fmtV ? fmtV(last.v) : fmt(last.v, digits))}</text>` : ''}
   </svg><div class="tip">Touche une barre pour voir la valeur</div>`;
 }
 
@@ -197,4 +320,32 @@ export function lineChart(series) {
       ${s.pts.filter((p) => p.d % 365 === 0).map((p) => `<circle cx="${x(p.d)}" cy="${y(p.w)}" r="12" fill="transparent" data-tip="${esc(`${s.name} — ${p.d === 0 ? "aujourd'hui" : (p.d / 365) + ' an(s)'} : ${fmt(p.w, 1)} kg`)}"/>`).join('')}`;
     }).join('')}
   </svg><div class="tip">Touche un point pour voir la valeur</div>`;
+}
+
+// Courbes datées (ex. poids réel vs estimé) : series = [{ name, color, pts: [{ t: ms, v }], dashed }].
+export function timeChart(series, { unit = '', digits = 1 } = {}) {
+  const W = 320, H = 150, padL = 34, padB = 20, padT = 10, padR = 10;
+  const all = series.flatMap((s) => s.pts);
+  if (all.length < 2) return '';
+  let lo = Math.min(...all.map((p) => p.v)), hi = Math.max(...all.map((p) => p.v));
+  if (hi - lo < 1) { lo -= 0.5; hi += 0.5; }
+  const t0 = Math.min(...all.map((p) => p.t)), t1 = Math.max(...all.map((p) => p.t)) || t0 + 1;
+  const x = (t) => padL + ((t - t0) / (t1 - t0 || 1)) * (W - padL - padR);
+  const y = (v) => padT + (1 - (v - lo) / (hi - lo)) * (H - padT - padB);
+  const ticks = [lo, (lo + hi) / 2, hi];
+  const dates = [t0, (t0 + t1) / 2, t1];
+  return `<div class="legend">${series.map((s) => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join('')}</div>
+  <svg class="chart" viewBox="0 0 ${W} ${H}" role="img">
+    ${ticks.map((t) => `<line class="grid" x1="${padL}" x2="${W - padR}" y1="${y(t)}" y2="${y(t)}"/><text x="${padL - 5}" y="${y(t) + 3}" text-anchor="end">${fmt(t, digits)}</text>`).join('')}
+    ${dates.map((d, i) => `<text x="${x(d)}" y="${H - 5}" text-anchor="${['start', 'middle', 'end'][i]}">${new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</text>`).join('')}
+    ${series.map((s) => `<polyline class="draw" fill="none" stroke="${s.color}" stroke-width="2.5" ${s.dashed ? 'stroke-dasharray="5 4"' : ''} stroke-linejoin="round" stroke-linecap="round" points="${s.pts.map((p) => `${x(p.t)},${y(p.v)}`).join(' ')}"/>
+      ${s.dots ? s.pts.map((p) => `<circle cx="${x(p.t)}" cy="${y(p.v)}" r="4" fill="${s.color}" stroke="var(--card)" stroke-width="2"/><circle cx="${x(p.t)}" cy="${y(p.v)}" r="12" fill="transparent" data-tip="${esc(`${s.name} — ${new Date(p.t).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} : ${fmt(p.v, digits)} ${unit}`)}"/>`).join('') : ''}`).join('')}
+  </svg><div class="tip">Touche un point pour voir la valeur</div>`;
+}
+
+// Libère la caméra gardée ouverte (avant le scanner de code-barres, qui ouvre son propre flux).
+export function releaseCamera() {
+  clearTimeout(camStop);
+  camStream?.getTracks().forEach((t) => t.stop());
+  camStream = null;
 }

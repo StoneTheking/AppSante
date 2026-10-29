@@ -39,7 +39,7 @@ const num = { anyOf: [{ type: 'number' }, { type: 'null' }] };
 const PLATE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['is_food', 'title', 'items', 'nutrients', 'nova', 'quality', 'verdict', 'comment', 'advice', 'confidence'],
+  required: ['is_food', 'title', 'items', 'nutrients', 'nova', 'quality', 'verdict', 'comment', 'advice', 'confidence', 'alcohol_drinks'],
   properties: {
     is_food: { type: 'boolean' },
     title: { type: 'string', description: 'Nom court du repas en français' },
@@ -74,6 +74,7 @@ const PLATE_SCHEMA = {
     comment: { type: 'string', description: 'Pourquoi ce repas est bon ou non pour cette personne (2-3 phrases)' },
     advice: { type: 'string', description: 'Conseil concret pour améliorer ce repas ou le prochain' },
     confidence: { type: 'string', enum: ['haute', 'moyenne', 'faible'] },
+    alcohol_drinks: { type: 'number', description: 'Nombre de verres standard d’alcool visibles ou inclus (1 verre = 10 g d’alcool pur : 25 cL de bière à 5 %, 10 cL de vin, 3 cL d’alcool fort). 0 si aucun.' },
   },
 };
 
@@ -277,6 +278,35 @@ export async function planWeek({ apiKey, model }, personContext, { days, people 
     tips: plan.tips,
     days: plan.days.map((d, i) => ({ ...d, date: days[i]?.date, label: days[i]?.label || d.label })),
   };
+}
+
+// Recette détaillée d'un plat (menus, idées, plats enregistrés).
+const RECIPE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['name', 'servings', 'prep', 'kcal', 'protein', 'ingredients', 'steps', 'tip'],
+  properties: {
+    name: { type: 'string' },
+    servings: { type: 'integer' },
+    prep: { type: 'number', description: 'minutes au total' },
+    kcal: { type: 'number', description: 'par portion' },
+    protein: { type: 'number', description: 'g par portion' },
+    ingredients: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['name', 'qty', 'unit', 'aisle'], properties: { name: { type: 'string' }, qty: { type: 'number' }, unit: { type: 'string', enum: ['g', 'mL', 'pièce', 'boîte', 'portion', 'c. à soupe'] }, aisle: { type: 'string', enum: AISLES } } } },
+    steps: { type: 'array', items: { type: 'string' }, description: '4 à 8 étapes courtes et précises' },
+    tip: { type: 'string', description: 'Astuce santé ou variante (une phrase)' },
+  },
+};
+export async function recipe({ apiKey, model }, dish, { people = 1, context = '' } = {}) {
+  const c = await client(apiKey);
+  const resp = await c.beta.messages.create({
+    model,
+    max_tokens: 4000,
+    ...fallbackParams(model),
+    output_config: { effort: 'low', format: { type: 'json_schema', schema: RECIPE_SCHEMA } },
+    system: 'Tu es cuisinier et diététicien. Tu donnes des recettes simples, de saison, fidèles au plat demandé, avec des quantités crues réalistes. Respecte le régime et les allergies indiqués.',
+    messages: [{ role: 'user', content: `Recette de : « ${dish} » pour ${people} personne(s).${context ? `\nContexte : ${context}` : ''}` }],
+  });
+  return parseJson(resp);
 }
 
 const RECEIPT_CATEGORIES = ['Fruits & légumes', 'Viande & poisson', 'Crèmerie & œufs', 'Féculents & céréales', 'Légumineuses', 'Épicerie salée', 'Snacks sucrés', 'Boissons sucrées', 'Boissons', 'Alcool', 'Plats préparés', 'Surgelés', 'Boulangerie', 'Non alimentaire'];

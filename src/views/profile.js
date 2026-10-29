@@ -9,7 +9,7 @@ import * as E from '../env.js';
 import * as F from '../family.js';
 import { applyTheme } from '../theme.js';
 import { openTastePicker, tasteSummary } from './tastes.js';
-import { connectCalendar } from './sport.js';
+import { connectCalendar, openMySports } from './sport.js';
 import { icon, esc, toast, sheet, srcLinks, $, $$ } from '../ui.js';
 import { loadDemo } from './onboarding.js';
 
@@ -51,7 +51,7 @@ export function render(view, ctx) {
       <label class="lbl">Objectif</label>${sel('goal', { perdre: 'Perdre du poids', maintenir: 'Rester en forme', prendre: 'Prendre du muscle' })}
       <label class="lbl">Niveau d'activité habituel</label>${sel('activityLevel', { sedentaire: 'Sédentaire', leger: 'Légèrement actif', modere: 'Modérément actif (3-5 séances/sem)', actif: 'Actif (sport quotidien)', tres_actif: 'Très actif' })}
       <label class="lbl">Régime</label>${sel('diet', { omnivore: 'Omnivore', pescetarien: 'Pescétarien', vegetarien: 'Végétarien', vegan: 'Végan' })}
-      <label class="lbl">Sport préféré</label>${inp('preferredSport', 'text', 'placeholder="ex. course, natation, padel"')}
+      <button class="btn ghost block" id="my-sports" style="margin-top:12px">${icon('dumbbell', 18)} Mes sports, niveau et matériel</button>
       <div class="grid2">
         <div><label class="lbl">Réveil</label>${inp('wakeTime', 'time')}</div>
         <div><label class="lbl">Coucher visé</label>${inp('bedTime', 'time')}</div>
@@ -109,7 +109,7 @@ export function render(view, ctx) {
     <div class="section-title">Apparence</div>
     <div class="card">
       <div class="seg">${[['dark', 'Sombre'], ['light', 'Clair'], ['auto', 'Système']].map(([v, l]) => `<button data-theme-pick="${v}" class="${st.settings.theme === v ? 'on' : ''}">${l}</button>`).join('')}</div>
-      ${N.isNative ? `<button class="btn ghost block" id="pin-widget" style="margin-top:10px">${icon('moon', 18)} Ajouter le widget « Je vais dormir » à l’écran d’accueil</button>` : '<p class="tiny muted" style="margin:10px 0 0">Raccourci : appui long sur l’icône AppSanté → « Je vais dormir ».</p>'}
+      ${N.isNative ? `<button class="btn ghost block" id="pin-widget" style="margin-top:10px">${icon('moon', 18)} Ajouter le widget « Je vais dormir »</button><button class="btn ghost block" id="pin-photo" style="margin-top:8px">${icon('camera', 18)} Ajouter le widget « Photo du repas »</button>` : '<p class="tiny muted" style="margin:10px 0 0">Raccourci : appui long sur l’icône Diana Health → « Je vais dormir ».</p>'}
     </div>
 
     <div class="section-title">Intelligence artificielle</div>
@@ -132,7 +132,7 @@ export function render(view, ctx) {
         <ul class="small" style="padding-left:18px">${Object.values(S.SOURCES).map((s) => `<li style="margin:6px 0"><a href="${s.u}" target="_blank" rel="noopener">${esc(s.t)}</a></li>`).join('')}</ul>
       </details>
     </div>
-    <p class="tiny muted" style="text-align:center">AppSanté n’est pas un dispositif médical et ne remplace pas l’avis d’un professionnel de santé.<br><a href="privacy.html" target="_blank">Confidentialité</a></p>`;
+    <p class="tiny muted" style="text-align:center">Diana Health n’est pas un dispositif médical et ne remplace pas l’avis d’un professionnel de santé.<br><a href="privacy.html" target="_blank">Confidentialité</a></p>`;
 
   if (N.isNative) {
     N.appVersion().then((v) => { const el = $('#ver', view); if (el) el.textContent = `Version ${v}`; });
@@ -175,12 +175,14 @@ export function render(view, ctx) {
   }));
   $$('[data-work]', view).forEach((el) => (el.onchange = () => { store.update((s) => { s.profile.work[el.dataset.work] = el.dataset.work === 'commute' ? Number(el.value) : el.value; }); toast('Horaires enregistrés', 1000); }));
   $$('[data-spref]', view).forEach((b) => (b.onclick = () => { store.update((s) => { s.profile.sportPref = b.dataset.spref; }); render(view, ctx); }));
+  $('#my-sports', view)?.addEventListener('click', () => openMySports(() => render(view, ctx)));
   $('#cal-connect', view)?.addEventListener('click', async () => { if (await connectCalendar()) render(view, ctx); });
   $('#tastes', view).onclick = () => openTastePicker(() => render(view, ctx));
   $$('[data-member-del]', view).forEach((b) => (b.onclick = () => { store.update((s) => (s.household = s.household.filter((m) => m.id !== b.dataset.memberDel))); render(view, ctx); }));
   $('#add-member', view).onclick = () => openMember(() => render(view, ctx));
   $$('[data-theme-pick]', view).forEach((b) => (b.onclick = () => { store.update((s) => (s.settings.theme = b.dataset.themePick)); applyTheme(); render(view, ctx); }));
-  $('#pin-widget', view)?.addEventListener('click', async () => { const r = await N.pinSleepWidget(); toast(r ? 'Confirme l’ajout du widget' : 'Appui long sur l’écran d’accueil → Widgets → AppSanté'); });
+  $('#pin-photo', view)?.addEventListener('click', async () => { const r = await N.pinPhotoWidget(); toast(r ? 'Confirme l’ajout du widget' : 'Appui long sur l’écran d’accueil → Widgets → Diana Health'); });
+  $('#pin-widget', view)?.addEventListener('click', async () => { const r = await N.pinSleepWidget(); toast(r ? 'Confirme l’ajout du widget' : 'Appui long sur l’écran d’accueil → Widgets → Diana Health'); });
   const setLoc = async (loc) => {
     store.update((s) => { s.location = loc; s.env = null; });
     toast('Lieu enregistré');
@@ -203,7 +205,7 @@ export function render(view, ctx) {
   $('#exp', view).onclick = async () => {
     const json = store.exportJSON();
     const file = new File([json], `appsante-${store.today()}.json`, { type: 'application/json' });
-    if (navigator.canShare?.({ files: [file] })) return navigator.share({ files: [file], title: 'Sauvegarde AppSanté' }).catch(() => {});
+    if (navigator.canShare?.({ files: [file] })) return navigator.share({ files: [file], title: 'Sauvegarde Diana Health' }).catch(() => {});
     const a = document.createElement('a');
     a.href = URL.createObjectURL(file);
     a.download = file.name;

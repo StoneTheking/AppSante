@@ -3,6 +3,7 @@ import * as S from './science.js';
 import { suggestMeals } from './meals.js';
 import { bestOutdoorHour, envInsights, aqiLabel } from './env.js';
 import { busyBlocks, suggestSlot, usualHour, DEFAULT_WORK } from './schedule.js';
+import { weekPlan, activity as sportActivity } from './sport.js';
 
 const avg = (xs) => {
   const v = xs.filter((x) => x != null && !Number.isNaN(x));
@@ -50,7 +51,7 @@ export function summarize({ profile, days, meals, weights, env, household = [], 
     screenMin: avg(week.map((k) => d(k).screenMin)),
     socialMin: avg(week.map((k) => d(k).socialMin)),
     unlocks: avg(week.map((k) => d(k).unlocks)),
-    phoneInBedDays: week.filter((k) => d(k).phoneInBed).length,
+    phoneInBedDays: week.filter((k) => d(k).phoneInBed ?? d(k).phoneInBedGuess).length,
     mood: avg(week.map((k) => d(k).mood)),
     energy: avg(week.map((k) => d(k).energy)),
     stress: avg(week.map((k) => d(k).stress)),
@@ -67,7 +68,7 @@ export function summarize({ profile, days, meals, weights, env, household = [], 
     humeur: S.moodScore({ mood: w.mood, energy: w.energy, stress: w.stress }),
     numerique: S.digitalScore({ screenMin: w.screenMin, socialMin: w.socialMin, phoneInBed: w.phoneInBedDays >= 3, unlocks: w.unlocks }),
   };
-  const weights_ = { sommeil: 0.25, activite: 0.25, alimentation: 0.25, humeur: 0.15, numerique: 0.1 };
+  const weights_ = SCORE_WEIGHTS;
   let num = 0, den = 0;
   for (const [k, v] of Object.entries(scores)) if (v != null) { num += v * weights_[k]; den += weights_[k]; }
   scores.global = den ? Math.round(num / den) : null;
@@ -97,7 +98,9 @@ export function summarize({ profile, days, meals, weights, env, household = [], 
   // les données air/météo de plus de 6 h sont ignorées
   const envFresh = env && Date.now() - new Date(env.fetched) < 6 * 3600e3 ? env : null;
   const busy = busyBlocks(new Date(), profile.work || DEFAULT_WORK, calEvents);
-  return { busy, usualHour: usualHour(workouts), env: envFresh, household, stools, lateMeals, t, p, body, today, todayKey, lastNight, totToday, w, scores, dietAvg, kcalAvg, dietDaysCount: dietDays.length, ctx };
+  const sportToday = weekPlan(profile, workouts, new Date(), days).find((x) => x.today) || null;
+  const workoutsToday = workouts.filter((x) => x.date === todayKey);
+  return { busy, usualHour: usualHour(workouts), env: envFresh, mealsToday: mealsOf(todayKey), sportToday, workoutsToday, household, stools, lateMeals, t, p, body, today, todayKey, lastNight, totToday, w, scores, dietAvg, kcalAvg, dietDaysCount: dietDays.length, ctx };
 }
 
 // ---------- Activité physique recommandée ----------
@@ -139,62 +142,106 @@ export function recommendActivity(sm, profile) {
 }
 
 // ---------- Plan horaire de la journée ----------
+// Le plan se recale sur ce qui a déjà été fait : repas enregistrés (heure et calories), grignotages, séance du jour.
+const SLOT_NAME = { 'petit-dej': 'Petit-déjeuner', dejeuner: 'Déjeuner', collation: 'Collation', diner: 'Dîner' };
 export function dailyPlan(sm, profile) {
   const wake = toMin(profile.wakeTime || '07:00');
   let bed = toMin(profile.bedTime || '23:00');
   if (bed <= wake) bed += 1440;
   const items = [];
-  const add = (min, icon, title, text, src = []) => items.push({ min, time: hm(min), icon, title, text, src });
+  const add = (min, icon, title, text, src = [], done = false) => items.push({ min, time: hm(min), icon, title, text, src, done });
   const { ctx, t } = sm;
+  const eaten = (sm.mealsToday || []).filter((m) => !m.snack);
+  const snacks = (sm.mealsToday || []).filter((m) => m.snack);
+  const logged = (slot) => eaten.filter((m) => m.slot === slot).sort((a, b) => a.time.localeCompare(b.time));
+  const kcalOf = (ms) => Math.round(ms.reduce((a, m) => a + (m.nutrients?.kcal || 0), 0));
+  const tot = sm.totToday || { kcal: 0, protein: 0 };
+  const leftKcal = Math.max(0, t.kcal - tot.kcal), leftProt = Math.max(0, t.protein - tot.protein);
+  const SHARE = { 'petit-dej': 0.25, dejeuner: 0.35, collation: 0.1, diner: 0.3 };
+  const pending = Object.keys(SHARE).filter((k) => !logged(k).length);
+  const shareLeft = pending.reduce((a, k) => a + SHARE[k], 0) || 1;
+  const target = (slot) => Math.round((leftKcal * SHARE[slot]) / shareLeft / 10) * 10;
+  const mealDone = (slot) => {
+    const ms = logged(slot);
+    const k = kcalOf(ms);
+    const p = Math.round(ms.reduce((a, m) => a + (m.nutrients?.protein || 0), 0));
+    add(toMin(ms[0].time), SLOT_NAME[slot] === 'Collation' ? '🍎' : slot === 'petit-dej' ? '🍳' : slot === 'diner' ? '🍽️' : '🥗', `${SLOT_NAME[slot]} · ${k} kcal`, `${ms.map((m) => m.title).join(', ')} — ${p} g de protéines.`, [], true);
+    return toMin(ms.at(-1).time);
+  };
+  const budget = (slot) => (tot.kcal > 0 ? ` Il te reste ~${Math.round(leftKcal)} kcal et ${Math.round(leftProt)} g de protéines aujourd’hui : vise ~${target(slot)} kcal à ce repas.` : '');
 
   const sunrise = sm.env?.sunrise ? Number(sm.env.sunrise.slice(0, 2)) * 60 + Number(sm.env.sunrise.slice(3)) : null;
   add(sunrise && sunrise > wake && sunrise < wake + 180 ? sunrise : wake, '☀️', sunrise && sunrise > wake + 20 ? `Lumière du jour (lever du soleil ${sm.env.sunrise})` : 'Lumière du jour', ctx.lowMood
     ? 'Sors 15–30 min à la lumière naturelle dès le réveil : la lumière du matin stabilise l’horloge biologique et est associée à une meilleure humeur.'
     : 'Ouvre les volets / sors 10–15 min : la lumière du matin cale ton horloge interne et améliore le sommeil du soir.', ['burns2023']);
-  add(wake + 45, '🍳', 'Petit-déjeuner protéiné', `Vise ~${Math.round(t.protein * 0.25)} g de protéines et des fibres. Manger plus tôt dans la journée améliore la sensibilité à l’insuline.`, ['sutton2018']);
+
+  // Petit-déjeuner
+  let breakfast = wake + 45;
+  if (logged('petit-dej').length) breakfast = mealDone('petit-dej');
+  else add(breakfast, '🍳', 'Petit-déjeuner protéiné', `Vise ~${Math.round(t.protein * 0.25)} g de protéines et des fibres. Manger plus tôt dans la journée améliore la sensibilité à l’insuline.`, ['sutton2018']);
 
   const caffeineCut = bed - 8 * 60;
   add(caffeineCut, '☕', 'Dernier café', 'Après cette heure, la caféine réduit encore la durée et la qualité du sommeil (≈ 8 h avant le coucher).', ['gardiner2023']);
 
-  const lunch = Math.max(wake + 4.5 * 60, 12 * 60 + 15);
-  add(lunch, '🥗', 'Déjeuner — repas principal', 'Moitié légumes, un quart protéines, un quart féculents complets. Concentrer l’apport calorique le midi plutôt que le soir favorise la perte de poids.', ['garaulet2013']);
+  // Déjeuner : au moins ~4 h après le petit-déjeuner réel
+  let lunch = Math.max(wake + 4.5 * 60, 12 * 60 + 15, breakfast + 4 * 60);
+  if (logged('dejeuner').length) lunch = mealDone('dejeuner');
+  else add(lunch, '🥗', 'Déjeuner — repas principal', `Moitié légumes, un quart protéines, un quart féculents complets. Concentrer l’apport calorique le midi plutôt que le soir favorise la perte de poids.${budget('dejeuner')}`, ['garaulet2013']);
   if ((sm.w.screenMin ?? 0) > 180 || ['sedentaire', 'leger'].includes(profile.activityLevel)) add(wake + 150, '⚡', 'Snack d’exercice (2 min)', 'Monte des escaliers ou marche très vite 1–2 min, à refaire 3× dans la journée. Et lève-toi 5 min toutes les 30 min assis.', ['stamatakis2022', 'duran2023']);
   add(lunch + 30, '🚶', 'Marche digestive 10–15 min', 'Une marche légère après le repas abaisse nettement le pic de glycémie.', ['buffey2022']);
 
   if (ctx.poorSleep && sm.lastNight != null) add(Math.min(lunch + 60, 15 * 60), '😴', 'Micro-sieste (10–20 min)', 'Nuit courte : une sieste brève avant 15 h restaure la vigilance sans perturber la nuit suivante.', ['watson2015']);
 
+  // Sport : séance déjà faite, sinon séance prévue dans la semaine type (ou recommandation du jour)
   const act = recommendActivity(sm, profile);
-  // créneau : fin d’après-midi (pic de performance), au moins 2 h avant le coucher pour l’intense
-  let actStart = Math.min(Math.max(wake + 9 * 60, 17 * 60 + 30), bed - 2 * 60 - act.duration);
-  if (ctx.lowMood) actStart = Math.min(actStart, 16 * 60 + 30); // profiter de la lumière du jour
+  const planned = sm.sportToday?.type && !sm.sportToday.matches ? sm.sportToday : null;
+  const pType = planned && !(ctx.poorSleep && planned.intensity === 'intense') ? planned : null;
+  const sess = pType ? { title: sportActivity(pType.type).label, duration: pType.minutes, intensity: pType.intensity === 'intense' ? 'soutenue' : 'modérée' } : act;
+  let actStart = Math.min(Math.max(wake + 9 * 60, 17 * 60 + 30), bed - 2 * 60 - sess.duration);
+  if (ctx.lowMood) actStart = Math.min(actStart, 16 * 60 + 30);
   const env = sm.env;
-  // créneau libre selon travail, agenda, préférence, habitude, air et heure du coucher
-  const slot = suggestSlot({ duration: act.duration, intensity: act.intensity === 'soutenue' ? 'intense' : 'moderee', wake: profile.wakeTime, bed: profile.bedTime, busy: sm.busy || [], pref: profile.sportPref || 'auto', usualHour: sm.usualHour, env });
-  const slotChosen = !!slot && ((sm.busy || []).length > 0 || (profile.sportPref && profile.sportPref !== 'auto') || sm.usualHour != null);
-  if (slotChosen) actStart = slot.start;
-  let actText = act.why.join(' ');
-  const actSrc = [...act.src];
-  if (env) {
-    if (env.aqi > 60 || env.tMax >= 33) {
-      actText += ` Aujourd’hui : ${env.aqi > 60 ? `air ${aqiLabel(env.aqi).label.toLowerCase()} (indice ${Math.round(env.aqi)})` : `forte chaleur (${Math.round(env.tMax)} °C)`}, fais ta séance en intérieur.`;
-      actSrc.push(env.aqi > 60 ? 'sinharay2018' : 'ebi2021');
-    } else {
-      const best = bestOutdoorHour(env, Math.max(wake + 60, 7 * 60), bed - 150 - act.duration);
-      if (!slotChosen && best && Math.abs(best.hour * 60 - actStart) > 60 && (best.aqi ?? 0) + 15 < (env.hours.find((h) => h.hour === Math.floor(actStart / 60))?.aqi ?? 0)) {
-        actStart = best.hour * 60;
-        actText += ` Créneau choisi pour la meilleure qualité de l’air (indice ${Math.round(best.aqi)}).`;
-        actSrc.push('who2021air');
-      } else actText += ` Air ${aqiLabel(env.aqi).label.toLowerCase()} (indice ${Math.round(env.aqi)}), ${Math.round(env.temp)} °C : bouger dehors est recommandé, de préférence dans un parc.`;
-      actSrc.push('andersen2015');
+  const doneW = (sm.workoutsToday || []).sort((a, b) => a.start.localeCompare(b.start));
+  if (doneW.length) {
+    const d0 = new Date(doneW[0].start);
+    actStart = d0.getHours() * 60 + d0.getMinutes();
+    add(actStart, '🏃', `Séance faite · ${doneW.map((w) => `${sportActivity(w.type).label.split(' ')[0]} ${w.minutes} min`).join(', ')}`, 'Bravo 👏 Pense à boire et à prendre des protéines au repas suivant (≈ 20–40 g) pour la récupération.', ['morton2018'], true);
+  } else {
+    const slot = suggestSlot({ duration: sess.duration, intensity: sess.intensity === 'soutenue' ? 'intense' : 'moderee', wake: profile.wakeTime, bed: profile.bedTime, busy: sm.busy || [], pref: profile.sportPref || 'auto', usualHour: sm.usualHour, env });
+    const slotChosen = !!slot && ((sm.busy || []).length > 0 || (profile.sportPref && profile.sportPref !== 'auto') || sm.usualHour != null);
+    if (slotChosen) actStart = slot.start;
+    let actText = pType ? `Séance prévue dans ta semaine type. ${act.why.slice(0, 1).join(' ')}` : act.why.join(' ');
+    const actSrc = [...act.src];
+    if (env) {
+      if (env.aqi > 60 || env.tMax >= 33) {
+        actText += ` Aujourd’hui : ${env.aqi > 60 ? `air ${aqiLabel(env.aqi).label.toLowerCase()} (indice ${Math.round(env.aqi)})` : `forte chaleur (${Math.round(env.tMax)} °C)`}, fais ta séance en intérieur.`;
+        actSrc.push(env.aqi > 60 ? 'sinharay2018' : 'ebi2021');
+      } else {
+        const best = bestOutdoorHour(env, Math.max(wake + 60, 7 * 60), bed - 150 - sess.duration);
+        if (!slotChosen && best && Math.abs(best.hour * 60 - actStart) > 60 && (best.aqi ?? 0) + 15 < (env.hours.find((h) => h.hour === Math.floor(actStart / 60))?.aqi ?? 0)) {
+          actStart = best.hour * 60;
+          actText += ` Créneau choisi pour la meilleure qualité de l’air (indice ${Math.round(best.aqi)}).`;
+          actSrc.push('who2021air');
+        }
+        actSrc.push('andersen2015');
+      }
     }
+    if (slotChosen && slot.why.length) { actText = `Créneau choisi ${slot.why.join(', ')}. ` + actText; actSrc.push('belanger2011', 'knaier2021', 'bruggisser2023'); }
+    // pas d'effort juste après un gros repas
+    const lastBig = eaten.filter((m) => (m.nutrients?.kcal || 0) > 500).map((m) => toMin(m.time)).filter((m) => m <= actStart).at(-1);
+    if (lastBig != null && actStart - lastBig < 90 && sess.intensity !== 'légère') { actStart = lastBig + 90; actText += ' Décalé pour laisser ~1 h 30 de digestion après ton repas.'; }
+    add(actStart, '🏃', `${sess.title} (${sess.duration} min)`, actText, actSrc);
   }
-  if (slotChosen && slot.why.length) { actText = `Créneau choisi ${slot.why.join(', ')}. ` + actText; actSrc.push('belanger2011', 'knaier2021', 'bruggisser2023'); }
-  add(actStart, '🏃', `${act.title} (${act.duration} min)`, actText, actSrc);
 
-  if (ctx.workout || profile.goal === 'prendre' || actStart < 18 * 60) add(Math.max(lunch + 3.5 * 60, actStart - 75), '🍎', 'Collation', 'Fruit + source de protéines (yaourt, amandes) pour arriver en forme à la séance et éviter les fringales.', []);
+  // Collation : seulement si utile et si le déjeuner n'a pas été tardif
+  if (logged('collation').length) mealDone('collation');
+  else if ((ctx.workout || profile.goal === 'prendre' || actStart < 18 * 60) && lunch < 14.5 * 60) add(Math.max(lunch + 3.5 * 60, actStart - 75), '🍎', 'Collation', `Fruit + source de protéines (yaourt, amandes) pour arriver en forme à la séance et éviter les fringales.${budget('collation')}`, []);
 
-  const dinner = Math.min(Math.max(actStart + act.duration + 45, 19 * 60), bed - 3 * 60);
-  add(dinner, '🍽️', 'Dîner léger', 'Au moins 3 h avant le coucher, plus léger que le déjeuner : manger tard est associé à une moins bonne glycémie et une perte de poids plus difficile.', ['garaulet2013', 'sutton2018']);
+  const snackKcal = kcalOf(snacks);
+  if (logged('diner').length) mealDone('diner');
+  else {
+    const dinner = Math.min(Math.max(actStart + sess.duration + 45, 19 * 60, lunch + 5 * 60), bed - 3 * 60);
+    add(dinner, '🍽️', 'Dîner léger', `Au moins 3 h avant le coucher, plus léger que le déjeuner : manger tard est associé à une moins bonne glycémie et une perte de poids plus difficile.${snackKcal > 200 ? ` Grignotages du jour : ~${snackKcal} kcal, allège d’autant le dîner.` : ''}${budget('diner')}`, ['garaulet2013', 'sutton2018']);
+  }
 
   add(bed - 60, '📵', 'Écrans off — téléphone hors de la chambre', 'L’usage du téléphone au lit est associé à un endormissement plus tardif et un sommeil de moins bonne qualité.', ['exelmans2016']);
   add(bed - 30, '🧘', 'Routine de détente', ctx.highStress || ctx.lowMood
@@ -205,6 +252,21 @@ export function dailyPlan(sm, profile) {
   add(bed, '🌙', 'Coucher', `Même heure chaque soir (±30 min) : la régularité du sommeil prédit la mortalité mieux que sa durée. Vise ${t.sleepMin}–${t.sleepMax} h.`, ['windred2024', 'watson2015']);
 
   return items.sort((a, b) => a.min - b.min);
+}
+
+// ---------- Score d'hygiène de vie expliqué ----------
+export const SCORE_WEIGHTS = { sommeil: 0.25, activite: 0.25, alimentation: 0.25, humeur: 0.15, numerique: 0.1 };
+export const scoreWord = (v) => (v == null ? ['Pas de données', 'var(--muted)'] : v >= 80 ? ['Excellent', 'var(--good)'] : v >= 65 ? ['Bon', 'var(--good)'] : v >= 50 ? ['À améliorer', 'var(--warn)'] : ['Faible', 'var(--bad)']);
+export function scoreBreakdown(sm) {
+  const { w, t, scores } = sm;
+  const r = (x, d = 0) => (x == null ? '—' : S.round(x, d).toLocaleString('fr-FR'));
+  return [
+    { k: 'sommeil', what: w.sleepH != null ? `${r(w.sleepH, 1)} h/nuit en moyenne${w.bedVar != null ? `, coucher ±${Math.round(w.bedVar)} min` : ''}${w.sleepQ ? `, qualité ${r(w.sleepQ, 1)}/5` : ''}` : 'Utilise « Je vais dormir » le soir', how: 'Durée (7–9 h), qualité ressentie et régularité de l’heure de coucher.', tip: w.sleepH != null && w.sleepH < 7 ? 'Avance ton coucher de 20 min.' : 'Garde la même heure de coucher, week-end compris.', src: ['watson2015', 'windred2024'] },
+    { k: 'activite', what: w.steps != null || w.modMin ? `${r(w.steps)} pas/j, ${Math.round(w.modMin + 2 * w.vigMin)} min d’activité/sem, ${w.strength} séance(s) de renfo` : 'Synchronise tes pas ou note une séance', how: `Pas (objectif ${t.steps}/j), 150 min d’activité modérée par semaine, 2 séances de renforcement.`, tip: (w.steps || 0) < t.steps ? 'Ajoute une marche de 15 min après le déjeuner.' : 'Ajoute une séance de renforcement.', src: ['paluch2022', 'who2020'] },
+    { k: 'alimentation', what: sm.dietDaysCount ? `${sm.dietDaysCount} jour(s) de repas notés sur 14` : 'Photographie tes repas', how: 'Fibres, fruits & légumes, protéines, sucres, graisses saturées, sel et part d’ultra-transformés.', tip: 'Une portion de légumes en plus à chaque repas.', src: ['gbd2019', 'lane2024'] },
+    { k: 'humeur', what: w.mood != null ? `humeur ${r(w.mood, 1)}/5, énergie ${r(w.energy, 1)}/5, stress ${r(w.stress, 1)}/5` : 'Réponds à la question du jour', how: 'Moyenne de ton humeur, ton énergie et ton stress déclarés chaque jour.', tip: '15 min dehors à la lumière du jour.', src: ['noetel2024', 'burns2023'] },
+    { k: 'numerique', what: w.screenMin != null ? `${Math.floor(w.screenMin / 60)} h ${String(Math.round(w.screenMin % 60)).padStart(2, '0')} d’écran/j dont ${Math.round(w.socialMin || 0)} min de réseaux sociaux` : 'Autorise le temps d’écran', how: 'Temps d’écran, réseaux sociaux (> 30 min/j), téléphone au lit et déverrouillages.', tip: 'Téléphone hors de la chambre ce soir.', src: ['hunt2018', 'exelmans2016'] },
+  ].map((x) => ({ ...x, v: scores[x.k], weight: SCORE_WEIGHTS[x.k] }));
 }
 
 // ---------- Messages personnalisés ----------

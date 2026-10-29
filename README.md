@@ -1,4 +1,4 @@
-# AppSanté — ton coach santé personnel 📱
+# Diana Health — mesurer et améliorer ton hygiène de vie 📱
 
 Application Android native **et** application web installable, qui croise **sommeil, humeur, bien-être numérique (temps d'écran, réseaux sociaux, déverrouillages), activité physique, fréquence cardiaque, poids et alimentation** pour :
 
@@ -16,16 +16,25 @@ Application Android native **et** application web installable, qui croise **somm
 - s'adapter **à tes goûts** (aimés, détestés, cuisines, et notes ★ données à tes repas) ;
 - noter tes **grignotages en un geste** (18 en-cas courants, raison : faim, ennui, stress, écran…) avec bilan et conseils ;
 - garder un **historique des repas** (recherche, moyennes, plats fréquents) ;
-- suivre ton **transit** (échelle de Bristol) et repérer les aliments mal tolérés.
+- suivre ton **transit** (échelle de Bristol) et repérer les aliments à tester ;
+- un **score d'hygiène de vie** expliqué pilier par pilier (sommeil, activité, alimentation, humeur, écrans), avec le poids de chacun et l'action prioritaire ;
+- un **plan du jour qui se recale** sur ce que tu as vraiment mangé (heure, calories restantes, grignotages) et sur ta séance prévue (horaires de travail, agenda) ;
+- des **quêtes quotidiennes, une série et des badges** (façon Duolingo) et de petites animations de récompense ;
+- une **caméra intégrée** qui s'ouvre instantanément pour photographier un repas (choix du type de repas, alcool détecté automatiquement) ;
+- **« Mes plats »** (favoris et plats préparés à l'avance), **recettes** à la demande, **menus effaçables** jour par jour, **courses ↔ garde-manger** dans les deux sens (article coché = rangé au placard ; menus construits avec ce que tu as) ;
+- des séances qui **s'adaptent à ton ressenti** (« trop dur / bien / pas assez dur »), une durée au choix et des sports à exclure ;
+- un **poids estimé** d'après tes repas et ton activité, comparé à tes pesées (rappel toutes les 2 semaines) ;
+- des **widgets** : « Je vais dormir » (chronomètre de la nuit, arrêt au déverrouillage du téléphone, « Je me rendors ») et « Photo du repas » ;
+- un **podomètre intégré** quand Health Connect n'est pas disponible.
 
-Tout repose sur une **bibliothèque de 96 publications** (OMS, Lancet, BMJ, JAMA, NEJM, Nature…) consultable dans l'appli (Santé → Science) et dans `src/science.js`. Chaque DOI a été vérifié auprès de Crossref.
+Tout repose sur une **bibliothèque de 115 publications** (OMS, Lancet, BMJ, JAMA, NEJM, Nature…) consultable dans l'appli (Santé → Science) et dans `src/science.js`. Chaque DOI a été vérifié auprès de Crossref.
 
 ## Installer
 
 ### Application Android (recommandé)
 1. Sur ton téléphone, ouvre : **https://github.com/StoneTheking/AppSante/releases/latest/download/AppSante.apk**
 2. Ouvre le fichier téléchargé et autorise l'installation depuis Chrome.
-3. Dans l'appli : Santé → Suivi → **Autoriser Health Connect** et **Autoriser le temps d'écran** (Accès aux données d'utilisation → AppSanté).
+3. Dans l'appli : Santé → Suivi → **Autoriser Health Connect** et **Autoriser le temps d'écran** (Accès aux données d'utilisation → Diana Health).
 
 Chaque push compile un nouvel APK (GitHub Actions → Releases) qui s'installe par-dessus l'ancien sans perdre les données.
 
@@ -72,4 +81,4 @@ npx cap sync android && cd android && ./gradlew assembleRelease   # APK
 
 ## Limites
 
-AppSanté est un outil d'accompagnement, **pas un dispositif médical**. Les risques relatifs sont des ordres de grandeur issus d'études ; ils ne remplacent pas un bilan médical. L'estimation des calories par photo a une marge d'erreur de 20 à 30 %.
+Diana Health est un outil d'accompagnement, **pas un dispositif médical**. Les risques relatifs sont des ordres de grandeur issus d'études ; ils ne remplacent pas un bilan médical. L'estimation des calories par photo a une marge d'erreur de 20 à 30 %.

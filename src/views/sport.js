@@ -23,7 +23,14 @@ export function todayAdvice(sm, st) {
   if (sm.ctx.poorSleep && intensity === 'intense') { type = 'marche'; intensity = 'moderee'; minutes = 30; why.push('Nuit courte : on remplace la séance intense par une marche rapide.'); }
   if (slot?.matches) { type = 'yoga'; intensity = 'legere'; minutes = 20; why.push('Séance du jour déjà faite 👏 : mobilité ou étirements pour récupérer.'); }
   if (sm.env && (sm.env.aqi > 60 || sm.env.tMax >= 33) && ['course', 'velo', 'randonnee', 'marche'].includes(type)) why.push('Air ou chaleur défavorables : fais-la en intérieur (tapis, vélo d’appartement, salle).');
-  return { type, minutes, intensity, when: when?.time, whenText: when?.text, reco, why: [...why, ...reco.why], src: [...new Set([...reco.src, ...(when?.src || [])])], plan };
+  type = SP.substitute(type, st.profile);
+  const ad = SP.adaptation(st.sportFeedback, type);
+  if (!slot?.matches) {
+    minutes = SP.adaptedMinutes(minutes, ad);
+    if (ad.easier && intensity === 'intense') intensity = 'moderee';
+    if (ad.note) why.unshift(ad.note);
+  }
+  return { type, minutes, intensity, ad, when: when?.time, whenText: when?.text, reco, why: [...why, ...reco.why], src: [...new Set([...reco.src, ...(when?.src || [])])], plan };
 }
 
 export function render(view, ctx) {
@@ -31,7 +38,6 @@ export function render(view, ctx) {
   const st = store.get();
   const sm = summary();
   const wk = SP.weekStats(st.workouts, st.days);
-  const zones = SP.hrZones(st.profile.birthYear);
   const adv = todayAdvice(sm, st);
   const a = SP.activity(adv.type);
   const cur = st.workoutNow;
@@ -57,30 +63,20 @@ export function render(view, ctx) {
     </div>
 
     <div class="card">
-      <div class="card-head"><h2>${icon('user', 18)} Mon niveau</h2></div>
-      <div class="seg">${[['debutant', 'Débutant'], ['intermediaire', 'Intermédiaire'], ['avance', 'Avancé']].map(([v, l]) => `<button data-level="${v}" class="${level(st) === v ? 'on' : ''}">${l}</button>`).join('')}</div>
-      <div class="seg">${[['aucun', 'Sans matériel'], ['halteres', 'Haltères'], ['salle', 'Salle']].map(([v, l]) => `<button data-equip="${v}" class="${equip(st) === v ? 'on' : ''}">${l}</button>`).join('')}</div>
-    </div>
-
-    <div class="card">
       <div class="card-head"><h2>${icon('target', 18)} Conseillé aujourd’hui</h2>${adv.when ? `<span class="badge neutral">${icon('clock', 12)} ${adv.when}</span>` : ''}</div>
       <div class="row" style="flex-wrap:nowrap;gap:12px">
         <span class="icon-badge" style="width:48px;height:48px;background:color-mix(in srgb,var(--c-move) 16%,transparent);color:var(--c-move)">${icon(a.icon, 24)}</span>
         <div><div style="font-weight:750;font-size:1.1rem">${esc(a.label)}</div><div class="small muted">${adv.minutes} min · intensité ${SP.INTENSITY[adv.intensity].label.toLowerCase()} · ~${SP.kcal(adv.type, adv.intensity, adv.minutes, st.profile.weight || 70)} kcal</div></div>
       </div>
-      <div class="kpi-row" style="margin:12px 0">
-        <div class="stat"><div class="k">FC cible</div><div class="v" style="font-size:1rem">${adv.intensity === 'intense' ? `${zones.vig[0]}–${zones.vig[1]}` : `${zones.mod[0]}–${zones.mod[1]}`}<small>bpm</small></div></div>
-        <div class="stat"><div class="k">Test de la parole</div><div class="v" style="font-size:.85rem;font-weight:650">${SP.INTENSITY[adv.intensity].talk}</div></div>
-        <div class="stat"><div class="k">FC max estimée</div><div class="v" style="font-size:1rem">${zones.max}<small>bpm</small></div></div>
-      </div>
+      <div style="height:10px"></div>
       ${adv.why.slice(0, 1).map((w) => `<div class="small" style="margin:6px 0;color:var(--text-2)">• ${esc(w)}</div>`).join('')}
-      ${srcLinks([...adv.src, 'tanaka2001', 'sorensen2020', 'knaier2021', 'bruggisser2023'])}
+      ${srcLinks([...adv.src, 'sorensen2020', 'knaier2021', 'bruggisser2023', ...(adv.ad?.note ? ['foster2001', 'greig2020'] : [])])}
       ${cur ? '' : `<button class="btn block" id="guided" style="margin-top:12px">${icon('list', 18)} Voir la séance et ses exercices</button>
       <div class="grid2" style="margin-top:8px"><button class="btn ghost" id="go">${icon('zap', 18)} Chrono seul</button><button class="btn ghost" id="other">${icon('plus', 18)} Autre séance</button></div>`}
     </div>
 
     <div class="card">
-      <div class="card-head"><h2>${icon('calendar', 18)} Ta semaine type</h2><span class="tiny muted">objectif : ${esc(st.profile.goal)}</span></div>
+      <div class="card-head"><h2>${icon('calendar', 18)} Ta semaine type</h2><button class="link" id="my-sports">${icon('settings', 14)} Mes sports</button></div>
       ${adv.plan.map((d, i) => `<div class="list-item" data-day="${i}" style="cursor:pointer;grid-template-columns:76px 1fr auto;${d.today ? 'background:var(--primary-soft);border-radius:12px;padding-left:8px;padding-right:8px' : ''}">
         <b class="small">${d.day}</b>
         <div><div class="small" style="font-weight:600">${d.type ? esc(SP.activity(d.type).label) : 'Repos'}</div><div class="tiny muted">${d.type ? `${d.minutes} min · ${SP.INTENSITY[d.intensity].label.toLowerCase()}` : 'récupération'}${d.done.length ? ` · fait : ${d.done.map((w) => `${esc(SP.activity(w.type).label.split(' ')[0].toLowerCase())} ${w.minutes} min`).join(', ')}` : ''}</div></div>
@@ -113,6 +109,7 @@ export function render(view, ctx) {
       const w = SP.stopWorkout();
       toast(w ? `Séance enregistrée : ${w.minutes} min, ~${w.kcal} kcal` : 'Moins d’une minute : séance ignorée');
       render(view, ctx);
+      if (w) askFeedback(w, () => render(view, ctx));
     };
     $('#cancel', view).onclick = () => { if (confirm('Annuler la séance en cours ?')) { store.update((s) => { s.workoutNow = null; }); render(view, ctx); } };
   } else {
@@ -126,8 +123,7 @@ export function render(view, ctx) {
     const d = adv.plan[Number(r.dataset.day)];
     if (d.type) openSession(ctx, view, { activity: d.type, minutes: d.minutes, intensity: d.intensity, dayIndex: Number(r.dataset.day), day: d.day });
   }));
-  $$('[data-level]', view).forEach((b) => (b.onclick = () => { store.update((s) => { s.profile.fitnessLevel = b.dataset.level; }); render(view, ctx); }));
-  $$('[data-equip]', view).forEach((b) => (b.onclick = () => { store.update((s) => { s.profile.equipment = b.dataset.equip; }); render(view, ctx); }));
+  $('#my-sports', view).onclick = () => openMySports(() => render(view, ctx));
   $$('[data-del]', view).forEach((b) => (b.onclick = () => { SP.removeWorkout(b.dataset.del); render(view, ctx); }));
 }
 
@@ -173,21 +169,84 @@ const level = (st) => st.profile.fitnessLevel || 'debutant';
 const equip = (st) => st.profile.equipment || 'aucun';
 const fmtDur = (sec) => (sec >= 60 ? `${Math.floor(sec / 60)} min${sec % 60 ? ` ${sec % 60} s` : ''}` : `${sec} s`);
 
-// Détail d'une séance : blocs, exercices, séries, repos, consignes.
+// Détail d'une séance : durée au choix (une durée conseillée), blocs, exercices, séries, repos, consignes.
 export function openSession(ctx, view, { activity, minutes, intensity, dayIndex = 0, day }) {
   const st = store.get();
-  const session = W.buildSession({ activity, minutes, intensity, level: level(st), equipment: equip(st), goal: st.profile.goal, dayIndex, zones: SP.hrZones(st.profile.birthYear) });
+  const ad = SP.adaptation(st.sportFeedback, activity);
+  const lvl = SP.adaptedLevel(level(st), ad);
+  const advised = minutes;
+  let chosen = minutes;
+  const body = sheet('<div id="ss"></div>', { title: 'Séance', full: true });
+  const el = $('#ss', body);
+  const draw = () => {
+    const session = W.buildSession({ activity, minutes: chosen, intensity, level: lvl, equipment: equip(st), goal: st.profile.goal, dayIndex, zones: SP.hrZones(st.profile.birthYear) });
+    const opts = [...new Set([15, 20, 30, 45, 60, advised])].sort((a, b) => a - b);
+    el.innerHTML = `
+      <div class="between"><div><div class="tiny muted" style="font-weight:700;text-transform:uppercase;letter-spacing:.06em">${esc(day || 'Aujourd’hui')} · ${{ debutant: 'débutant', intermediaire: 'intermédiaire', avance: 'avancé' }[lvl]}</div><h2 style="margin:2px 0">${esc(session.title)}</h2></div>
+        <div style="text-align:right"><div style="font-size:1.4rem;font-weight:800">${session.minutes}<small style="font-size:.75rem;color:var(--muted)"> min</small></div><div class="tiny muted">~${SP.kcal(activity, intensity, session.minutes, st.profile.weight || 70)} kcal</div></div></div>
+      <label class="lbl">Durée</label>
+      <div class="chips">${opts.map((m) => `<button class="chip ${m === chosen ? 'on' : ''}" data-min="${m}">${m} min${m === advised ? ' ★' : ''}</button>`).join('')}</div>
+      <p class="tiny muted" style="margin:2px 0 0">★ conseillé${ad.note ? ` · ${esc(ad.note)}` : ' d’après ta semaine type et ton ressenti'}</p>
+      ${session.blocks.map((b) => `<div class="card" style="margin:12px 0;padding:14px">
+        <div class="between"><b>${esc(b.title)}</b><span class="tiny muted">${W.minutesOf([b])} min</span></div>
+        ${b.note ? `<p class="tiny muted" style="margin:4px 0 6px">${esc(b.note)}</p>` : ''}
+        ${b.items.map((it) => `<details style="padding:8px 0;border-top:1px solid var(--line)"><summary><span class="small" style="font-weight:600">${esc(it.label)}</span><span class="tiny muted" style="white-space:nowrap;margin-left:8px">${it.sets && !b.circuit ? `${it.sets} × ` : ''}${it.kind === 'reps' ? `${esc(String(it.reps))}${String(it.reps).includes('m') ? '' : ' rép.'}` : it.seconds ? fmtDur(it.seconds) : ''}${it.rest && !b.circuit ? ` · repos ${it.rest} s` : ''}</span></summary>${it.detail ? `<p class="tiny muted" style="margin:6px 0 0">${esc(it.detail)}</p>` : ''}</details>`).join('')}
+      </div>`).join('')}
+      ${srcLinks([...session.src, ...(ad.note ? ['foster2001', 'greig2020'] : [])])}
+      <button class="btn block" id="start-guided" style="margin-top:12px">${icon('zap', 18)} Lancer le mode guidé</button>`;
+    $$('[data-min]', el).forEach((b) => (b.onclick = () => { chosen = Number(b.dataset.min); draw(); }));
+    $('#start-guided', el).onclick = () => { body.close(); setTimeout(() => guided(ctx, view, session, activity, intensity), 250); };
+  };
+  draw();
+}
+
+// Fin de séance : ressenti → la séance suivante s'adapte.
+export function askFeedback(w, done) {
   const body = sheet(`
-    <div class="between"><div><div class="tiny muted" style="font-weight:700;text-transform:uppercase;letter-spacing:.06em">${esc(day || 'Aujourd’hui')} · ${{ debutant: 'débutant', intermediaire: 'intermédiaire', avance: 'avancé' }[level(st)]}</div><h2 style="margin:2px 0">${esc(session.title)}</h2></div>
-      <div style="text-align:right"><div style="font-size:1.4rem;font-weight:800">${session.minutes}<small style="font-size:.75rem;color:var(--muted)"> min</small></div><div class="tiny muted">~${SP.kcal(activity, intensity, session.minutes, st.profile.weight || 70)} kcal</div></div></div>
-    ${session.blocks.map((b) => `<div class="card" style="margin:12px 0;padding:14px">
-      <div class="between"><b>${esc(b.title)}</b><span class="tiny muted">${W.minutesOf([b])} min</span></div>
-      ${b.note ? `<p class="tiny muted" style="margin:4px 0 6px">${esc(b.note)}</p>` : ''}
-      ${b.items.map((it) => `<details style="padding:8px 0;border-top:1px solid var(--line)"><summary><span class="small" style="font-weight:600">${esc(it.label)}</span><span class="tiny muted" style="white-space:nowrap;margin-left:8px">${it.sets && !b.circuit ? `${it.sets} × ` : ''}${it.kind === 'reps' ? `${esc(String(it.reps))}${String(it.reps).includes('m') ? '' : ' rép.'}` : it.seconds ? fmtDur(it.seconds) : ''}${it.rest && !b.circuit ? ` · repos ${it.rest} s` : ''}</span></summary>${it.detail ? `<p class="tiny muted" style="margin:6px 0 0">${esc(it.detail)}</p>` : ''}</details>`).join('')}
-    </div>`).join('')}
-    ${srcLinks(session.src)}
-    <button class="btn block" id="start-guided" style="margin-top:12px">${icon('zap', 18)} Lancer le mode guidé</button>`, { title: 'Séance', full: true });
-  $('#start-guided', body).onclick = () => { body.close(); setTimeout(() => guided(ctx, view, session, activity, intensity), 250); };
+    <p class="small muted" style="margin-top:0">${esc(SP.activity(w.type).label)} · ${w.minutes} min. Ta réponse ajuste la prochaine séance.</p>
+    <div class="feedback">
+      <button data-fb="-1"><span>🥵</span>Trop dur</button>
+      <button data-fb="0"><span>👌</span>Bien</button>
+      <button data-fb="1"><span>💪</span>Pas assez dur</button>
+    </div>
+    ${srcLinks(['foster2001', 'greig2020', 'ekkekakis2011'])}`, { title: 'C’était comment ?', onClose: done });
+  $$('[data-fb]', body).forEach((b) => (b.onclick = () => {
+    const rating = Number(b.dataset.fb);
+    store.update((s) => { s.sportFeedback = [...(s.sportFeedback || []), { date: w.date, type: w.type, rating }].slice(-40); });
+    b.classList.add('pop');
+    toast(rating < 0 ? 'Noté : la prochaine séance sera allégée' : rating > 0 ? 'Noté : on monte d’un cran la prochaine fois 💪' : 'Parfait, on garde ce rythme 👌', 2200);
+    setTimeout(() => body.close(), 350);
+  }));
+}
+
+// Mes sports : ♥ préférés (proposés en priorité), ✕ exclus (jamais proposés).
+export function openMySports(done) {
+  const body = sheet('<div id="ms"></div>', { title: 'Mes sports', onClose: done });
+  const el = $('#ms', body);
+  const draw = () => {
+    const p = store.get().profile;
+    const fav = p.favSports || [], ex = p.excludedSports || [];
+    el.innerHTML = `<p class="small muted" style="margin-top:0">Touche une fois : <b style="color:var(--good)">♥ j’aime</b> · deux fois : <b style="color:var(--bad)">✕ je ne veux pas</b> · trois fois : neutre. Les sports exclus sont remplacés par une activité équivalente.</p>
+      <div class="chips" style="flex-wrap:wrap">${SP.ACTIVITIES.filter((a) => a.id !== 'autre').map((a) => `<button class="chip taste ${fav.includes(a.id) ? 'like' : ex.includes(a.id) ? 'dislike' : ''}" data-sp="${a.id}">${fav.includes(a.id) ? '<span>♥</span>' : ex.includes(a.id) ? '<span>✕</span>' : ''}${icon(a.icon, 14)} ${esc(a.label)}</button>`).join('')}</div>
+      <label class="lbl">Niveau</label>
+      <div class="seg">${[['debutant', 'Débutant'], ['intermediaire', 'Intermédiaire'], ['avance', 'Avancé']].map(([v, l]) => `<button data-level="${v}" class="${(p.fitnessLevel || 'debutant') === v ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <label class="lbl">Matériel</label>
+      <div class="seg">${[['aucun', 'Sans matériel'], ['halteres', 'Haltères'], ['salle', 'Salle']].map(([v, l]) => `<button data-equip="${v}" class="${(p.equipment || 'aucun') === v ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <button class="btn block" id="ok" style="margin-top:16px">${icon('check', 18)} Terminé</button>`;
+    $$('[data-sp]', el).forEach((b) => (b.onclick = () => {
+      const id = b.dataset.sp;
+      store.update((s) => {
+        const f = new Set(s.profile.favSports || []), x = new Set(s.profile.excludedSports || []);
+        if (f.has(id)) { f.delete(id); x.add(id); } else if (x.has(id)) x.delete(id); else f.add(id);
+        s.profile.favSports = [...f]; s.profile.excludedSports = [...x];
+      });
+      draw();
+    }));
+    $$('[data-level]', el).forEach((b) => (b.onclick = () => { store.update((s) => { s.profile.fitnessLevel = b.dataset.level; }); draw(); }));
+    $$('[data-equip]', el).forEach((b) => (b.onclick = () => { store.update((s) => { s.profile.equipment = b.dataset.equip; }); draw(); }));
+    $('#ok', el).onclick = () => body.close();
+  };
+  draw();
 }
 
 // Mode guidé : une étape à la fois, minuteur pour les exercices chronométrés et les repos.
@@ -235,6 +294,7 @@ function guided(ctx, view, session, activity, intensity) {
     const w = SP.stopWorkout();
     toast(w ? `Bravo ! ${w.minutes} min enregistrées, ~${w.kcal} kcal` : 'Séance trop courte pour être enregistrée');
     body.close();
+    if (w) setTimeout(() => askFeedback(w, () => render(view, ctx)), 350);
   };
   tick = setInterval(() => {
     const s = steps[i];
@@ -268,7 +328,7 @@ export async function refreshCalendar() {
   if (!N.isNative || !store.get().settings.calendarId || !(await N.calendarHasAccess())) return;
   const from = new Date(); from.setHours(0, 0, 0, 0);
   const evts = await N.calendarEvents(from.getTime(), from.getTime() + 8 * 86400e3).catch(() => []);
-  store.update((s) => { s.calEvents = evts.filter((e) => !(e.title || '').includes('AppSanté')); });
+  store.update((s) => { s.calEvents = evts.filter((e) => !(e.title || '').match(/AppSant(é|e)|Diana Health/)); });
 }
 
 function sessionEvents(plan) {
@@ -285,8 +345,8 @@ function sessionEvents(plan) {
     if (start < new Date()) continue;
     const session = W.buildSession({ activity: d.type, minutes: d.minutes, intensity: d.intensity, level: level(st), equipment: equip(st), goal: p.goal, dayIndex: plan.indexOf(d), zones: SP.hrZones(p.birthYear) });
     const end = new Date(start.getTime() + session.minutes * 60000);
-    const details = session.blocks.map((b) => `${b.title} : ${b.items.map((i) => i.label).join(', ')}`).join('\n') + '\n\nOuvre AppSanté pour le mode guidé.';
-    out.push({ title: `${SP.activity(d.type).label} (${session.minutes} min) · AppSanté`, start, end, details, day: d.day, why: slot.why });
+    const details = session.blocks.map((b) => `${b.title} : ${b.items.map((i) => i.label).join(', ')}`).join('\n') + '\n\nOuvre Diana Health pour le mode guidé.';
+    out.push({ title: `${SP.activity(d.type).label} (${session.minutes} min) · Diana Health`, start, end, details, day: d.day, why: slot.why });
   }
   return out;
 }

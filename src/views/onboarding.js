@@ -1,7 +1,8 @@
-// Premier lancement : présentation et profil en 4 étapes.
+// Premier lancement : présentation et profil en 5 étapes.
 import * as store from '../store.js';
 import { icon, esc, toast, $, $$ } from '../ui.js';
 import { ALLERGENS } from '../family.js';
+import { ACTIVITIES } from '../sport.js';
 
 let step = 0;
 const draft = {};
@@ -12,7 +13,7 @@ export function render(root, done) {
   const steps = [
     () => `<div class="logo">${icon('heart', 42)}</div>
       <h1>Ton coach santé,<br>fondé sur la science.</h1>
-      <p class="lead">AppSanté croise ton sommeil, ton humeur, tes écrans, ton activité et ce que tu manges pour te dire quoi faire, et quand.</p>
+      <p class="lead">Diana Health croise ton sommeil, ton humeur, tes écrans, ton activité et ce que tu manges pour te dire quoi faire, et quand.</p>
       ${[['camera', 'var(--c-food)', 'Photo ou code-barres', 'Calories, Nutri-Score et additifs en un geste'],
         ['calendar', 'var(--primary)', 'Plan du jour personnalisé', 'Repas, sport, lumière, écrans, coucher'],
         ['trend', 'var(--c-sleep)', 'Projection santé', 'Ton poids et ton risque dans 1, 5 et 10 ans'],
@@ -35,8 +36,14 @@ export function render(root, done) {
     () => `<h1>Ton rythme</h1><p class="lead">Ton plan du jour et tes rappels s’organisent autour de ces horaires.</p>
       <div class="grid2"><div><label class="lbl">Réveil</label><input data-d="wakeTime" type="time" value="${esc(p.wakeTime)}"></div><div><label class="lbl">Coucher visé</label><input data-d="bedTime" type="time" value="${esc(p.bedTime)}"></div></div>
       <label class="lbl">Allergies</label><div class="chips" style="flex-wrap:wrap">${ALLERGENS.map((a) => `<button class="chip ${(p.allergies || '').split(', ').includes(a) ? 'bad' : ''}" data-allergy="${a}">${a}</button>`).join('')}</div>
-      <label class="lbl">Sport préféré</label><input data-d="preferredSport" value="${esc(p.preferredSport)}" placeholder="ex. course, natation">
       <div class="note" style="margin-top:18px">${icon('shield', 18)}<span>Tes données restent sur ton téléphone. Rien n’est envoyé sauf aux fonctions IA que tu utilises.</span></div>`,
+    () => `<h1>Ton sport</h1><p class="lead">Pour te proposer des séances à ta mesure.</p>
+      <label class="lbl">Ton niveau</label>
+      <div class="choice">${[['debutant', 'Débutant', 'Peu ou pas de sport ces derniers mois'], ['intermediaire', 'Intermédiaire', '1 à 3 séances par semaine'], ['avance', 'Avancé', 'Entraînement régulier depuis plus d’un an']].map(([v, t, d]) => `<button data-pick="fitnessLevel" data-v="${v}" class="${(p.fitnessLevel || 'debutant') === v ? 'on' : ''}" style="padding:10px 14px"><span><b>${t}</b><br><span class="small muted" style="font-weight:500">${d}</span></span></button>`).join('')}</div>
+      <label class="lbl">Matériel</label>
+      <div class="seg">${[['aucun', 'Aucun'], ['halteres', 'Haltères'], ['salle', 'Salle']].map(([v, l]) => `<button data-pick="equipment" data-v="${v}" class="${(p.equipment || 'aucun') === v ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <label class="lbl">Touche : ♥ j’aime · deux fois : ✕ jamais</label>
+      <div class="chips" style="flex-wrap:wrap">${ACTIVITIES.filter((a) => a.id !== 'autre').map((a) => `<button class="chip sm taste ${(p.favSports || []).includes(a.id) ? 'like' : (p.excludedSports || []).includes(a.id) ? 'dislike' : ''}" data-sport="${a.id}">${(p.favSports || []).includes(a.id) ? '♥ ' : (p.excludedSports || []).includes(a.id) ? '✕ ' : ''}${esc(a.label)}</button>`).join('')}</div>`,
   ];
   root.innerHTML = `<div class="onb view-enter">
     <div class="dots">${steps.map((_, i) => `<i class="${i === step ? 'on' : ''}"></i>`).join('')}</div>
@@ -54,6 +61,13 @@ export function render(root, done) {
     const l = new Set((p.allergies || '').split(', ').filter(Boolean));
     l.has(b.dataset.allergy) ? l.delete(b.dataset.allergy) : l.add(b.dataset.allergy);
     draft.allergies = [...l].join(', ');
+    render(root, done);
+  }));
+  $$('[data-sport]', root).forEach((b) => (b.onclick = () => {
+    const id = b.dataset.sport;
+    const f = new Set(p.favSports || []), x = new Set(p.excludedSports || []);
+    if (f.has(id)) { f.delete(id); x.add(id); } else if (x.has(id)) x.delete(id); else f.add(id);
+    draft.favSports = [...f]; draft.excludedSports = [...x];
     render(root, done);
   }));
   $('#back', root)?.addEventListener('click', () => { step--; render(root, done); });

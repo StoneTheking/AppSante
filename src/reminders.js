@@ -13,9 +13,10 @@ export const KINDS = {
   bed: { label: 'Heure du coucher', match: /^Coucher|Routine/ },
   water: { label: 'Boire de l’eau (toutes les 2 h)', match: null },
   streak: { label: 'Série en jeu (19 h 30)', match: null },
+  weigh: { label: 'Pesée toutes les 2 semaines', match: null },
 };
 
-export const defaultReminders = () => ({ enabled: false, kinds: { light: true, meal: false, coffee: true, walk: true, sport: true, screens: true, bed: true, water: false, streak: true } });
+export const defaultReminders = () => ({ enabled: false, kinds: { light: true, meal: false, coffee: true, walk: true, sport: true, screens: true, bed: true, water: false, streak: true, weigh: true } });
 
 // Construit la liste des rappels (aujourd'hui et demain) à partir des plans.
 export function buildReminders(plans, settings, now = new Date()) {

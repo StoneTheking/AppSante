@@ -2,6 +2,7 @@
 // Durée estimée = temps au lit − latence d'endormissement typique (≤ 30 min chez le bon dormeur, Ohayon 2017).
 import * as store from './store.js';
 import { bedtimeVariability } from './science.js';
+import * as N from './native.js';
 
 export const LATENCY_MIN = 15;
 const hhmm = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -46,7 +47,13 @@ export function applyWidgetEvents(events = []) {
   let summary = null;
   for (const e of events.sort((a, b) => a.t - b.t)) {
     if (e.type === 'bed') goToBed(new Date(e.t));
-    else if (e.type === 'wake') summary = wakeUp(new Date(e.t)) || summary;
+    else if (e.type === 'wake') { const st = store.get(); summary = (st.sleepNow ? recordNight(new Date(st.sleepNow), new Date(e.t), { source: e.source || 'bouton' }) : null) || summary; }
+    else if (e.type === 'resume') {
+      // « Je me rendors » : la nuit déjà enregistrée reprend
+      const bedIso = new Date(e.t).toISOString();
+      store.update((s) => { s.sleepLog = s.sleepLog.filter((n) => n.bed !== bedIso); s.sleepNow = bedIso; });
+      summary = null;
+    }
   }
   return summary;
 }
@@ -107,4 +114,28 @@ function countNightWakes(list, bedMs) {
   let n = 0, last = -Infinity;
   for (const { t } of list) if (t - bedMs >= 30 * MIN && t - last >= 20 * MIN) { n++; last = t; }
   return n;
+}
+
+// « Téléphone au lit » estimé sans saisie : temps d'écran allumé dans les 30 min avant le coucher
+// (d'après les événements d'écran Android). > 10 min = oui (Exelmans 2016, Chang 2015).
+export function screenMinutesBetween(events, from, to) {
+  let on = null, total = 0;
+  for (const e of [...events].sort((a, b) => a.t - b.t)) {
+    if ((e.type === 'on' || e.type === 'unlock') && on == null) on = Math.max(e.t, from);
+    else if (e.type === 'off' && on != null) { total += Math.min(e.t, to) - on; on = null; }
+  }
+  if (on != null) total += to - on;
+  return Math.max(0, Math.round(total / 60000));
+}
+
+export async function estimatePhoneInBed(night) {
+  try {
+    if (!night || night.tooShort || !N.isNative || !(await N.usagePermission())) return;
+    const bed = new Date(store.get().sleepLog.at(-1)?.bed || 0).getTime();
+    if (!bed) return;
+    const ev = await N.screenEvents(bed - 30 * 60000, bed);
+    const min = screenMinutesBetween(ev, bed - 30 * 60000, bed);
+    const key = localKey(new Date(bed - 6 * 3600e3)); // soirée du coucher
+    store.update((s) => { s.days[key] = { ...(s.days[key] || {}), phoneInBed: min > 10, phoneBeforeBedMin: min }; });
+  } catch { /* pas de données */ }
 }

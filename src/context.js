@@ -10,6 +10,7 @@ import * as E from './env.js';
 import { pantryText } from './pantry.js';
 import * as SP from './sport.js';
 import * as G from './gamify.js';
+import { weighDue } from './energy.js';
 
 export const taste = () => F.tasteProfile(store.get().profile, store.get().meals);
 
@@ -37,7 +38,7 @@ export function personContext(sm = summary()) {
     const d = st.days[k] || {};
     const tot = S.sumNutrients(store.mealsOn(k));
     const extra = [d.restingHR && `FC repos ${d.restingHR} bpm`, d.hrv && `VFC ${d.hrv} ms`, d.lateMin != null && `écran après 22 h ${d.lateMin} min`].filter(Boolean).join(', ');
-    return `${k}: sommeil ${d.bed || '?'}→${d.wake || '?'}${d.sleepMinutes ? ` (${Math.round(d.sleepMinutes / 6) / 10} h endormi)` : ''} qualité ${d.sleepQuality ?? '?'}/5, humeur ${d.mood ?? '?'}/5, énergie ${d.energy ?? '?'}/5, stress ${d.stress ?? '?'}/5, pas ${d.steps ?? '?'}, activité modérée ${d.modMin ?? 0} min, intense ${d.vigMin ?? 0} min, renfo ${d.strengthMin ?? 0} min, écran ${d.screenMin ?? '?'} min dont réseaux sociaux ${d.socialMin ?? '?'} min, déverrouillages ${d.unlocks ?? '?'}, téléphone au lit ${d.phoneInBed ? 'oui' : 'non'}, alcool ${d.alcohol ?? 0}, eau ${d.waterMl ?? '?'} mL, apports ${Math.round(tot.kcal)} kcal${extra ? ', ' + extra : ''}`;
+    return `${k}: sommeil ${d.bed || '?'}→${d.wake || '?'}${d.sleepMinutes ? ` (${Math.round(d.sleepMinutes / 6) / 10} h endormi)` : ''} qualité ${d.sleepQuality ?? '?'}/5, humeur ${d.mood ?? '?'}/5, énergie ${d.energy ?? '?'}/5, stress ${d.stress ?? '?'}/5, pas ${d.steps ?? '?'}, activité modérée ${d.modMin ?? 0} min, intense ${d.vigMin ?? 0} min, renfo ${d.strengthMin ?? 0} min, écran ${d.screenMin ?? '?'} min dont réseaux sociaux ${d.socialMin ?? '?'} min, déverrouillages ${d.unlocks ?? '?'}, téléphone avant de dormir ${(d.phoneInBed ?? d.phoneInBedGuess) ? 'oui' : 'non'}, alcool ${d.alcohol ?? 0}, eau ${d.waterMl ?? '?'} mL, apports ${Math.round(tot.kcal)} kcal${extra ? ', ' + extra : ''}`;
   });
   const meals = store.mealsOn().map((m) => `${m.time} ${m.title} (${Math.round(m.nutrients?.kcal || 0)} kcal, prot ${Math.round(m.nutrients?.protein || 0)} g, fibres ${Math.round(m.nutrients?.fiber || 0)} g${m.nutriscore ? `, Nutri-Score ${m.nutriscore.toUpperCase()}` : ''})`);
   return [
@@ -70,5 +71,12 @@ export async function refreshReminders() {
   const sr = rs.kinds.streak && G.streakReminder(st);
   const at = new Date(); at.setHours(19, 30, 0, 0);
   if (sr && at > new Date()) list.push({ at, title: sr.title, body: sr.body, kind: 'streak' });
+  // pesée : toutes les 2 semaines, le matin
+  const wd = weighDue(st);
+  if (rs.kinds.weigh && (wd.due || wd.days >= 13)) {
+    const w = new Date(); w.setHours(8, 15, 0, 0);
+    if (w < new Date()) w.setDate(w.getDate() + 1);
+    list.push({ at: w, title: 'Jour de pesée ⚖️', body: 'À jeun, après les toilettes : on compare ton poids réel à l’estimation de tes repas.', kind: 'weigh' });
+  }
   return R.schedule(list.sort((a, b) => a.at - b.at));
 }

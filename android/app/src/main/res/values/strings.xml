@@ -1,12 +1,20 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">AppSanté</string>
-    <string name="title_activity_main">AppSanté</string>
+    <string name="app_name">Diana Health</string>
+    <string name="title_activity_main">Diana Health</string>
     <string name="package_name">com.stonetheking.appsante</string>
     <string name="custom_url_scheme">com.stonetheking.appsante</string>
     <string name="health_connect_privacy_policy_url">https://stonetheking.github.io/AppSante/privacy.html</string>
     <string name="widget_go_to_bed">Je vais dormir</string>
     <string name="widget_wake_up">Je suis réveillé</string>
-    <string name="widget_tap_hint">Touche pour noter ton coucher</string>
+    <string name="widget_tap_hint">Un appui pour commencer ta nuit</string>
+    <string name="widget_kicker_day">Sommeil</string>
+    <string name="widget_kicker_night">Nuit en cours</string>
+    <string name="widget_action_sleep">Dormir</string>
+    <string name="widget_action_wake">Réveil</string>
+    <string name="widget_photo_label">Repas</string>
+    <string name="widget_photo_name">Photo du repas</string>
+    <string name="widget_photo_description">Photographie ton repas en un geste</string>
+    <string name="sleep_channel">Nuit en cours</string>
     <string name="widget_description">Note ton heure de coucher et de réveil en un geste</string>
 </resources>

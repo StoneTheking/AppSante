@@ -4,7 +4,7 @@ import * as C from '../coach.js';
 import * as AI from '../ai.js';
 import * as BC from '../barcode.js';
 import { summary, personContext } from '../context.js';
-import { icon, esc, fmt, sheet, toast, compressImage, pickImage, srcLinks, $, $$ } from '../ui.js';
+import { icon, esc, fmt, sheet, toast, compressImage, pickImage, releaseCamera, srcLinks, faces, bindFaces, $, $$ } from '../ui.js';
 import * as SL from '../sleep.js';
 import * as N from '../native.js';
 import * as D from '../digestion.js';
@@ -15,7 +15,11 @@ const VERDICT = { bon: 'Bon pour toi', moyen: 'Moyen', a_limiter: 'À limiter' }
 
 export function addMeal(m) {
   const now = new Date();
-  store.update((s) => s.meals.push({ id: crypto.randomUUID(), date: store.today(), time: now.toTimeString().slice(0, 5), ...m, slot: m.slot || C.currentSlot(now) }));
+  store.update((s) => {
+    s.meals.push({ id: crypto.randomUUID(), date: store.today(), time: now.toTimeString().slice(0, 5), ...m, slot: m.slot || C.currentSlot(now) });
+    // alcool repéré sur la photo, le produit scanné ou le grignotage : compté automatiquement
+    if (m.alcohol) { const k = store.today(); s.days[k] = { ...(s.days[k] || {}), alcohol: Math.round(((s.days[k]?.alcohol || 0) + m.alcohol) * 10) / 10 }; }
+  });
   toast(m.snack ? `${m.title} : ajouté` : 'Repas enregistré ✅', 1200);
 }
 
@@ -23,48 +27,38 @@ export function openAddMenu(ctx) {
   const body = sheet(`
     <div class="action-grid">
       ${[
-        ['photo', 'camera', 'var(--c-food)', 'Photo de l’assiette', 'L’IA estime calories et nutriments'],
-        ['snack', 'apple', 'var(--c-mood)', 'Grignotage', 'En un geste'],
-        ['scan', 'barcode', 'var(--c-move)', 'Scanner un produit', 'Nutri-Score, additifs, NOVA'],
-        ['checkin', 'smile', 'var(--c-mood)', 'Check-in', 'Humeur, énergie, sommeil'],
-        ['sync', 'refresh', 'var(--c-screen)', 'Synchroniser', 'Pas, sommeil, temps d’écran'],
-        ['manual', 'pencil', 'var(--c-sleep)', 'Repas manuel', 'Saisie rapide'],
-        ['receipt', 'receipt', 'var(--c-food)', 'Ticket de caisse', 'Remplir le garde-manger'],
-        ['stool', 'activity', 'var(--c-move)', 'Passage aux toilettes', 'Transit & tolérance'],
-        ['workout', 'dumbbell', 'var(--c-move)', 'Séance de sport', 'Chrono ou saisie'],
-        ['sleep', 'moon', 'var(--c-sleep)', store.get().sleepNow ? 'Je suis réveillé' : 'Je vais dormir', 'Noter le coucher / réveil'],
-        ['menus', 'calendar', 'var(--primary)', 'Menus de la semaine', 'Et liste de courses'],
-      ].map(([a, ic, col, t, s]) => `<button class="action" data-a="${a}"><span class="icon-badge" style="background:color-mix(in srgb,${col} 16%,transparent);color:${col}">${icon(ic)}</span><b>${t}</b><span>${s}</span></button>`).join('')}
+        ['photo', 'camera', 'var(--c-food)', 'Photo du repas'],
+        ['snack', 'apple', 'var(--c-mood)', 'Grignotage'],
+        ['scan', 'barcode', 'var(--c-move)', 'Scanner un produit'],
+        ['manual', 'pencil', 'var(--c-sleep)', 'Repas manuel'],
+        ['workout', 'dumbbell', 'var(--c-move)', 'Séance de sport'],
+        ['checkin', 'smile', 'var(--c-mood)', 'Humeur du jour'],
+        ['receipt', 'receipt', 'var(--c-food)', 'Ticket de caisse'],
+        ['stool', 'activity', 'var(--c-move)', 'Passage aux toilettes'],
+        ['menus', 'calendar', 'var(--primary)', 'Menus de la semaine'],
+      ].map(([a, ic, col, t]) => `<button class="action" data-a="${a}"><span class="icon-badge" style="background:color-mix(in srgb,${col} 16%,transparent);color:${col}">${icon(ic)}</span><b>${t}</b></button>`).join('')}
     </div>`, { title: 'Ajouter' });
   $$('[data-a]', body).forEach((b) => (b.onclick = () => { body.close(); setTimeout(() => ctx.action(b.dataset.a), 200); }));
 }
 
-// ---------- Check-in ----------
-const MOODS = ['Très bas', 'Bas', 'Neutre', 'Bon', 'Très bon'];
-export function scale(field, value, labels = MOODS) {
+// ---------- Humeur du jour ----------
+export function scale(field, value, labels) {
   return `<div class="scale" data-field="${field}">${labels.map((l, i) => `<button type="button" class="${value === i + 1 ? 'on' : ''}" data-v="${i + 1}" aria-label="${l}">${i + 1}<small>${l}</small></button>`).join('')}</div>`;
 }
 
-export function openCheckin(ctx) {
+// Demandée chaque jour à la première ouverture ; un appui par ligne suffit.
+export function openCheckin(ctx, { daily = false } = {}) {
   const d = store.getDay();
   const body = sheet(`
-    <label class="lbl">Comment te sens-tu ?</label>${scale('mood', d.mood)}
-    <label class="lbl">Énergie</label>${scale('energy', d.energy, ['Épuisé', 'Fatigué', 'Moyen', 'En forme', 'Plein'])}
-    <label class="lbl">Stress</label>${scale('stress', d.stress, ['Zen', 'Calme', 'Moyen', 'Tendu', 'Très tendu'])}
-    <div class="grid2">
-      <div><label class="lbl">Couché à</label><input type="time" data-f="bed" value="${esc(d.bed || '')}"></div>
-      <div><label class="lbl">Levé à</label><input type="time" data-f="wake" value="${esc(d.wake || '')}"></div>
-    </div>
-    <label class="lbl">Qualité du sommeil</label>${scale('sleepQuality', d.sleepQuality, ['Très mauvais', 'Mauvais', 'Moyen', 'Bon', 'Excellent'])}
-    <button class="btn block" style="margin-top:18px" data-done>Enregistrer</button>`, { title: 'Check-in du jour', onClose: () => ctx.render() });
-  $$('.scale', body).forEach((sc) => sc.addEventListener('click', (e) => {
-    const b = e.target.closest('button');
-    if (!b) return;
-    store.setDay(store.today(), { [sc.dataset.field]: Number(b.dataset.v) });
-    $$('button', sc).forEach((x) => x.classList.toggle('on', x === b));
-  }));
-  $$('input[data-f]', body).forEach((inp) => inp.addEventListener('change', () => store.setDay(store.today(), { [inp.dataset.f]: inp.value })));
-  $('[data-done]', body).onclick = () => { body.close(); toast('Check-in enregistré'); };
+    ${daily ? '<p class="small muted" style="margin-top:0">10 secondes pour suivre ton moral : c’est ce qui permet de relier humeur, sommeil, écrans et activité.</p>' : ''}
+    <label class="lbl">Comment te sens-tu ?</label>${faces('mood', d.mood)}
+    <label class="lbl">Énergie</label>${faces('energy', d.energy)}
+    <label class="lbl">Stress</label>${faces('stress', d.stress)}
+    <button class="btn block" style="margin-top:18px" data-done>${icon('check', 18)} C’est noté</button>
+    ${srcLinks(['michie2009', 'harkin2016'])}`, { title: daily ? 'Comment ça va aujourd’hui ?' : 'Humeur du jour', onClose: () => ctx.render() });
+  bindFaces(body, (f, v) => store.setDay(store.today(), { [f]: v }));
+  store.update((s) => { s.moodAsked = store.today(); });
+  $('[data-done]', body).onclick = () => body.close();
 }
 
 // ---------- Photo d'assiette ----------
@@ -113,6 +107,7 @@ function showResult(res, p, body) {
     <table>${p.items.map((i) => `<tr><td>${esc(i.name)}</td><td class="num">${fmt(i.grams * p.factor)} g</td><td class="num">${fmt(i.kcal * p.factor)} kcal</td></tr>`).join('')}</table>
     <p class="small" style="margin:14px 0 10px">${esc(p.comment)}</p>
     <div class="note">${icon('bulb', 18)}<span>${esc(p.advice)}</span></div>
+    ${p.alcohol_drinks ? `<div class="note warn">${icon('wine', 18)}<span>${fmt(p.alcohol_drinks * p.factor, 1)} verre(s) standard d’alcool détecté(s) : ajouté(s) automatiquement à ta journée.</span></div>` : ''}
     <p class="tiny muted">Sucres ${fmt(n.sugar)} g · graisses saturées ${fmt(n.satFat)} g · sodium ${fmt(n.sodium)} mg · NOVA ${p.nova} · confiance ${esc(p.confidence)}</p>
     <label class="lbl">Portion réellement mangée : <b>${Math.round(p.factor * 100)} %</b></label>
     <input type="range" id="factor" min="0.25" max="2" step="0.05" value="${p.factor}">
@@ -122,7 +117,7 @@ function showResult(res, p, body) {
   $$('[data-slot]', res).forEach((b) => (b.onclick = () => { p.slot = b.dataset.slot; $$('[data-slot]', res).forEach((x) => x.classList.toggle('on', x === b)); }));
   $('#factor', res).onchange = (e) => showResult(res, { ...p, factor: Number(e.target.value) }, body);
   $('#save', res).onclick = () => {
-    addMeal({ title: p.title, nutrients: n, items: p.items, nova: p.nova, quality: p.quality, verdict: p.verdict, comment: p.comment, advice: p.advice, thumb: p.thumb, slot: p.slot === 'grignotage' ? 'collation' : p.slot, snack: p.slot === 'grignotage' });
+    addMeal({ title: p.title, nutrients: n, items: p.items, nova: p.nova, quality: p.quality, verdict: p.verdict, comment: p.comment, advice: p.advice, thumb: p.thumb, slot: p.slot === 'grignotage' ? 'collation' : p.slot, snack: p.slot === 'grignotage', alcohol: p.alcohol_drinks ? Math.round(p.alcohol_drinks * p.factor * 10) / 10 : 0 });
     body.close();
   };
 }
@@ -149,6 +144,7 @@ export function openScanner(ctx, slot = null) {
     }
   };
   $('#lookup', body).onclick = () => { const c = $('#code', body).value.replace(/\D/g, ''); if (c.length >= 8) show(c); };
+  releaseCamera();
   BC.startScanner($('video', body), show).then((s) => (stop = s)).catch(() => {
     $('.scanner', body).innerHTML = `<div class="empty" style="color:#fff">${icon('camera', 28)}<p>Caméra indisponible. Autorise l’accès à la caméra ou saisis le code.</p></div>`;
   });
@@ -199,7 +195,7 @@ function productCard(out, prod, grams, body, slot) {
   $('#grams', out).onchange = () => productCard(out, prod, g(), body, slot);
   $$('[data-d]', out).forEach((b) => (b.onclick = () => productCard(out, prod, Math.max(5, g() + Number(b.dataset.d)), body, slot)));
   $('#add', out).onclick = () => {
-    addMeal({ title: `${prod.name}${prod.brand ? ' – ' + prod.brand.split(',')[0] : ''} (${g()} g)`, nutrients: n, nova: prod.nova || 3, quality: v.score, verdict: v.verdict, nutriscore: prod.nutriscore, barcode: prod.code, thumb: prod.image, comment: [...v.pros, ...v.cons].join(' · '), slot: slot === 'grignotage' ? 'collation' : slot, snack: slot === 'grignotage' });
+    addMeal({ title: `${prod.name}${prod.brand ? ' – ' + prod.brand.split(',')[0] : ''} (${g()} g)`, alcohol: prod.alcohol ? Math.round(((g() * prod.alcohol) / 100) * 0.8 / 10 * 10) / 10 : 0, nutrients: n, nova: prod.nova || 3, quality: v.score, verdict: v.verdict, nutriscore: prod.nutriscore, barcode: prod.code, thumb: prod.image, comment: [...v.pros, ...v.cons].join(' · '), slot: slot === 'grignotage' ? 'collation' : slot, snack: slot === 'grignotage' });
     body.close();
   };
 }
@@ -248,15 +244,12 @@ export function showMorning(ctx, r) {
       </div>
       <div class="note ${verdict[0]}">${icon('info', 18)}<span>${verdict[1]} Ouvre les volets et prends la lumière du jour dans l’heure qui suit ton réveil.</span></div>
       ${srcLinks(['watson2015', 'ohayon2017', 'burns2023'])}
-      <label class="lbl">Comment as-tu dormi ?</label>${scale('sleepQuality', null, ['Très mal', 'Mal', 'Moyen', 'Bien', 'Très bien'])}
-      <label class="lbl">Et ton énergie ce matin ?</label>${scale('energy', null, ['Épuisé', 'Fatigué', 'Moyen', 'En forme', 'Plein'])}
+      <label class="lbl">Comment as-tu dormi ?</label>${faces('sleepQuality', null)}
+      <label class="lbl">Et ton humeur ce matin ?</label>${faces('mood', store.getDay(r.key).mood)}
+      <label class="lbl">Ton énergie ?</label>${faces('energy', store.getDay(r.key).energy)}
       <button class="btn block" style="margin-top:16px" data-done>C’est noté</button>`, { title: 'Bonjour ☀︎', onClose: () => ctx.render() });
-    $$('.scale', body).forEach((sc) => sc.addEventListener('click', (e) => {
-      const b = e.target.closest('button');
-      if (!b) return;
-      store.setDay(r.key, { [sc.dataset.field]: Number(b.dataset.v) });
-      $$('button', sc).forEach((x) => x.classList.toggle('on', x === b));
-    }));
+    bindFaces(body, (f, v) => store.setDay(r.key, { [f]: v }));
+    store.update((s) => { s.moodAsked = r.key; });
     $('[data-done]', body).onclick = () => body.close();
 }
 
@@ -283,22 +276,37 @@ export function askWakeTime(ctx) {
   };
 }
 
-async function goodNight(ctx) {
+// Un seul appui : la nuit commence, sans menu.
+function goodNight(ctx) {
   SL.goToBed();
   ctx.syncWidget?.();
   ctx.scheduleMorning?.();
+  const moon = document.createElement('div');
+  moon.className = 'float-up';
+  moon.style.cssText = 'left:50%;top:40%;font-size:3rem;transform:translateX(-50%)';
+  moon.textContent = '🌙';
+  document.body.appendChild(moon);
+  setTimeout(() => moon.remove(), 900);
+  toast(`Bonne nuit 🌙 Coucher noté à ${new Date().toTimeString().slice(0, 5)}`, 3000);
+  ctx.render();
+}
+
+// Les meilleures conditions pour dormir (bouton ⓘ).
+export function goodNightTips() {
   const env = store.get().env;
+  const p = store.get().profile;
   const tips = [
-    ['phone', 'Téléphone hors de la chambre (ou en mode avion, face cachée).', ['exelmans2016', 'chang2015']],
+    ['clock', `Même heure de coucher et de lever chaque jour (±30 min), week-end compris : ici ${p.bedTime} → ${p.wakeTime}.`, ['windred2024', 'phillips2017']],
+    ['phone', 'Écrans coupés 1 h avant, téléphone hors de la chambre (ou face cachée, en mode avion).', ['exelmans2016', 'chang2015']],
     ['moon', 'Chambre sombre, calme et fraîche (≈ 16–19 °C).' + (env?.tMin >= 20 ? ` Nuit chaude annoncée (${Math.round(env.tMin)} °C) : aère et utilise un ventilateur.` : ''), ['obradovich2017']],
-    ['brain', 'Si tu ne dors pas au bout de ~20 min, lève-toi et fais quelque chose de calme sous lumière tamisée.', ['ohayon2017']],
-    ['clock', `Réveil visé : ${store.get().profile.wakeTime}. Même heure demain, week-end compris.`, ['windred2024', 'phillips2017']],
+    ['coffee', 'Pas de caféine dans les 8 h avant le coucher, pas d’alcool le soir (il fragmente le sommeil).', ['gardiner2023', 'ebrahim2013']],
+    ['utensils', 'Dîner léger au moins 3 h avant de dormir.', ['garaulet2013']],
+    ['dumbbell', 'Sport régulier dans la journée, mais pas d’effort intense dans l’heure qui précède le coucher.', ['stutz2019']],
+    ['sun', 'Lumière du jour le matin, lumière tamisée le soir : c’est ce qui règle ton horloge interne.', ['burns2023']],
+    ['brain', 'Pas sommeil au bout de ~20 min ? Lève-toi, activité calme sous lumière faible, puis recouche-toi.', ['ohayon2017']],
   ];
-  const body = sheet(`
-    <div class="sleep-card" style="margin-top:0"><div class="tiny muted" style="font-weight:700;letter-spacing:.08em;text-transform:uppercase">Coucher noté</div><div class="big">${new Date().toTimeString().slice(0, 5)}</div><div class="small muted">${N.isNative ? 'Ton réveil sera détecté automatiquement (sonnerie de l’alarme ou premier déverrouillage). Sinon, appuie sur « Je suis réveillé ».' : 'Appuie sur « Je suis réveillé » demain matin.'}</div></div>
-    ${tips.map(([ic, t, src]) => `<div class="list-item" style="grid-template-columns:auto 1fr"><span class="icon-badge" style="background:color-mix(in srgb,var(--c-sleep) 15%,transparent);color:var(--c-sleep)">${icon(ic, 18)}</span><div><div class="small">${esc(t)}</div>${srcLinks(src)}</div></div>`).join('')}
-    <button class="btn block" style="margin-top:12px" data-done>Bonne nuit</button>`, { title: 'Bonne nuit', onClose: () => ctx.render() });
-  $('[data-done]', body).onclick = () => body.close();
+  sheet(`${tips.map(([ic, t, src]) => `<div class="list-item" style="grid-template-columns:auto minmax(0,1fr)"><span class="icon-badge" style="background:color-mix(in srgb,var(--c-sleep) 15%,transparent);color:var(--c-sleep)">${icon(ic, 18)}</span><div><div class="small">${esc(t)}</div>${srcLinks(src)}</div></div>`).join('')}
+    <p class="tiny muted">${N.isNative ? 'Le compteur s’arrête tout seul quand tu déverrouilles ton téléphone le matin (ou à la sonnerie de l’alarme).' : 'Appuie sur « Je suis réveillé » le matin.'}</p>`, { title: 'Bien dormir' });
 }
 
 // ---------- Toilettes (échelle de Bristol) ----------
@@ -401,8 +409,7 @@ export function openSnack(ctx) {
     $$('[data-s]', el).forEach((b) => (b.onclick = () => {
       const s = SN.snackById(b.dataset.s);
       const nutrients = Object.fromEntries(Object.entries(s.n).map(([k, v]) => [k, Math.round(v * qty * 10) / 10]));
-      addMeal({ title: `${s.label}${qty > 1 ? ` ×${qty}` : ''}`, nutrients, nova: s.nova, snack: true, snackId: s.id, reason, verdict: s.ok ? 'bon' : s.nova >= 4 ? 'a_limiter' : 'moyen', quality: s.ok ? 80 : s.nova >= 4 ? 30 : 50 });
-      if (s.alcohol) store.setDay(store.today(), { alcohol: (store.getDay().alcohol || 0) + qty });
+      addMeal({ title: `${s.label}${qty > 1 ? ` ×${qty}` : ''}`, nutrients, nova: s.nova, snack: true, snackId: s.id, reason, verdict: s.ok ? 'bon' : s.nova >= 4 ? 'a_limiter' : 'moyen', quality: s.ok ? 80 : s.nova >= 4 ? 30 : 50, alcohol: s.alcohol ? qty : 0 });
       navigator.vibrate?.(15);
       qty = 1;
       draw();

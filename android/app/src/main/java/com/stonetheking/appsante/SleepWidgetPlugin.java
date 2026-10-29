@@ -38,6 +38,8 @@ public class SleepWidgetPlugin extends Plugin {
     public void setState(PluginCall call) {
         boolean sleeping = Boolean.TRUE.equals(call.getBoolean("sleeping", false));
         long since = call.getLong("since", System.currentTimeMillis());
+        String target = call.getString("target");
+        if (target != null) getContext().getSharedPreferences(SleepWidgetProvider.PREFS, Context.MODE_PRIVATE).edit().putString("target", target).apply();
         SleepWidgetProvider.setState(getContext(), sleeping, since);
         call.resolve();
     }
@@ -59,7 +61,8 @@ public class SleepWidgetPlugin extends Plugin {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             AppWidgetManager m = getContext().getSystemService(AppWidgetManager.class);
             if (m != null && m.isRequestPinAppWidgetSupported()) {
-                m.requestPinAppWidget(new ComponentName(getContext(), SleepWidgetProvider.class), null, null);
+                Class<?> cls = "photo".equals(call.getString("kind")) ? PhotoWidgetProvider.class : SleepWidgetProvider.class;
+                m.requestPinAppWidget(new ComponentName(getContext(), cls), null, null);
                 r.put("requested", true);
                 call.resolve(r);
                 return;

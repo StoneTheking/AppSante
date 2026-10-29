@@ -30,6 +30,40 @@ export async function connectHealth() {
 
 export const openHealthSettings = async () => (await health()).openHealthConnectSettings();
 
+// État détaillé de Health Connect pour expliquer ce qui bloque.
+export async function healthDiagnose() {
+  if (!isNative) return { ok: false, reason: 'web' };
+  try {
+    const H = await health();
+    const a = await H.isAvailable();
+    if (!a.available) return { ok: false, reason: 'unavailable', detail: a.reason || '' };
+    const st = await H.checkAuthorization({ read: HEALTH_READ });
+    const granted = st.readAuthorized || [];
+    return { ok: granted.length > 0, reason: granted.length ? 'ok' : 'denied', granted, steps: granted.includes('steps') };
+  } catch (e) { return { ok: false, reason: 'error', detail: e.message || String(e) }; }
+}
+
+// ---------- Podomètre intégré (repli sans Health Connect) ----------
+// Compteur matériel cumulé depuis le démarrage du téléphone : on garde des relevés et on en déduit les pas du jour.
+const Steps = registerPlugin('Steps');
+export const stepsAccess = () => Steps.requestAccess().then((r) => r.granted).catch(() => false);
+export const stepsHasAccess = () => Steps.hasAccess().then((r) => r.granted).catch(() => false);
+export const stepsRead = () => Steps.read().catch(() => null); // { value, t } ou null
+
+// Pas du jour à partir des relevés [{ t, v }] (v = compteur cumulé ; une baisse = redémarrage).
+export function stepsFromSamples(samples, dayStart) {
+  const ss = [...samples].sort((a, b) => a.t - b.t);
+  let total = 0;
+  for (let i = 1; i < ss.length; i++) {
+    const a = ss[i - 1], b = ss[i];
+    if (b.t <= dayStart) continue;
+    const delta = b.v >= a.v ? b.v - a.v : b.v; // redémarrage : le compteur repart de 0
+    const frac = a.t >= dayStart ? 1 : (b.t - dayStart) / (b.t - a.t); // part de l'intervalle tombée aujourd'hui
+    total += delta * Math.max(0, Math.min(1, frac));
+  }
+  return Math.round(total);
+}
+
 const localKey = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const hhmm = (iso) => {
   const d = new Date(iso);
@@ -82,7 +116,7 @@ export async function syncHealth(days = 7) {
     Object.assign(day(k), { bed: hhmm(g.start), wake: hhmm(g.end), sleepMinutes: Math.round(g.asleep) });
   }
 
-  // Séances Health Connect → séances AppSanté (les minutes du jour sont recalculées à partir des séances).
+  // Séances Health Connect → séances Diana Health (les minutes du jour sont recalculées à partir des séances).
   const sessions = (workouts?.workouts || []).filter((w) => w.duration >= 60).map((w) => ({
     id: `hc-${w.platformId || w.startDate}`,
     type: mapWorkout(w.workoutType),
@@ -111,7 +145,7 @@ export async function syncUsage(days = 7, bedTime = '23:00') {
       unlocks: d.unlocks,
       lateMin: Math.round(d.lateMs / 60000),
       // usage du téléphone dans les 30 min autour de l'heure de coucher visée → « téléphone au lit »
-      phoneInBed: d.lastUseMinute != null && d.lastUseMinute >= bh * 60 + bm - 30,
+      phoneInBedGuess: d.lastUseMinute != null && d.lastUseMinute >= bh * 60 + bm - 30,
       topApps: d.topApps,
     };
   }
@@ -121,8 +155,9 @@ export async function syncUsage(days = 7, bedTime = '23:00') {
 // ---------- Widget « Je vais dormir » ----------
 const SleepWidget = registerPlugin('SleepWidget');
 export const takeWidgetEvents = () => (isNative ? SleepWidget.takeEvents().then((r) => r.events || []).catch(() => []) : Promise.resolve([]));
-export const setWidgetState = (sleeping, since) => (isNative ? SleepWidget.setState({ sleeping, since: since ? new Date(since).getTime() : Date.now() }).catch(() => {}) : Promise.resolve());
+export const setWidgetState = (sleeping, since, target) => (isNative ? SleepWidget.setState({ sleeping, since: since ? new Date(since).getTime() : Date.now(), ...(target ? { target } : {}) }).catch(() => {}) : Promise.resolve());
 export const pinSleepWidget = () => (isNative ? SleepWidget.pin().then((r) => r.requested).catch(() => false) : Promise.resolve(false));
+export const pinPhotoWidget = () => (isNative ? SleepWidget.pin({ kind: 'photo' }).then((r) => r.requested).catch(() => false) : Promise.resolve(false));
 
 // ---------- Détection du réveil ----------
 export const screenEvents = (from, to = Date.now()) => UsageStats.screenEvents({ from, to }).then((r) => r.events || []);

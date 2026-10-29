@@ -82,6 +82,7 @@ export function normalize(p, code) {
     allergens: (p.allergens_tags || []).map((a) => a.replace(/^\w+:/, '')),
     image: p.image_front_small_url || '',
     per100,
+    alcohol: Number(n.alcohol_100g ?? n.alcohol) || 0, // % vol. pour les boissons
   };
 }
 

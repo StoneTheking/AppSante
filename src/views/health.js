@@ -8,7 +8,8 @@ import { parseCSV, CSV_TEMPLATE } from '../importer.js';
 import { summary } from '../context.js';
 import * as D from '../digestion.js';
 import * as SP from '../sport.js';
-import { icon, esc, fmt, segmented, srcLinks, barChart, lineChart, toast, compressImage, pickImage, sheet, $, $$ } from '../ui.js';
+import { icon, esc, fmt, fmtMin, segmented, srcLinks, barChart, lineChart, timeChart, faces, bindFaces, toast, compressImage, pickImage, sheet, $, $$ } from '../ui.js';
+import * as E from '../energy.js';
 
 let seg = 'suivi';
 let dayOffset = 0;
@@ -16,22 +17,45 @@ let dayOffset = 0;
 export function render(view, ctx) {
   view.innerHTML = `${segmented('hl', [['suivi', 'Suivi'], ['tendances', 'Tendances'], ['projection', 'Projection'], ['science', 'Science']], seg)}<div id="hl-body" class="view-enter"></div>`;
   $$('[data-seg="hl"]', view).forEach((b) => (b.onclick = () => { seg = b.dataset.v; render(view, ctx); }));
-  ({ suivi: renderTrack, tendances: renderTrends, projection: renderFuture, science: renderScience })[seg]($('#hl-body', view), ctx);
+  const body = $('#hl-body', view);
+  ({ suivi: renderTrack, tendances: renderTrends, projection: renderFuture, science: renderScience })[seg](body, ctx);
+  setTimeout(() => body.classList.remove('view-enter'), 700);
 }
 
 export function openSection(s) { seg = s; }
 
 // ---------- Synchronisation ----------
+// Health Connect (pas, sommeil, séances, poids) + temps d'écran ; podomètre du téléphone si Health Connect manque.
 export async function syncAll({ silent = false } = {}) {
   const st = store.get();
   const results = [];
   if (!N.isNative) return results;
+  let hcSteps = false;
   try {
-    const h = await N.syncHealth(7);
-    merge(h.days);
-    h.workouts.forEach((w) => SP.addWorkout(w));
-    results.push(`${Object.keys(h.days).length} j. Health Connect${h.workouts.length ? `, ${h.workouts.length} séance(s)` : ''}`);
+    const diag = await N.healthDiagnose();
+    store.update((s) => { s.healthDiag = { ...diag, at: Date.now() }; });
+    if (diag.ok) {
+      const h = await N.syncHealth(7);
+      merge(h.days);
+      h.workouts.forEach((w) => SP.addWorkout(w));
+      hcSteps = Object.values(h.days).some((d) => d.steps);
+      results.push(`Health Connect : ${Object.keys(h.days).length} jour(s)${h.workouts.length ? `, ${h.workouts.length} séance(s)` : ''}`);
+    }
   } catch (e) { if (!silent) results.push('Health Connect : ' + (e.message || e)); }
+  // podomètre intégré : relevé à chaque ouverture, pas du jour déduits des relevés
+  try {
+    if (!hcSteps && (await N.stepsHasAccess())) {
+      const r = await N.stepsRead();
+      if (r) {
+        store.update((s) => { s.stepSamples = [...(s.stepSamples || []).filter((x) => r.t - x.t < 3 * 86400e3), { t: r.t, v: r.value }]; });
+        const start = new Date(); start.setHours(0, 0, 0, 0);
+        const steps = N.stepsFromSamples(store.get().stepSamples, start.getTime());
+        const k = store.today();
+        if (!st.days[k]?.steps || st.days[k]?.stepsSource === 'téléphone') store.setDay(k, { steps, stepsSource: 'téléphone' });
+        results.push(`podomètre : ${steps} pas`);
+      }
+    }
+  } catch { /* capteur indisponible */ }
   try {
     if (await N.usagePermission()) {
       const u = await N.syncUsage(7, st.profile.bedTime);
@@ -55,76 +79,120 @@ function merge(byDay) {
   });
 }
 
-const FIELDS = [
-  ['moon', 'Sommeil', 'var(--c-sleep)', [['bed', 'Couché à', 'time'], ['wake', 'Levé à', 'time'], ['sleepQuality', 'Qualité (1-5)', 'number']]],
-  ['smile', 'Humeur', 'var(--c-mood)', [['mood', 'Humeur (1-5)', 'number'], ['energy', 'Énergie (1-5)', 'number'], ['stress', 'Stress (1-5)', 'number']]],
-  ['steps', 'Activité', 'var(--c-move)', [['steps', 'Pas', 'number'], ['modMin', 'Min. modérées', 'number'], ['vigMin', 'Min. intenses', 'number'], ['strengthMin', 'Min. renforcement', 'number']]],
-  ['phone', 'Bien-être numérique', 'var(--c-screen)', [['screenMin', "Temps d'écran (min)", 'number'], ['socialMin', 'Réseaux sociaux (min)', 'number'], ['unlocks', 'Déverrouillages', 'number'], ['lateMin', 'Écran après 22 h (min)', 'number']]],
-  ['heart', 'Corps', 'var(--bad)', [['weight', 'Poids (kg)', 'number'], ['restingHR', 'FC repos (bpm)', 'number'], ['waterMl', 'Eau (mL)', 'number'], ['alcohol', "Verres d'alcool", 'number']]],
-];
+const stat = (k, v, u = '', ic = '') => `<div class="stat"><div class="k">${ic ? icon(ic, 14) : ''}${k}</div><div class="v">${v}${u ? `<small>${u}</small>` : ''}</div></div>`;
+const section = (ic, title, col, right = '') => `<div class="between" style="margin:18px 0 8px"><div class="row" style="gap:10px;flex-wrap:nowrap"><span class="icon-badge" style="width:30px;height:30px;border-radius:10px;background:color-mix(in srgb,${col} 15%,transparent);color:${col}">${icon(ic, 16)}</span><b>${title}</b></div>${right}</div>`;
+
+function sourcesCard(st) {
+  const d = st.healthDiag;
+  if (!N.isNative) return `<div class="card">
+      <div class="card-head"><h2>${icon('refresh', 18)} Données automatiques</h2></div>
+      <p class="small muted" style="margin-top:-6px">Dans l’application Android, pas, sommeil et temps d’écran arrivent tout seuls. Ici : capture d’écran ou fichier CSV.</p>
+      <div class="grid2"><button class="btn soft" id="shot">${icon('image', 18)} Capture d’écran</button><button class="btn ghost" id="csv-btn">${icon('upload', 18)} Import CSV</button></div>
+      <details style="margin-top:10px"><summary class="small">Format CSV ${icon('right', 14)}</summary><p class="tiny muted">Export Google Fit (Takeout → « Daily activity metrics ») ou ce modèle :</p><pre class="tiny" style="white-space:pre-wrap;background:var(--card-2);padding:8px;border-radius:10px">${esc(CSV_TEMPLATE)}</pre></details>
+      <input id="csv" type="file" accept=".csv,text/csv" hidden><div id="sync-res" class="small" style="margin-top:8px"></div></div>`;
+  const hc = !d ? ['…', 'vérification'] : d.ok ? ['ok', `connecté${d.steps ? '' : ' (pas non autorisés)'}`] : d.reason === 'unavailable' ? ['bad', 'indisponible sur ce téléphone'] : d.reason === 'denied' ? ['warn', 'accès non autorisé'] : ['bad', 'erreur'];
+  const line = (ic, name, [lvl, txt], btn) => `<div class="between" style="padding:8px 0;border-top:1px solid var(--line)"><span class="small">${icon(ic, 14)} <b>${name}</b> · <span style="color:var(--${lvl === 'ok' ? 'good' : lvl === 'warn' ? 'warn' : lvl === 'bad' ? 'bad' : 'muted'})">${txt}</span></span>${btn || ''}</div>`;
+  return `<div class="card">
+    <div class="card-head"><h2>${icon('refresh', 18)} Données du téléphone</h2>${st.lastSync ? `<span class="tiny muted">à jour ${new Date(st.lastSync).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>` : ''}</div>
+    <p class="tiny muted" style="margin-top:-6px">Synchronisées automatiquement à chaque ouverture de l’application.</p>
+    ${line('heart', 'Health Connect', hc, d?.ok ? '' : `<button class="btn sm soft" id="hc">${d?.reason === 'unavailable' ? 'Pourquoi ?' : 'Autoriser'}</button>`)}
+    ${line('steps', 'Podomètre du téléphone', st.stepsAccess ? ['ok', 'actif'] : ['muted', d?.ok ? 'inutile (Health Connect)' : 'non activé'], st.stepsAccess || d?.ok ? '' : `<button class="btn sm soft" id="steps-on">Activer</button>`)}
+    ${line('phone', 'Temps d’écran', st.usageOk ? ['ok', 'autorisé'] : ['warn', 'non autorisé'], st.usageOk ? '' : `<button class="btn sm soft" id="usage">Autoriser</button>`)}
+    <div id="sync-res" class="small" style="margin-top:8px"></div>
+  </div>`;
+}
 
 function renderTrack(el, ctx) {
   const st = store.get();
   const key = store.dayKey(dayOffset);
   const d = store.getDay(key);
-  const native = N.isNative;
+  const ws = st.workouts.filter((w) => w.date === key);
+  const kg = st.profile.weight || 70;
+  const due = E.weighDue(st);
   el.innerHTML = `
-    <div class="card">
-      <div class="card-head"><h2>${icon('refresh', 18)} Données automatiques</h2>${st.lastSync ? `<span class="tiny muted">sync. ${new Date(st.lastSync).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>` : ''}</div>
-      ${native ? `
-        <p class="small muted" style="margin-top:-6px">Health Connect et temps d’écran, synchronisés à chaque ouverture.</p>
-        <button class="btn block" id="sync">${icon('refresh', 18)} Synchroniser maintenant</button>
-        <div class="grid2" style="margin-top:8px">
-          <button class="btn ghost sm" id="hc">${icon('heart', 16)} Autoriser Health Connect</button>
-          <button class="btn ghost sm" id="usage">${icon('phone', 16)} Autoriser le temps d’écran</button>
-        </div>` : `
-        <p class="small muted" style="margin-top:-6px">Importe une capture d’écran (Bien-être numérique, Google Fit…) ou un fichier CSV.</p>
-        <div class="grid2">
-          <button class="btn soft" id="shot">${icon('image', 18)} Capture d’écran</button>
-          <button class="btn ghost" id="csv-btn">${icon('upload', 18)} Import CSV</button>
-        </div>
-        <details style="margin-top:10px"><summary class="small">Format CSV ${icon('right', 14)}</summary><p class="tiny muted">Export Google Fit (Takeout → « Daily activity metrics ») ou ce modèle :</p><pre class="tiny" style="white-space:pre-wrap;background:var(--card-2);padding:8px;border-radius:10px">${esc(CSV_TEMPLATE)}</pre></details>`}
-      <input id="csv" type="file" accept=".csv,text/csv" hidden>
-      <div id="sync-res" class="small" style="margin-top:8px"></div>
-    </div>
-
+    ${sourcesCard(st)}
     <div class="card">
       <div class="between">
         <button class="icon-btn" id="prev" aria-label="Jour précédent">${icon('left')}</button>
         <b style="text-transform:capitalize">${dayOffset === 0 ? "Aujourd'hui" : new Date(key).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</b>
         <button class="icon-btn" id="next" aria-label="Jour suivant" ${dayOffset >= 0 ? 'disabled style="opacity:.3"' : ''}>${icon('right')}</button>
       </div>
-      ${FIELDS.map(([ic, title, col, fields]) => `<div class="row" style="margin:18px 0 0;gap:10px"><span class="icon-badge" style="width:30px;height:30px;border-radius:10px;background:color-mix(in srgb,${col} 15%,transparent);color:${col}">${icon(ic, 16)}</span><b>${title}</b></div>
-        <div class="grid2">${fields.map(([f, l, type]) => `<div><label class="lbl">${l}</label><input data-k="${f}" type="${type}" ${type === 'number' ? 'inputmode="decimal" step="any"' : ''} value="${esc(d[f] ?? '')}"></div>`).join('')}</div>`).join('')}
-      <label class="row" style="margin-top:16px;justify-content:space-between;flex-wrap:nowrap"><span class="small">Téléphone utilisé au lit avant de dormir</span><span class="switch"><input type="checkbox" data-k="phoneInBed" ${d.phoneInBed ? 'checked' : ''}><span></span></span></label>
-      ${d.topApps?.length ? `<p class="tiny muted" style="margin-top:10px">Applis les plus utilisées : ${d.topApps.map((a) => `${esc(a.name)} (${a.minutes} min)`).join(', ')}</p>` : ''}
+
+      ${section('moon', 'Sommeil', 'var(--c-sleep)', d.sleepMinutes ? `<span class="small muted">${fmtMin(d.sleepMinutes)} de sommeil</span>` : '')}
+      <div class="grid2"><div><label class="lbl" style="margin-top:0">Couché à</label><input data-k="bed" type="time" value="${esc(d.bed || '')}"></div><div><label class="lbl" style="margin-top:0">Levé à</label><input data-k="wake" type="time" value="${esc(d.wake || '')}"></div></div>
+      <label class="lbl">Qualité</label>${faces('sleepQuality', d.sleepQuality)}
+
+      ${section('smile', 'Humeur', 'var(--c-mood)')}
+      ${faces('mood', d.mood)}
+      <label class="lbl">Énergie</label>${faces('energy', d.energy)}
+      <label class="lbl">Stress</label>${faces('stress', d.stress)}
+
+      ${section('steps', 'Activité', 'var(--c-move)', '<span class="tiny muted">mesurée par le téléphone</span>')}
+      <div class="ro-grid">
+        ${stat('Pas', d.steps != null ? fmt(d.steps) : '—', '', 'steps')}
+        ${stat('Calories brûlées', d.steps != null || ws.length ? fmt(E.activeKcal(d, ws, kg)) : '—', 'kcal', 'flame')}
+        ${stat('Activité modérée', fmtMin((d.modMin || 0) + (d.vigMin || 0)), '', 'activity')}
+        ${stat('Séances', ws.length ? ws.map((w) => `${SP.activity(w.type).label.split(' ')[0]} ${w.minutes}′`).join(', ') : '0', '', 'dumbbell')}
+      </div>
+
+      ${section('phone', 'Bien-être numérique', 'var(--c-screen)', '<span class="tiny muted">mesuré par le téléphone</span>')}
+      <div class="ro-grid">
+        ${stat('Temps d’écran', fmtMin(d.screenMin))}
+        ${stat('Réseaux sociaux', fmtMin(d.socialMin))}
+        ${stat('Déverrouillages', d.unlocks != null ? fmt(d.unlocks) : '—')}
+        ${stat('Téléphone avant de dormir', d.phoneBeforeBedMin != null ? `${d.phoneBeforeBedMin} min` : (d.phoneInBed ?? d.phoneInBedGuess) != null ? ((d.phoneInBed ?? d.phoneInBedGuess) ? 'oui' : 'non') : '—')}
+      </div>
+      ${d.topApps?.length ? `<p class="tiny muted" style="margin-top:8px">Applis les plus utilisées : ${d.topApps.map((a) => `${esc(a.name)} (${fmtMin(a.minutes)})`).join(', ')}</p>` : ''}
+
+      ${section('scale', 'Poids & boissons', 'var(--c-water)', due.due && dayOffset === 0 ? '<span class="badge moyen">pesée à faire</span>' : due.days != null ? `<span class="tiny muted">pesé il y a ${due.days} j</span>` : '')}
+      <div class="grid2">
+        <div><label class="lbl" style="margin-top:0">Poids (kg)</label><input data-k="weight" type="number" inputmode="decimal" step="0.1" value="${esc(d.weight ?? '')}" placeholder="${due.last ? fmt(due.last.kg, 1) : ''}"></div>
+        <div><label class="lbl" style="margin-top:0">Eau</label><div class="stepper"><button data-water="-250">−</button><input value="${fmt((d.waterMl || 0) / 10)} cL" readonly><button data-water="250">+</button></div></div>
+      </div>
+      <label class="lbl">Verres d’alcool <span class="tiny muted">(ajoutés automatiquement d’après tes repas)</span></label>
+      <div class="stepper" style="max-width:180px"><button data-alc="-1">−</button><input value="${fmt(d.alcohol || 0, 1)}" readonly><button data-alc="1">+</button></div>
+
       <label class="lbl">Note libre</label><textarea data-k="note" placeholder="Douleurs, événements, ressenti…">${esc(d.note || '')}</textarea>
     </div>
     ${stoolCard(key)}`;
 
+  const re = () => renderTrack(el, ctx);
   $$('[data-k]', el).forEach((inp) => inp.addEventListener('change', () => {
     const k = inp.dataset.k;
-    const v = inp.type === 'checkbox' ? inp.checked : inp.type === 'number' ? (inp.value === '' ? null : Number(inp.value)) : inp.value;
+    const v = inp.type === 'number' ? (inp.value === '' ? null : Number(inp.value)) : inp.value;
     store.setDay(key, { [k]: v });
-    if (k === 'weight' && v) store.update((s) => { s.weights = s.weights.filter((w) => w.date !== key); s.weights.push({ date: key, kg: v }); if (dayOffset === 0) s.profile.weight = v; });
-    toast('Enregistré', 1000);
+    if (k === 'weight' && v) { store.update((s) => { s.weights = s.weights.filter((w) => w.date !== key); s.weights.push({ date: key, kg: v }); if (dayOffset === 0) s.profile.weight = v; }); toast('Pesée enregistrée ⚖️', 1200); return; }
+    toast('Enregistré', 900);
   }));
-  $('#prev', el).onclick = () => { dayOffset--; renderTrack(el, ctx); };
+  bindFaces(el, (f, v) => store.setDay(key, { [f]: v }));
+  $$('[data-water]', el).forEach((b) => (b.onclick = () => { store.setDay(key, { waterMl: Math.max(0, (store.getDay(key).waterMl || 0) + Number(b.dataset.water)) }); re(); }));
+  $$('[data-alc]', el).forEach((b) => (b.onclick = () => { store.setDay(key, { alcohol: Math.max(0, (store.getDay(key).alcohol || 0) + Number(b.dataset.alc)) }); re(); }));
+  $('#prev', el).onclick = () => { dayOffset--; re(); };
+  $('#next', el).onclick = () => { if (dayOffset < 0) { dayOffset++; re(); } };
   $('#add-stool', el).onclick = () => ctx.action('stool');
-  $$('[data-stool-del]', el).forEach((b) => (b.onclick = () => { store.update((s) => (s.stools = s.stools.filter((x) => x.id !== b.dataset.stoolDel))); renderTrack(el, ctx); }));
-  $('#next', el).onclick = () => { if (dayOffset < 0) { dayOffset++; renderTrack(el, ctx); } };
-  const res = $('#sync-res', el);
-  if (native) {
-    $('#sync', el).onclick = async () => {
+  $$('[data-stool-del]', el).forEach((b) => (b.onclick = () => { store.update((s) => (s.stools = s.stools.filter((x) => x.id !== b.dataset.stoolDel))); re(); }));
+  if (N.isNative) {
+    $('#hc', el)?.addEventListener('click', async () => {
+      const res = $('#sync-res', el);
+      const d0 = store.get().healthDiag;
+      if (d0?.reason === 'unavailable') return openHealthHelp(d0);
+      try { await N.connectHealth(); } catch (e) { return openHealthHelp({ reason: 'error', detail: e.message }); }
       res.innerHTML = '<span class="spinner"></span> Synchronisation…';
-      const r = await syncAll();
-      renderTrack(el, ctx);
-      $('#sync-res', el).innerHTML = `<div class="note good">${icon('ok', 18)}<span>${esc(r.join(' · ') || 'Rien à synchroniser : autorise d’abord les accès.')}</span></div>`;
-    };
-    $('#hc', el).onclick = async () => {
-      try { await N.connectHealth(); toast('Health Connect autorisé'); } catch (e) { res.innerHTML = `<div class="note bad">${icon('alert', 18)}<span>${esc(e.message)}</span></div>`; }
-    };
-    $('#usage', el).onclick = () => openUsageHelp();
+      await syncAll();
+      if (!store.get().healthDiag?.ok) return openHealthHelp(store.get().healthDiag);
+      re();
+    });
+    $('#steps-on', el)?.addEventListener('click', async () => {
+      const ok = await N.stepsAccess();
+      store.update((s) => { s.stepsAccess = ok; });
+      if (ok) { await syncAll({ silent: true }); toast('Podomètre activé 👟'); } else toast('Autorisation « activité physique » refusée');
+      re();
+    });
+    $('#usage', el)?.addEventListener('click', () => openUsageHelp());
+    // états des accès, rafraîchis en arrière-plan
+    Promise.all([N.usagePermission().catch(() => false), N.stepsHasAccess()]).then(([u, sa]) => {
+      if (u !== store.get().usageOk || sa !== !!store.get().stepsAccess) { store.update((s) => { s.usageOk = u; s.stepsAccess = sa; }); if (el.isConnected) re(); }
+    });
   } else {
     $('#shot', el).onclick = () => readShots(key, el, ctx);
     $('#csv-btn', el).onclick = () => $('#csv', el).click();
@@ -134,9 +202,45 @@ function renderTrack(el, ctx) {
       const rows = parseCSV(await f.text());
       merge(rows);
       toast(`${Object.keys(rows).length} jour(s) importé(s)`);
-      renderTrack(el, ctx);
+      re();
     };
   }
+}
+
+// Explique pourquoi Health Connect ne répond pas, et les solutions.
+function openHealthHelp(d = {}) {
+  const body = sheet(`
+    ${d.reason === 'unavailable' ? `<div class="note warn">${icon('shield', 18)}<span>Health Connect n’est pas accessible pour Diana Health sur ce téléphone${d.detail ? ` (${esc(d.detail)})` : ''}.</span></div>
+      <p class="small">Causes fréquentes :</p>
+      <ul class="small" style="padding-left:20px;line-height:1.6">
+        <li><b>Téléphone géré par une organisation</b> (profil professionnel) : Health Connect n’est pas disponible dans ce profil.</li>
+        <li>Android 13 ou moins : installe <b>Health Connect</b> depuis le Play Store.</li>
+        <li>Health Connect doit être mis à jour (Play Store).</li>
+      </ul>` : d.reason === 'denied' ? `<p class="small" style="margin-top:0">L’accès a été refusé ou la fenêtre d’autorisation ne s’est pas ouverte. Ouvre Health Connect → <b>Autorisations des applis</b> → <b>Diana Health</b> → active <b>Pas, Sommeil, Exercice, Poids</b>.</p>
+      <p class="small">Vérifie aussi qu’une application <b>écrit</b> tes pas dans Health Connect (Google Fit, Samsung Health, Fitbit, ta montre…) : sinon il n’y a rien à lire.</p>` : `<div class="note bad">${icon('alert', 18)}<span>${esc(d.detail || 'Erreur inconnue')}</span></div>`}
+    <div class="note">${icon('steps', 18)}<span>En attendant, active le <b>podomètre du téléphone</b> : tes pas sont comptés sans Health Connect.</span></div>
+    <div class="grid2"><button class="btn ghost" id="open-hc">${icon('settings', 18)} Ouvrir Health Connect</button><button class="btn" id="steps2">${icon('steps', 18)} Podomètre</button></div>`, { title: 'Health Connect' });
+  $('#open-hc', body).onclick = () => N.openHealthSettings().catch(() => toast('Impossible d’ouvrir Health Connect'));
+  $('#steps2', body).onclick = async () => { const ok = await N.stepsAccess(); store.update((s) => { s.stepsAccess = ok; }); toast(ok ? 'Podomètre activé 👟' : 'Autorisation refusée'); body.close(); };
+}
+
+// Pesée rapide (rappel toutes les 2 semaines).
+export function openWeigh(done) {
+  const last = E.weighDue(store.get()).last;
+  const body = sheet(`
+    <p class="small muted" style="margin-top:0">Le matin, à jeun, après être passé aux toilettes : c’est la mesure la plus comparable d’une fois sur l’autre. Toutes les 2 semaines suffit.</p>
+    <div class="stepper"><button data-d="-0.1">−</button><input id="kg" type="number" inputmode="decimal" step="0.1" value="${last ? last.kg : store.get().profile.weight || 70}"><button data-d="0.1">+</button></div>
+    <button class="btn block" id="ok" style="margin-top:14px">${icon('check', 18)} Enregistrer</button>
+    ${srcLinks(['zheng2014', 'burke2011'])}`, { title: 'Pesée', onClose: done });
+  $$('[data-d]', body).forEach((b) => (b.onclick = () => { const i = $('#kg', body); i.value = (Math.round((Number(i.value) + Number(b.dataset.d)) * 10) / 10).toFixed(1); }));
+  $('#ok', body).onclick = () => {
+    const v = Number($('#kg', body).value);
+    if (!v) return;
+    const k = store.today();
+    store.update((s) => { s.weights = s.weights.filter((w) => w.date !== k); s.weights.push({ date: k, kg: v }); s.profile.weight = v; s.days[k] = { ...(s.days[k] || {}), weight: v }; });
+    toast('Pesée enregistrée ⚖️');
+    body.close();
+  };
 }
 
 async function readShots(key, el, ctx) {
@@ -162,28 +266,60 @@ async function readShots(key, el, ctx) {
 }
 
 // ---------- Tendances ----------
+// Chaque graphique peut passer de barres à courbe (préférence mémorisée).
+const chartTypes = () => { try { return JSON.parse(localStorage.getItem('dh-charts') || '{}'); } catch { return {}; } };
 function renderTrends(el) {
-  const dig = digestionCard();
   const st = store.get();
   const keys = store.lastDays(14);
   const t = S.targets(st.profile);
-  const series = (fn) => keys.map((k) => ({ label: new Date(k).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' }), short: k.slice(8), v: st.days[k] ? fn(st.days[k]) ?? null : null }));
+  const types = chartTypes();
+  const kg = st.profile.weight || 70;
+  const series = (fn) => keys.map((k) => ({ label: new Date(k).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' }), short: k.slice(8), v: fn(st.days[k] || {}, k) ?? null }));
   const sleepFn = (x) => (x.sleepMinutes ? x.sleepMinutes / 60 : S.sleepHours(x.bed, x.wake));
-  const card = (ic, title, col, chart, src = []) => `<div class="card"><div class="card-head"><h2><span style="color:${col}">${icon(ic, 18)}</span> ${title}</h2></div>${chart}${srcLinks(src)}</div>`;
+  const card = (id, ic, title, col, pts, opts, src = []) => {
+    const type = types[id] || 'bar';
+    return `<div class="card" data-chart="${id}"><div class="card-head"><h2><span style="color:${col}">${icon(ic, 18)}</span> ${title}</h2><button class="chart-toggle" data-toggle="${id}" aria-label="${type === 'bar' ? 'Afficher en courbe' : 'Afficher en barres'}">${icon(type === 'bar' ? 'trend' : 'list', 16)}</button></div>${barChart(pts, { ...opts, color: col, type })}${srcLinks(src)}</div>`;
+  };
+  const we = E.weightEstimate(st);
   el.innerHTML = [
-    card('moon', 'Sommeil (h)', 'var(--c-sleep)', barChart(series(sleepFn), { ref: 7, unit: 'h', digits: 1, color: 'var(--c-sleep)' }), ['watson2015']),
-    card('steps', 'Pas', 'var(--c-move)', barChart(series((x) => x.steps), { ref: t.steps, unit: 'pas', color: 'var(--c-move)' }), ['paluch2022']),
-    card('smile', 'Humeur (1-5)', 'var(--c-mood)', barChart(series((x) => x.mood), { unit: '/5', color: 'var(--c-mood)' })),
-    card('phone', "Temps d'écran (min)", 'var(--c-screen)', barChart(series((x) => x.screenMin), { unit: 'min', color: 'var(--c-screen)' })),
-    card('share', 'Réseaux sociaux (min)', 'var(--c-screen)', barChart(series((x) => x.socialMin), { ref: 30, unit: 'min', color: 'var(--c-screen)' }), ['hunt2018']),
-    card('flame', 'Calories consommées', 'var(--c-food)', barChart(keys.map((k) => ({ label: k, short: k.slice(8), v: store.mealsOn(k).length ? S.sumNutrients(store.mealsOn(k)).kcal : null })), { ref: t.kcal, unit: 'kcal', color: 'var(--c-food)' })),
-    st.days[keys.at(-1)]?.restingHR != null || keys.some((k) => st.days[k]?.restingHR) ? card('heart', 'FC au repos (bpm)', 'var(--bad)', barChart(series((x) => x.restingHR), { unit: 'bpm', color: 'var(--bad)' })) : '',
-    dig,
+    weightCard(we),
+    card('sleep', 'moon', 'Sommeil', 'var(--c-sleep)', series(sleepFn), { ref: 7, fmtV: (v) => fmtMin(v * 60) }, ['watson2015']),
+    card('steps', 'steps', 'Pas', 'var(--c-move)', series((x) => x.steps), { ref: t.steps, unit: 'pas' }, ['paluch2022']),
+    card('burn', 'flame', 'Calories brûlées par l’activité', 'var(--c-move)', series((x, k) => (x.steps != null || st.workouts.some((w) => w.date === k) ? E.activeKcal(x, st.workouts.filter((w) => w.date === k), kg) : null)), { unit: 'kcal' }, ['herrmann2024']),
+    card('mood', 'smile', 'Humeur', 'var(--c-mood)', series((x) => x.mood), { unit: '/5' }),
+    card('screen', 'phone', 'Temps d’écran', 'var(--c-screen)', series((x) => x.screenMin), { fmtV: fmtMin }),
+    card('social', 'share', 'Réseaux sociaux', 'var(--c-screen)', series((x) => x.socialMin), { ref: 30, fmtV: fmtMin }, ['hunt2018']),
+    card('kcal', 'utensils', 'Calories consommées', 'var(--c-food)', keys.map((k) => ({ label: k, short: k.slice(8), v: store.mealsOn(k).length ? S.sumNutrients(store.mealsOn(k)).kcal : null })), { ref: t.kcal, unit: 'kcal' }),
+    digestionCard(),
   ].join('');
-  el.addEventListener('click', (e) => {
+  el.onclick = (e) => {
+    const tg = e.target.closest('[data-toggle]');
+    if (tg) {
+      const ty = chartTypes();
+      ty[tg.dataset.toggle] = (ty[tg.dataset.toggle] || 'bar') === 'bar' ? 'line' : 'bar';
+      try { localStorage.setItem('dh-charts', JSON.stringify(ty)); } catch { /* stockage indisponible */ }
+      renderTrends(el);
+      return;
+    }
     const tip = e.target.closest('[data-tip]');
     if (tip) tip.closest('.card').querySelector('.tip').textContent = tip.dataset.tip;
-  });
+    if (e.target.closest('#weigh-now')) openWeigh(() => renderTrends(el));
+  };
+}
+
+// Poids réel (pesées) vs poids estimé d'après les repas notés et l'activité mesurée.
+function weightCard(we) {
+  const head = `<div class="card-head"><h2><span style="color:var(--c-water)">${icon('scale', 18)}</span> Poids : réel et estimé</h2><button class="btn sm soft" id="weigh-now">${icon('plus', 14)} Pesée</button></div>`;
+  if (!we || we.real.length < 1) return `<div class="card">${head}<p class="small muted" style="margin:0">Pèse-toi toutes les 2 semaines : on compare ton poids réel à celui calculé d’après tes repas et ton activité.</p></div>`;
+  const msg = we.gap == null
+    ? `Prochaine pesée dans quelques jours pour comparer avec l’estimation (${Math.round(we.coverage * 100)} % des jours avec repas notés).`
+    : Math.abs(we.gap) < 0.5 ? `Estimation fidèle : ${we.gap > 0 ? '+' : ''}${fmt(we.gap, 1)} kg d’écart. Tes repas sont bien notés 👏`
+    : we.gap > 0 ? `Tu pèses ${fmt(we.gap, 1)} kg de plus que l’estimation : il manque probablement ~${fmt(Math.abs(we.gapKcalPerDay))} kcal/j dans tes repas notés (grignotages, boissons, sauces, portions).`
+    : `Tu pèses ${fmt(Math.abs(we.gap), 1)} kg de moins que l’estimation : portions surestimées ou dépense plus élevée que prévu (~${fmt(Math.abs(we.gapKcalPerDay))} kcal/j).`;
+  return `<div class="card">${head}
+    ${timeChart([{ name: 'Estimé (repas + activité)', color: 'var(--c-food)', pts: we.est, dashed: true }, { name: 'Réel (pesées)', color: 'var(--c-water)', pts: we.real.length > 1 ? we.real : [...we.real, { ...we.real[0], t: we.est.at(-1).t }], dots: true }], { unit: 'kg' })}
+    <div class="note ${we.gap != null && Math.abs(we.gap) >= 1 ? 'warn' : ''}" style="margin-top:8px">${icon('info', 18)}<span>${msg}</span></div>
+    ${srcLinks(['hall2011', 'dhurandhar2015', 'subar2015'])}</div>`;
 }
 
 // ---------- Projection ----------
@@ -276,22 +412,31 @@ function stoolCard(key) {
   </div>`;
 }
 
+// Digestion : synthèse lisible du transit, puis aliments à tester (avec explication du calcul).
 function digestionCard() {
   const st = store.get();
   const sum = D.digestionSummary(st.stools);
   const sus = D.suspects(st.stools, st.meals);
-  const head = `<div class="card-head"><h2><span style="color:var(--c-food)">${icon('activity', 18)}</span> Digestion & tolérance</h2></div>`;
-  if (!sum) return `<div class="card">${head}<p class="small muted" style="margin:0">Note tes passages aux toilettes (bouton +) : l’application croise l’échelle de Bristol avec tes repas des 8 à 48 h précédentes pour repérer les aliments mal tolérés.</p>${srcLinks(['lewis1997', 'asnicar2021'])}</div>`;
+  const head = `<div class="card-head"><h2><span style="color:var(--c-food)">${icon('activity', 18)}</span> Digestion</h2></div>`;
+  const how = `<details style="margin-top:10px"><summary class="small">${icon('info', 14)} Comment ça marche ?</summary><p class="tiny muted" style="margin:6px 0 0">Note chaque passage aux toilettes (bouton +) avec l’échelle de Bristol, qui reflète la vitesse du transit. L’application regarde ensuite ce que tu as mangé 8 à 48 h avant (le temps moyen de transit est d’environ 1 jour) : si un aliment revient souvent avant des selles difficiles, des douleurs ou des ballonnements, il est signalé « à tester ».</p></details>`;
+  if (!sum) return `<div class="card">${head}<p class="small muted" style="margin:0">Pas encore de passage noté sur 14 jours.</p>${how}${srcLinks(['lewis1997', 'asnicar2021'])}</div>`;
   const total = sum.count;
-  const seg = (n, col) => `<div style="width:${(n / total) * 100}%;background:${col}"></div>`;
+  const pOk = Math.round((sum.zones.ok / total) * 100);
+  const verdict = sum.zones.lent / total > 0.4 ? ['Plutôt lent', 'var(--warn)', 'Selles souvent dures : plus de fibres, d’eau et de marche.'] : sum.zones.rapide / total > 0.4 ? ['Plutôt rapide', 'var(--warn)', 'Selles souvent molles : regarde les aliments à tester ci-dessous.'] : ['Normal', 'var(--good)', 'Ton transit est dans la norme.'];
+  const seg = (n, col) => (n ? `<div style="width:${(n / total) * 100}%;background:${col}"></div>` : '');
+  const badN = st.stools.filter(D.isBad).length;
   return `<div class="card">${head}
-    <div class="kpi-row"><div class="stat"><div class="k">Par semaine</div><div class="v">${fmt(sum.perWeek, 1)}</div></div><div class="stat"><div class="k">Types 3–4</div><div class="v">${Math.round((sum.zones.ok / total) * 100)}<small>%</small></div></div><div class="stat"><div class="k">Notés (14 j)</div><div class="v">${total}</div></div></div>
-    <div class="bar-mini" style="display:flex;height:10px;margin:12px 0 4px">${seg(sum.zones.lent, 'var(--warn)')}${seg(sum.zones.ok, 'var(--good)')}${seg(sum.zones.rapide, 'var(--c-move)')}</div>
-    <div class="legend"><span><i style="background:var(--warn)"></i>lent (1–2)</span><span><i style="background:var(--good)"></i>idéal (3–4)</span><span><i style="background:var(--c-move)"></i>rapide (5–7)</span></div>
-    ${sum.advice.map((a) => `<div class="note ${a.level === 'bon' ? 'good' : a.level === 'alerte' ? 'bad' : 'warn'}" style="margin:8px 0">${icon(a.level === 'bon' ? 'ok' : 'alert', 16)}<span>${esc(a.text)}</span></div>${srcLinks(a.src)}`).join('')}
-    <h3 style="font-size:.9rem;margin:14px 0 6px">Aliments à surveiller</h3>
-    ${sus.length ? sus.map((x) => `<div class="between small" style="padding:6px 0;border-top:1px solid var(--line)"><span style="text-transform:capitalize">${esc(x.word)}</span><span class="muted">suivi de troubles ${x.bad} fois sur ${x.total}</span></div>`).join('') + '<p class="tiny muted">Corrélation, pas preuve : retire un aliment 2–3 semaines puis réintroduis-le pour vérifier, idéalement avec un professionnel.</p>' : '<p class="small muted" style="margin:0">Aucun aliment suspect pour l’instant (il faut au moins 2 épisodes liés).</p>'}
-    ${srcLinks(['halmos2014', 'vandeputte2016'])}
+    <div class="between"><div><div class="tiny muted">Ton transit sur 14 jours</div><div style="font-size:1.3rem;font-weight:800;color:${verdict[1]}">${verdict[0]}</div></div><div style="text-align:right"><div style="font-size:1.3rem;font-weight:800">${fmt(sum.perWeek, 1)}</div><div class="tiny muted">passages / semaine</div></div></div>
+    <p class="small" style="margin:6px 0">${verdict[2]} <span class="muted">${pOk} % de selles idéales (types 3–4).</span></p>
+    <div class="bar-mini" style="display:flex;height:10px;margin:8px 0 4px">${seg(sum.zones.lent, 'var(--warn)')}${seg(sum.zones.ok, 'var(--good)')}${seg(sum.zones.rapide, 'var(--c-move)')}</div>
+    <div class="legend"><span><i style="background:var(--warn)"></i>dures</span><span><i style="background:var(--good)"></i>idéales</span><span><i style="background:var(--c-move)"></i>molles</span></div>
+    ${sum.advice.filter((a) => a.level !== 'bon').slice(0, 2).map((a) => `<div class="note ${a.level === 'alerte' ? 'bad' : 'warn'}" style="margin:8px 0">${icon('alert', 16)}<span>${esc(a.text)}</span></div>`).join('')}
+    <h3 style="font-size:.95rem;margin:16px 0 4px">Aliments à tester</h3>
+    ${sus.length ? `<p class="tiny muted" style="margin:0 0 6px">Souvent mangés dans les 8–48 h avant un passage difficile :</p>${sus.map((x) => `<div style="padding:8px 0;border-top:1px solid var(--line)"><div class="between small"><b style="text-transform:capitalize">${esc(x.word)}</b><span style="color:var(--warn);font-weight:700">${x.bad} fois sur ${x.total}</span></div><div class="bar-mini" style="margin-top:4px"><div style="width:${Math.round(x.rate * 100)}%;background:var(--warn)"></div></div></div>`).join('')}
+      <div class="note" style="margin-top:8px">${icon('bulb', 18)}<span>Pour vérifier : retire l’aliment 2 à 3 semaines, puis réintroduis-le. Si les troubles reviennent, le lien est probable. Idéalement avec un médecin ou un diététicien.</span></div>`
+    : `<p class="small muted" style="margin:0">${badN < 2 ? `Rien à signaler : il faut au moins 2 passages difficiles (dures, molles, douleurs ou ballonnements) pour commencer à chercher un aliment en cause${badN ? ` — 1 noté pour l’instant` : ''}.` : 'Aucun aliment ne revient de façon répétée avant tes passages difficiles.'}</p>`}
+    ${how}
+    ${srcLinks(['lewis1997', 'asnicar2021', 'halmos2014', 'vandeputte2016'])}
   </div>`;
 }
 
@@ -304,7 +449,7 @@ export function openUsageHelp() {
     <ol class="small" style="padding-left:20px;line-height:1.7">
       <li>Touche <b>Ouvrir les infos de l’appli</b> ci-dessous.</li>
       <li>En haut à droite, touche <b>⋮</b> puis <b>Autoriser les paramètres restreints</b> et confirme (code ou empreinte).</li>
-      <li>Reviens ici et touche <b>Activer l’accès</b>, puis active <b>AppSanté</b>.</li>
+      <li>Reviens ici et touche <b>Activer l’accès</b>, puis active <b>Diana Health</b>.</li>
     </ol>
     <p class="tiny muted">Si l’option n’apparaît pas dans le menu ⋮, ton téléphone est géré par une organisation qui l’interdit : l’import par capture d’écran reste possible.</p>
     <div class="grid2"><button class="btn ghost" id="info">${icon('settings', 18)} Ouvrir les infos de l’appli</button><button class="btn" id="usage-go">${icon('phone', 18)} Activer l’accès</button></div>`, { title: 'Temps d’écran et réveil' });

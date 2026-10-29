@@ -106,6 +106,17 @@ export const SOURCES = {
   harkin2016: { t: 'Harkin et al. – Suivre ses progrès augmente l’atteinte des objectifs, méta-analyse (Psychol Bull 2016)', u: 'https://doi.org/10.1037/bul0000025' },
   michie2009: { t: 'Michie et al. – L’auto-surveillance est la technique la plus efficace pour l’alimentation et l’activité (Health Psychol 2009)', u: 'https://doi.org/10.1037/a0016136' },
   belanger2011: { t: 'Bélanger-Gravel et al. – Planifier quand et où faire son sport (« si… alors ») augmente l’activité, méta-analyse (Health Psychol Rev 2013)', u: 'https://doi.org/10.1080/17437199.2011.560095' },
+  foster2001: { t: 'Foster et al. – L’effort perçu de séance (RPE × durée) pour piloter l’entraînement (J Strength Cond Res 2001)', u: 'https://doi.org/10.1519/00124278-200102000-00019' },
+  helms2016: { t: 'Helms et al. – Échelle d’effort perçu « répétitions en réserve » pour ajuster la charge (Strength Cond J 2016)', u: 'https://doi.org/10.1519/SSC.0000000000000218' },
+  greig2020: { t: 'Greig et al. – Auto-régulation de l’entraînement : ajuster la séance au ressenti (Sports Med 2020)', u: 'https://doi.org/10.1007/s40279-020-01330-8' },
+  ekkekakis2011: { t: 'Ekkekakis et al. – Le plaisir ressenti selon l’intensité de l’effort et son rôle dans la régularité (Sports Med 2011)', u: 'https://doi.org/10.2165/11590680-000000000-00000' },
+  dhurandhar2015: { t: 'Dhurandhar et al. – Les apports déclarés sous-estiment la réalité : limites du bilan énergétique auto-rapporté (Int J Obes 2015)', u: 'https://doi.org/10.1038/ijo.2014.199' },
+  subar2015: { t: 'Subar et al. – Valeur et limites des données alimentaires auto-déclarées (J Nutr 2015)', u: 'https://doi.org/10.3945/jn.115.219634' },
+  lichtman1992: { t: 'Lichtman et al. – Écart entre calories déclarées et réelles (−47 % chez certains sujets) (N Engl J Med 1992)', u: 'https://doi.org/10.1056/NEJM199212313272701' },
+  hall2013: { t: 'Hall & Chow – Pourquoi la règle « 3500 kcal = 1 livre » est fausse à long terme (Int J Obes 2013)', u: 'https://doi.org/10.1038/ijo.2013.112' },
+  zheng2014: { t: 'Zheng et al. – Se peser régulièrement aide à perdre du poids et à ne pas le reprendre, revue systématique (Obesity 2015)', u: 'https://doi.org/10.1002/oby.20946' },
+  burke2011: { t: 'Burke et al. – Noter ce qu’on mange, son activité et son poids est associé à une meilleure perte de poids, revue (J Am Diet Assoc 2011)', u: 'https://doi.org/10.1016/j.jada.2010.10.008' },
+  popkin2010: { t: 'Popkin et al. – Eau, hydratation et santé : besoins, cognition, humeur (Nutr Rev 2010)', u: 'https://doi.org/10.1111/j.1753-4887.2010.00304.x' },
 };
 
 export const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -373,6 +384,9 @@ export const EVIDENCE = [
     ['Les nuits chaudes réduisent le sommeil ; une chambre fraîche (≈ 16–19 °C) et aérée aide à mieux dormir.', ['obradovich2017']],
   ] },
   { theme: 'Alimentation', icon: 'salad', color: 'var(--c-food)', facts: [
+    ['On sous-estime presque toujours ce qu’on mange (souvent de 20 à 40 %) : comparer son poids réel au poids estimé d’après ses repas révèle l’écart.', ['lichtman1992', 'dhurandhar2015', 'subar2015']],
+    ['1 kg de graisse ≈ 7700 kcal sur quelques semaines ; sur plusieurs mois le corps s’adapte et la perte ralentit.', ['hall2013', 'hall2011']],
+    ['Boire suffisamment soutient la concentration et l’humeur ; une déshydratation même légère (1–2 %) les dégrade.', ['popkin2010']],
     ['Les 3 premiers risques alimentaires mondiaux : trop de sel, pas assez de céréales complètes, pas assez de fruits.', ['gbd2019']],
     ['Le modèle méditerranéen réduit d’environ 30 % les accidents cardiovasculaires (essai PREDIMED) ; +2 points d’adhésion ≈ −8 % de mortalité.', ['estruch2018', 'sofi2010']],
     ['25–29 g de fibres/jour : −15 à −30 % de mortalité et de maladies chroniques.', ['reynolds2019']],
@@ -423,6 +437,10 @@ export const EVIDENCE = [
     ['Suivre ses progrès augmente nettement les chances d’atteindre ses objectifs, surtout quand les progrès sont visibles.', ['harkin2016', 'michie2009']],
     ['Les mécaniques de jeu (points, séries, niveaux, défis) augmentent l’activité physique, surtout combinées à un engagement et à un soutien social.', ['mazeas2022', 'patel2019']],
     ['Planifier précisément quand et où tu feras ton sport (« si c’est mardi 18 h, alors je cours ») augmente l’activité réalisée.', ['belanger2011']],
+    ['Noter ce que tu manges, ton activité et ton poids est l’un des comportements les plus constamment associés à la perte de poids durable.', ['burke2011', 'michie2009']],
+    ['Se peser régulièrement (au moins toutes les 1 à 2 semaines) aide à perdre du poids et surtout à ne pas le reprendre.', ['zheng2014']],
+    ['Ajuster la séance suivante à l’effort ressenti (trop dur / adapté / trop facile) est une méthode d’entraînement validée, aussi efficace que les programmes fixes.', ['foster2001', 'helms2016', 'greig2020']],
+    ['Une intensité vécue comme agréable rend plus régulier : au-delà du seuil où l’on ne peut plus parler, le plaisir chute chez les débutants.', ['ekkekakis2011']],
   ] },
   { theme: 'Écrans & santé mentale', icon: 'phone', color: 'var(--c-screen)', facts: [
     ['Limiter les réseaux sociaux à 30 min/jour pendant 3 semaines réduit solitude et symptômes dépressifs (essai contrôlé).', ['hunt2018']],
