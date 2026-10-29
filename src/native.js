@@ -110,3 +110,9 @@ export async function syncUsage(days = 7, bedTime = '23:00') {
   }
   return out;
 }
+
+// ---------- Widget « Je vais dormir » ----------
+const SleepWidget = registerPlugin('SleepWidget');
+export const takeWidgetEvents = () => (isNative ? SleepWidget.takeEvents().then((r) => r.events || []).catch(() => []) : Promise.resolve([]));
+export const setWidgetState = (sleeping, since) => (isNative ? SleepWidget.setState({ sleeping, since: since ? new Date(since).getTime() : Date.now() }).catch(() => {}) : Promise.resolve());
+export const pinSleepWidget = () => (isNative ? SleepWidget.pin().then((r) => r.requested).catch(() => false) : Promise.resolve(false));

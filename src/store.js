@@ -18,13 +18,25 @@ const DEFAULT = {
     conditions: '',
     smoker: false,
     preferredSport: '',
+    likes: '', // aliments et plats aimés
+    dislikes: '', // aliments détestés
+    cuisines: [], // cuisines préférées
   },
+  household: [], // autres membres du foyer : { id, name, age, sex, weight, height, goal, allergies, diet }
+  location: null, // { name, lat, lon }
+  env: null, // dernières données air & météo { fetched, ... }
+  sleepNow: null, // heure de coucher en cours (ISO) via « Je vais dormir »
+  sleepLog: [], // { bed, wake } (ISO)
+  pantry: [], // garde-manger issu des tickets : { id, name, qty, unit, category, nova, added }
+  receipts: [], // { id, date, store, total, stats }
+  stools: [], // { id, at, bristol, pain, bloating, urgency, note }
   settings: {
     apiKey: '',
     model: 'claude-opus-5-5',
     reminders: { enabled: false, kinds: { light: true, meal: false, coffee: true, walk: true, sport: true, screens: true, bed: true, water: false } },
     autoSync: true,
     webSearch: true, // le coach peut consulter PubMed, OMS, Lancet…
+    theme: 'dark', // 'dark' | 'light' | 'auto'
   },
   days: {}, // 'AAAA-MM-JJ' -> check-in
   meals: [],

@@ -2,8 +2,14 @@
   "appId": "com.stonetheking.appsante",
   "appName": "AppSanté",
   "webDir": "dist",
-  "android": { "allowMixedContent": false },
+  "android": {
+    "allowMixedContent": false
+  },
   "plugins": {
-    "LocalNotifications": { "smallIcon": "ic_stat_appsante", "iconColor": "#0d9488" }
-  }
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_appsante",
+      "iconColor": "#0d9488"
+    }
+  },
+  "backgroundColor": "#07090d"
 }

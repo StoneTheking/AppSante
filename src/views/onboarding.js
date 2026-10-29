@@ -83,6 +83,9 @@ export function loadDemo() {
         for (const [time, title, nutrients, nova] of meals) s.meals.push({ id: crypto.randomUUID(), date: k, time, title, nutrients, nova, quality: nova === 4 ? 30 : 55, verdict: nova === 4 ? 'a_limiter' : 'moyen' });
       }
     }
+    // transit : selles plus molles après les journées « sandwich + soda »
+    s.stools = store.lastDays(14).map((k, i) => ({ id: crypto.randomUUID(), at: new Date(`${k}T07:${String(10 + i).padStart(2, '0')}`).toISOString(), bristol: i % 3 === 0 ? 6 : 4, pain: i % 3 === 0 ? 2 : 0, bloating: i % 3 === 0 ? 2 : 0, urgency: false, blood: false }));
+    s.meals.forEach((m, i) => { if (!m.rating && i % 4 === 0) m.rating = m.verdict === 'a_limiter' ? 4 : 3; });
     s.onboarded = true;
   });
 }

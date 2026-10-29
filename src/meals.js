@@ -1,3 +1,5 @@
+import { tasteScore } from './family.js';
+
 // Banque de repas équilibrés (valeurs moyennes par portion, d'après la table CIQUAL de l'Anses).
 // slots : moments adaptés ; tags : contextes favorables ; ing : ingrédients pour 1 portion [nom, quantité, unité, rayon].
 const FL = 'Fruits & légumes', VI = 'Viande & poisson', CR = 'Crèmerie & œufs', EP = 'Épicerie', BO = 'Boulangerie', SU = 'Surgelés';
@@ -63,7 +65,7 @@ export function allowedMeals(diet = 'omnivore', allergies = '') {
 }
 
 // Choisit les meilleurs repas pour un créneau selon les besoins restants et le contexte du jour.
-export function suggestMeals(slot, { remaining, ctx, diet = 'omnivore', allergies = '' }, n = 3) {
+export function suggestMeals(slot, { remaining, ctx, diet = 'omnivore', allergies = '', taste }, n = 3) {
   const slotShare = { 'petit-dej': 0.25, dejeuner: 0.35, collation: 0.1, diner: 0.3 }[slot] || 0.3;
   return allowedMeals(diet, allergies).filter((m) => m.slots.includes(slot))
     .map((m) => {
@@ -80,6 +82,11 @@ export function suggestMeals(slot, { remaining, ctx, diet = 'omnivore', allergie
       if (slot === 'diner' && m.tags.includes('sommeil')) score += 1;
       if (ctx.goal === 'perdre' && m.tags.includes('satiete')) { score += 2; why.push('rassasiant'); }
       if (ctx.lowEnergy && m.tags.includes('energie')) { score += 2; why.push('énergie durable'); }
+      if (taste) {
+        const t = tasteScore(m.name + ' ' + m.ing.map((i) => i[0]).join(' '), taste);
+        score += t.s;
+        if (t.s > 0) why.push('selon tes goûts');
+      }
       return { ...m, score, why };
     })
     .sort((a, b) => b.score - a.score)

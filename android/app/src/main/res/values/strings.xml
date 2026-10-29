@@ -5,4 +5,8 @@
     <string name="package_name">com.stonetheking.appsante</string>
     <string name="custom_url_scheme">com.stonetheking.appsante</string>
     <string name="health_connect_privacy_policy_url">https://stonetheking.github.io/AppSante/privacy.html</string>
+    <string name="widget_go_to_bed">Je vais dormir</string>
+    <string name="widget_wake_up">Je suis réveillé</string>
+    <string name="widget_tap_hint">Touche pour noter ton coucher</string>
+    <string name="widget_description">Note ton heure de coucher et de réveil en un geste</string>
 </resources>

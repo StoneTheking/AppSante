@@ -4,7 +4,10 @@ import * as C from '../coach.js';
 import * as AI from '../ai.js';
 import * as BC from '../barcode.js';
 import { summary, personContext } from '../context.js';
-import { icon, esc, fmt, sheet, toast, compressImage, pickImage, $, $$ } from '../ui.js';
+import { icon, esc, fmt, sheet, toast, compressImage, pickImage, srcLinks, $, $$ } from '../ui.js';
+import * as SL from '../sleep.js';
+import * as D from '../digestion.js';
+import * as PT from '../pantry.js';
 
 const VERDICT = { bon: 'Bon pour toi', moyen: 'Moyen', a_limiter: 'À limiter' };
 
@@ -23,6 +26,9 @@ export function openAddMenu(ctx) {
         ['checkin', 'smile', 'var(--c-mood)', 'Check-in', 'Humeur, énergie, sommeil'],
         ['sync', 'refresh', 'var(--c-screen)', 'Synchroniser', 'Pas, sommeil, temps d’écran'],
         ['manual', 'pencil', 'var(--c-sleep)', 'Repas manuel', 'Saisie rapide'],
+        ['receipt', 'receipt', 'var(--c-food)', 'Ticket de caisse', 'Remplir le garde-manger'],
+        ['stool', 'activity', 'var(--c-move)', 'Passage aux toilettes', 'Transit & tolérance'],
+        ['sleep', 'moon', 'var(--c-sleep)', store.get().sleepNow ? 'Je suis réveillé' : 'Je vais dormir', 'Noter le coucher / réveil'],
         ['menus', 'calendar', 'var(--primary)', 'Menus de la semaine', 'Et liste de courses'],
       ].map(([a, ic, col, t, s]) => `<button class="action" data-a="${a}"><span class="icon-badge" style="background:color-mix(in srgb,${col} 16%,transparent);color:${col}">${icon(ic)}</span><b>${t}</b><span>${s}</span></button>`).join('')}
     </div>`, { title: 'Ajouter' });
@@ -30,22 +36,22 @@ export function openAddMenu(ctx) {
 }
 
 // ---------- Check-in ----------
-const MOODS = ['😞', '🙁', '😐', '🙂', '😄'];
-function scale(field, value, icons = MOODS) {
-  return `<div class="scale" data-field="${field}">${icons.map((ic, i) => `<button type="button" class="${value === i + 1 ? 'on' : ''}" data-v="${i + 1}" aria-label="${i + 1} sur 5">${ic}</button>`).join('')}</div>`;
+const MOODS = ['Très bas', 'Bas', 'Neutre', 'Bon', 'Très bon'];
+export function scale(field, value, labels = MOODS) {
+  return `<div class="scale" data-field="${field}">${labels.map((l, i) => `<button type="button" class="${value === i + 1 ? 'on' : ''}" data-v="${i + 1}" aria-label="${l}">${i + 1}<small>${l}</small></button>`).join('')}</div>`;
 }
 
 export function openCheckin(ctx) {
   const d = store.getDay();
   const body = sheet(`
     <label class="lbl">Comment te sens-tu ?</label>${scale('mood', d.mood)}
-    <label class="lbl">Énergie</label>${scale('energy', d.energy, ['🪫', '😪', '😐', '💪', '⚡'])}
-    <label class="lbl">Stress</label>${scale('stress', d.stress, ['😌', '🙂', '😐', '😬', '🤯'])}
+    <label class="lbl">Énergie</label>${scale('energy', d.energy, ['Épuisé', 'Fatigué', 'Moyen', 'En forme', 'Plein'])}
+    <label class="lbl">Stress</label>${scale('stress', d.stress, ['Zen', 'Calme', 'Moyen', 'Tendu', 'Très tendu'])}
     <div class="grid2">
       <div><label class="lbl">Couché à</label><input type="time" data-f="bed" value="${esc(d.bed || '')}"></div>
       <div><label class="lbl">Levé à</label><input type="time" data-f="wake" value="${esc(d.wake || '')}"></div>
     </div>
-    <label class="lbl">Qualité du sommeil</label>${scale('sleepQuality', d.sleepQuality, ['😫', '😕', '😐', '🙂', '😴'])}
+    <label class="lbl">Qualité du sommeil</label>${scale('sleepQuality', d.sleepQuality, ['Très mauvais', 'Mauvais', 'Moyen', 'Bon', 'Excellent'])}
     <button class="btn block" style="margin-top:18px" data-done>Enregistrer</button>`, { title: 'Check-in du jour', onClose: () => ctx.render() });
   $$('.scale', body).forEach((sc) => sc.addEventListener('click', (e) => {
     const b = e.target.closest('button');
@@ -203,4 +209,129 @@ export function openManual(ctx) {
     addMeal({ title, nutrients: { kcal: v('kcal'), protein: v('protein'), fiber: v('fiber'), sugar: v('sugar'), fruitVeg: v('fruitVeg'), sodium: v('sodium'), carbs: 0, fat: 0, satFat: 0 }, nova: Number($('#m-nova', body).value) });
     body.close();
   };
+}
+
+// ---------- Sommeil ----------
+export function openSleep(ctx) {
+  if (store.get().sleepNow) {
+    const r = SL.wakeUp();
+    ctx.syncWidget?.();
+    if (!r || r.tooShort) { toast('Moins d’une heure : nuit non enregistrée'); return ctx.render(); }
+    const h = r.sleepMinutes / 60;
+    const t = store.get().profile;
+    const verdict = h >= 7 && h <= 9 ? ['good', 'Durée idéale (7–9 h).'] : h < 7 ? ['warn', 'Nuit courte : évite les efforts intenses, pas de café après 15 h, sieste ≤ 20 min avant 15 h si besoin.'] : ['warn', 'Nuit longue : si tu te sens fatigué malgré tout, parles-en à un médecin.'];
+    const body = sheet(`
+      <div class="sleep-card" style="margin-top:0">
+        <div class="tiny muted" style="font-weight:700;letter-spacing:.08em;text-transform:uppercase">Ta nuit</div>
+        <div class="big">${Math.floor(h)} h ${String(r.sleepMinutes % 60).padStart(2, '0')}</div>
+        <div class="small muted">${r.bed} → ${r.wake} · ${Math.round(r.inBedMin / 6) / 10} h au lit, ~${SL.LATENCY_MIN} min d’endormissement estimées</div>
+      </div>
+      <div class="note ${verdict[0]}">${icon('info', 18)}<span>${verdict[1]} Ouvre les volets et prends la lumière du jour dans l’heure qui suit ton réveil.</span></div>
+      ${srcLinks(['watson2015', 'ohayon2017', 'burns2023'])}
+      <label class="lbl">Comment as-tu dormi ?</label>${scale('sleepQuality', null, ['Très mal', 'Mal', 'Moyen', 'Bien', 'Très bien'])}
+      <label class="lbl">Et ton énergie ce matin ?</label>${scale('energy', null, ['Épuisé', 'Fatigué', 'Moyen', 'En forme', 'Plein'])}
+      <button class="btn block" style="margin-top:16px" data-done>C’est noté</button>`, { title: 'Bonjour ☀︎', onClose: () => ctx.render() });
+    $$('.scale', body).forEach((sc) => sc.addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      store.setDay(r.key, { [sc.dataset.field]: Number(b.dataset.v) });
+      $$('button', sc).forEach((x) => x.classList.toggle('on', x === b));
+    }));
+    $('[data-done]', body).onclick = () => body.close();
+    return;
+  }
+  SL.goToBed();
+  ctx.syncWidget?.();
+  const env = store.get().env;
+  const tips = [
+    ['phone', 'Téléphone hors de la chambre (ou en mode avion, face cachée).', ['exelmans2016', 'chang2015']],
+    ['moon', 'Chambre sombre, calme et fraîche (≈ 16–19 °C).' + (env?.tMin >= 20 ? ` Nuit chaude annoncée (${Math.round(env.tMin)} °C) : aère et utilise un ventilateur.` : ''), ['obradovich2017']],
+    ['brain', 'Si tu ne dors pas au bout de ~20 min, lève-toi et fais quelque chose de calme sous lumière tamisée.', ['ohayon2017']],
+    ['clock', `Réveil visé : ${store.get().profile.wakeTime}. Même heure demain, week-end compris.`, ['windred2024', 'phillips2017']],
+  ];
+  const body = sheet(`
+    <div class="sleep-card" style="margin-top:0"><div class="tiny muted" style="font-weight:700;letter-spacing:.08em;text-transform:uppercase">Coucher noté</div><div class="big">${new Date().toTimeString().slice(0, 5)}</div><div class="small muted">Appuie sur « Je suis réveillé » demain matin.</div></div>
+    ${tips.map(([ic, t, src]) => `<div class="list-item" style="grid-template-columns:auto 1fr"><span class="icon-badge" style="background:color-mix(in srgb,var(--c-sleep) 15%,transparent);color:var(--c-sleep)">${icon(ic, 18)}</span><div><div class="small">${esc(t)}</div>${srcLinks(src)}</div></div>`).join('')}
+    <button class="btn block" style="margin-top:12px" data-done>Bonne nuit</button>`, { title: 'Bonne nuit', onClose: () => ctx.render() });
+  $('[data-done]', body).onclick = () => body.close();
+}
+
+// ---------- Toilettes (échelle de Bristol) ----------
+const BRISTOL_COLORS = ['#7c2d12', '#9a3412', '#b45309', '#a16207', '#ca8a04', '#d97706', '#f59e0b'];
+export function openStool(ctx) {
+  const entry = { bristol: null, pain: 0, bloating: 0, urgency: false, blood: false };
+  const body = sheet(`
+    <p class="small muted" style="margin-top:0">Échelle de Bristol : elle reflète ton temps de transit. Les repas des 8 à 48 h précédentes sont croisés pour repérer les aliments mal tolérés.</p>
+    <label class="lbl">Aspect</label>
+    <div class="bristol">${D.BRISTOL.map((b) => `<button data-b="${b.type}" aria-label="Type ${b.type} : ${b.label}">${b.type}<i style="background:${BRISTOL_COLORS[b.type - 1]}"></i></button>`).join('')}</div>
+    <div id="b-desc" class="small muted" style="margin-top:8px;min-height:2.6em">Choisis le type qui correspond le mieux.</div>
+    <label class="lbl">Douleurs / crampes</label>${scale('pain', null, ['Aucune', 'Légères', 'Modérées', 'Fortes', 'Intenses'])}
+    <label class="lbl">Ballonnements</label>${scale('bloating', null, ['Aucun', 'Légers', 'Modérés', 'Forts', 'Intenses'])}
+    <label class="between" style="margin-top:14px;flex-wrap:nowrap"><span class="small">Besoin urgent</span><span class="switch"><input type="checkbox" id="urg"><span></span></span></label>
+    <label class="between" style="margin-top:10px;flex-wrap:nowrap"><span class="small">Présence de sang</span><span class="switch"><input type="checkbox" id="blood"><span></span></span></label>
+    <label class="lbl">Heure</label><input type="time" id="at" value="${new Date().toTimeString().slice(0, 5)}">
+    <button class="btn block" style="margin-top:16px" id="save" disabled>Enregistrer</button>
+    ${srcLinks(['lewis1997', 'heaton1992', 'asnicar2021'])}`, { title: 'Passage aux toilettes', onClose: () => ctx.render() });
+  $$('[data-b]', body).forEach((b) => (b.onclick = () => {
+    entry.bristol = Number(b.dataset.b);
+    $$('[data-b]', body).forEach((x) => x.classList.toggle('on', x === b));
+    const info = D.BRISTOL[entry.bristol - 1];
+    $('#b-desc', body).innerHTML = `<b>Type ${info.type} — ${info.label}.</b> <span class="muted">${info.meaning}.</span>`;
+    $('#save', body).disabled = false;
+  }));
+  $$('.scale', body).forEach((sc) => sc.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    entry[sc.dataset.field] = Number(b.dataset.v) - 1;
+    $$('button', sc).forEach((x) => x.classList.toggle('on', x === b));
+  }));
+  $('#save', body).onclick = () => {
+    const [h, m] = $('#at', body).value.split(':').map(Number);
+    const at = new Date(); at.setHours(h, m, 0, 0);
+    store.update((s) => s.stools.push({ id: crypto.randomUUID(), at: at.toISOString(), ...entry, urgency: $('#urg', body).checked, blood: $('#blood', body).checked }));
+    if ($('#blood', body).checked) toast('Sang signalé : consulte un médecin rapidement', 5000);
+    else toast('Enregistré');
+    body.close();
+  };
+}
+
+// ---------- Ticket de caisse ----------
+export async function openReceipt(ctx) {
+  const st = store.get();
+  const [file] = await pickImage({ camera: true });
+  if (!file) return;
+  const dataUrl = await compressImage(file, 2000, 0.85);
+  const body = sheet(`<div id="rc"><div class="empty"><span class="spinner"></span><p>Lecture du ticket…</p></div></div>`, { title: 'Ticket de caisse', full: true, onClose: () => ctx.render() });
+  const el = $('#rc', body);
+  try {
+    const r = await AI.readReceipt(st.settings, dataUrl);
+    if (!r.is_receipt || !r.items.length) throw new Error('Je ne trouve pas d’articles sur cette photo. Reprends le ticket bien à plat et éclairé.');
+    const stats = PT.basketStats(r.items);
+    const adv = PT.basketAdvice(stats);
+    const col = stats.score >= 65 ? 'var(--good)' : stats.score >= 45 ? 'var(--warn)' : 'var(--bad)';
+    el.innerHTML = `
+      <div class="between"><div><b>${esc(r.store || 'Magasin')}</b><div class="tiny muted">${esc(r.date || '')} · ${r.items.length} articles${r.total ? ` · ${fmt(r.total, 2)} €` : ''}</div></div>
+        <div style="text-align:right"><div style="font-size:1.6rem;font-weight:800;color:${col}">${stats.score}<small style="font-size:.8rem;color:var(--muted)">/100</small></div><div class="tiny muted">qualité du panier</div></div></div>
+      <div class="kpi-row" style="margin:12px 0">
+        <div class="stat"><div class="k">Fruits & légumes</div><div class="v">${Math.round(stats.fruitVeg * 100)}<small>%</small></div></div>
+        <div class="stat"><div class="k">Ultra-transformés</div><div class="v">${Math.round(stats.upf * 100)}<small>%</small></div></div>
+        <div class="stat"><div class="k">Sucrés / sodas</div><div class="v">${Math.round((stats.sweets + stats.sugaryDrinks) * 100)}<small>%</small></div></div>
+      </div>
+      ${adv.map((a) => `<div class="note ${a.level === 'bon' ? 'good' : a.level === 'alerte' ? 'bad' : 'warn'}" style="margin:8px 0">${icon(a.level === 'bon' ? 'ok' : 'alert', 16)}<span>${esc(a.text)}</span></div>`).join('')}
+      ${srcLinks(['parker2020', 'perry2024'])}
+      <h3 style="font-size:.95rem;margin:16px 0 6px">Articles reconnus</h3>
+      <table>${r.items.map((i) => `<tr><td>${esc(i.name)}<div class="tiny muted">${esc(i.raw)}</div></td><td class="num">${fmt(i.qty)} ${esc(i.unit)}</td><td class="num"><span class="badge ${i.nova >= 4 ? 'a_limiter' : i.nova === 3 ? 'moyen' : 'bon'}">NOVA ${i.nova}</span></td></tr>`).join('')}</table>
+      <button class="btn block" id="add" style="margin-top:14px">${icon('plus', 18)} Ajouter au garde-manger</button>`;
+    $('#add', el).onclick = () => {
+      const date = r.date || store.today();
+      store.update((s) => {
+        s.pantry = PT.addToPantry(s.pantry, r.items, date);
+        s.receipts.push({ id: crypto.randomUUID(), date, store: r.store, total: r.total, n: r.items.length, stats });
+      });
+      toast('Garde-manger mis à jour');
+      body.close();
+    };
+  } catch (e) {
+    el.innerHTML = `<div class="note bad">${icon('alert', 18)}<span>${esc(AI.friendlyError(e))}</span></div>`;
+  }
 }

@@ -4,10 +4,14 @@ import * as S from '../science.js';
 import * as AI from '../ai.js';
 import * as R from '../reminders.js';
 import * as N from '../native.js';
-import { refreshReminders } from '../context.js';
-import { icon, esc, toast, $, $$ } from '../ui.js';
+import { refreshReminders, refreshEnv, taste } from '../context.js';
+import * as E from '../env.js';
+import * as F from '../family.js';
+import { applyTheme } from '../theme.js';
+import { icon, esc, toast, sheet, srcLinks, $, $$ } from '../ui.js';
 import { loadDemo } from './onboarding.js';
 
+const CUISINES = ['Méditerranéenne', 'Française', 'Italienne', 'Asiatique', 'Indienne', 'Mexicaine', 'Libanaise', 'Africaine', 'Japonaise', 'Végétale'];
 const APK_URL = 'https://github.com/StoneTheking/AppSante/releases/latest/download/AppSante.apk';
 
 export function render(view, ctx) {
@@ -53,12 +57,47 @@ export function render(view, ctx) {
       </div>
     </div>
 
+    <div class="section-title">Goûts</div>
+    <div class="card">
+      <p class="small muted" style="margin-top:0">Un plan qui te plaît est un plan que tu suis : l’adhésion compte plus que le type de régime. Les étoiles données à tes repas affinent aussi tes goûts.</p>
+      <label class="lbl">J’aime (aliments, plats)</label>${inp('likes', 'text', 'placeholder="ex. saumon, curry, pâtes, avocat"')}
+      <label class="lbl">Je n’aime pas</label>${inp('dislikes', 'text', 'placeholder="ex. brocolis, coriandre, abats"')}
+      <label class="lbl">Cuisines préférées</label>
+      <div class="chips" style="flex-wrap:wrap">${CUISINES.map((c) => `<button class="chip ${(p.cuisines || []).includes(c) ? 'on' : ''}" data-cuisine="${c}">${c}</button>`).join('')}</div>
+      ${(() => { const t = F.topTastes(taste(), 6); return t.likes.length || t.dislikes.length ? `<p class="tiny muted">Appris de tes notes : 👍 ${esc(t.likes.join(', ') || '—')} · 👎 ${esc(t.dislikes.join(', ') || '—')}</p>` : ''; })()}
+      ${srcLinks(['dansinger2005'])}
+    </div>
+
+    <div class="section-title">Foyer & repas en famille</div>
+    <div class="card">
+      <p class="small muted" style="margin-top:0">Les menus, quantités et la liste de courses s’adaptent à tout le foyer (besoins des enfants selon l’EFSA, allergies et régimes de chacun).</p>
+      ${st.household.map((m) => `<div class="member"><span class="avatar">${esc((m.name || '?')[0].toUpperCase())}</span><div><b>${esc(m.name || 'Membre')}</b><div class="tiny muted">${m.age} ans · ~${F.memberKcal(m)} kcal/j${m.allergies ? ` · allergies : ${esc(m.allergies)}` : ''}${m.diet && m.diet !== 'omnivore' ? ` · ${esc(m.diet)}` : ''}</div></div><button class="icon-btn" data-member-del="${m.id}" aria-label="Retirer">${icon('trash', 14)}</button></div>`).join('')}
+      <button class="btn soft block" id="add-member" style="margin-top:10px">${icon('users', 18)} Ajouter un membre</button>
+      ${srcLinks(['hammons2011', 'efsa2013energy'])}
+    </div>
+
+    <div class="section-title">Lieu de vie</div>
+    <div class="card" id="loc">
+      <p class="small muted" style="margin-top:0">Qualité de l’air, pollens, UV, chaleur et heures de soleil adaptent ton plan (sport dehors ou dedans, meilleur créneau, conseils sommeil).</p>
+      ${st.location ? `<div class="between"><b>${icon('pin', 16)} ${esc(st.location.name)}</b><button class="btn sm ghost" id="loc-clear">Changer</button></div>` : `
+      <div class="row" style="flex-wrap:nowrap"><input id="city" placeholder="Ta ville…"><button class="btn" id="city-go">${icon('arrow', 18)}</button></div>
+      <button class="btn ghost block" id="geo" style="margin-top:8px">${icon('pin', 18)} Utiliser ma position</button>
+      <div id="city-res"></div>`}
+      ${srcLinks(['who2021air', 'andersen2015'])}
+    </div>
+
     <div class="section-title">Rappels</div>
     <div class="card">
       <label class="between" style="flex-wrap:nowrap"><span><b>Activer les rappels</b><div class="tiny muted">${N.isNative ? 'Notifications programmées, même application fermée.' : 'Dans le navigateur, les rappels ne s’affichent que si l’application est ouverte récemment. Pour des rappels fiables, installe l’application Android.'}</div></span>${sw('id="rem-on"', rs.enabled)}</label>
       <div id="rem-kinds" style="${rs.enabled ? '' : 'opacity:.45;pointer-events:none'}">
         ${Object.entries(R.KINDS).map(([k, v]) => `<label class="between" style="padding:10px 0;border-top:1px solid var(--line);flex-wrap:nowrap"><span class="small">${v.label}</span>${sw(`data-kind="${k}"`, rs.kinds[k])}</label>`).join('')}
       </div>
+    </div>
+
+    <div class="section-title">Apparence</div>
+    <div class="card">
+      <div class="seg">${[['dark', 'Sombre'], ['light', 'Clair'], ['auto', 'Système']].map(([v, l]) => `<button data-theme-pick="${v}" class="${st.settings.theme === v ? 'on' : ''}">${l}</button>`).join('')}</div>
+      ${N.isNative ? `<button class="btn ghost block" id="pin-widget" style="margin-top:10px">${icon('moon', 18)} Ajouter le widget « Je vais dormir » à l’écran d’accueil</button>` : '<p class="tiny muted" style="margin:10px 0 0">Raccourci : appui long sur l’icône AppSanté → « Je vais dormir ».</p>'}
     </div>
 
     <div class="section-title">Intelligence artificielle</div>
@@ -107,6 +146,30 @@ export function render(view, ctx) {
     store.update((s) => { s.settings.reminders.kinds[c.dataset.kind] = c.checked; });
     await refreshReminders();
   }));
+  $$('[data-cuisine]', view).forEach((b) => (b.onclick = () => {
+    store.update((s) => { const c = new Set(s.profile.cuisines || []); c.has(b.dataset.cuisine) ? c.delete(b.dataset.cuisine) : c.add(b.dataset.cuisine); s.profile.cuisines = [...c]; });
+    b.classList.toggle('on');
+  }));
+  $$('[data-member-del]', view).forEach((b) => (b.onclick = () => { store.update((s) => (s.household = s.household.filter((m) => m.id !== b.dataset.memberDel))); render(view, ctx); }));
+  $('#add-member', view).onclick = () => openMember(() => render(view, ctx));
+  $$('[data-theme-pick]', view).forEach((b) => (b.onclick = () => { store.update((s) => (s.settings.theme = b.dataset.themePick)); applyTheme(); render(view, ctx); }));
+  $('#pin-widget', view)?.addEventListener('click', async () => { const r = await N.pinSleepWidget(); toast(r ? 'Confirme l’ajout du widget' : 'Appui long sur l’écran d’accueil → Widgets → AppSanté'); });
+  const setLoc = async (loc) => {
+    store.update((s) => { s.location = loc; s.env = null; });
+    toast('Lieu enregistré');
+    await refreshEnv(true);
+    render(view, ctx);
+  };
+  $('#loc-clear', view)?.addEventListener('click', () => { store.update((s) => { s.location = null; s.env = null; }); render(view, ctx); });
+  $('#geo', view)?.addEventListener('click', async () => { try { setLoc(await E.currentPosition()); } catch (e) { toast(e.message); } });
+  $('#city-go', view)?.addEventListener('click', async () => {
+    const res = $('#city-res', view);
+    try {
+      const list = await E.searchPlace($('#city', view).value);
+      res.innerHTML = list.map((l, i) => `<button class="suggest" style="width:100%;border:0;text-align:left" data-place="${i}"><span>${esc(l.name)}</span>${icon('right', 16)}</button>`).join('') || '<p class="small muted">Aucun lieu trouvé.</p>';
+      $$('[data-place]', res).forEach((b) => (b.onclick = () => setLoc(list[Number(b.dataset.place)])));
+    } catch (e) { res.innerHTML = `<p class="small muted">${esc(e.message)}</p>`; }
+  });
   $('#key', view).onchange = (e) => { store.update((s) => (s.settings.apiKey = e.target.value.trim())); toast('Clé enregistrée'); };
   $('#web', view).onchange = (e) => store.update((s) => (s.settings.webSearch = e.target.checked));
   $('#model', view).onchange = (e) => store.update((s) => (s.settings.model = e.target.value));
@@ -125,4 +188,26 @@ export function render(view, ctx) {
   };
   $('#demo', view).onclick = () => { loadDemo(); toast('Données de démo chargées'); ctx.go('home'); };
   $('#reset', view).onclick = () => { if (confirm('Effacer toutes tes données ? (irréversible)')) { store.reset(); location.reload(); } };
+}
+
+function openMember(done) {
+  const body = sheet(`
+    <label class="lbl">Prénom</label><input id="m-name" placeholder="ex. Léa">
+    <div class="grid2">
+      <div><label class="lbl">Âge</label><input id="m-age" type="number" inputmode="numeric" placeholder="8"></div>
+      <div><label class="lbl">Sexe</label><select id="m-sex"><option value="f">Femme / fille</option><option value="h">Homme / garçon</option></select></div>
+      <div><label class="lbl">Poids kg (adulte)</label><input id="m-weight" type="number" inputmode="decimal"></div>
+      <div><label class="lbl">Taille cm (adulte)</label><input id="m-height" type="number" inputmode="decimal"></div>
+    </div>
+    <label class="lbl">Régime</label><select id="m-diet"><option value="omnivore">Omnivore</option><option value="pescetarien">Pescétarien</option><option value="vegetarien">Végétarien</option><option value="vegan">Végan</option></select>
+    <label class="lbl">Allergies</label><input id="m-allergies" placeholder="ex. arachide">
+    <label class="lbl">N’aime pas</label><input id="m-dislikes" placeholder="ex. épinards">
+    <button class="btn block" id="m-save" style="margin-top:16px">Ajouter</button>`, { title: 'Membre du foyer' });
+  $('#m-save', body).onclick = () => {
+    const v = (id) => $('#m-' + id, body).value.trim();
+    if (!v('age')) return toast('Indique au moins l’âge');
+    store.update((s) => s.household.push({ id: crypto.randomUUID(), name: v('name'), age: Number(v('age')), sex: v('sex'), weight: Number(v('weight')) || null, height: Number(v('height')) || null, diet: v('diet'), allergies: v('allergies'), dislikes: v('dislikes') }));
+    body.close();
+    done();
+  };
 }

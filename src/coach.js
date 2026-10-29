@@ -1,6 +1,7 @@
 // Moteur de coaching : synthèse des données, plan de la journée, recommandations, projections.
 import * as S from './science.js';
 import { suggestMeals } from './meals.js';
+import { bestOutdoorHour, envInsights, aqiLabel } from './env.js';
 
 const avg = (xs) => {
   const v = xs.filter((x) => x != null && !Number.isNaN(x));
@@ -17,7 +18,7 @@ const toMin = (hhmm) => {
 };
 
 // keys : liste de dates (anciennes → récentes), days : objet date → check-in, meals : tous les repas
-export function summarize({ profile, days, meals, weights }, keys) {
+export function summarize({ profile, days, meals, weights, env, household = [], stools = [] }, keys) {
   const t = S.targets(profile);
   const todayKey = keys[keys.length - 1];
   const week = keys.slice(-7);
@@ -92,7 +93,9 @@ export function summarize({ profile, days, meals, weights }, keys) {
   };
 
   const lateMeals = week.flatMap(mealsOf).filter((m) => (m.time || '') >= '21:00').length;
-  return { lateMeals, t, p, body, today, todayKey, lastNight, totToday, w, scores, dietAvg, kcalAvg, dietDaysCount: dietDays.length, ctx };
+  // les données air/météo de plus de 6 h sont ignorées
+  const envFresh = env && Date.now() - new Date(env.fetched) < 6 * 3600e3 ? env : null;
+  return { env: envFresh, household, stools, lateMeals, t, p, body, today, todayKey, lastNight, totToday, w, scores, dietAvg, kcalAvg, dietDaysCount: dietDays.length, ctx };
 }
 
 // ---------- Activité physique recommandée ----------
@@ -142,7 +145,8 @@ export function dailyPlan(sm, profile) {
   const add = (min, icon, title, text, src = []) => items.push({ min, time: hm(min), icon, title, text, src });
   const { ctx, t } = sm;
 
-  add(wake, '☀️', 'Lumière du jour', ctx.lowMood
+  const sunrise = sm.env?.sunrise ? Number(sm.env.sunrise.slice(0, 2)) * 60 + Number(sm.env.sunrise.slice(3)) : null;
+  add(sunrise && sunrise > wake && sunrise < wake + 180 ? sunrise : wake, '☀️', sunrise && sunrise > wake + 20 ? `Lumière du jour (lever du soleil ${sm.env.sunrise})` : 'Lumière du jour', ctx.lowMood
     ? 'Sors 15–30 min à la lumière naturelle dès le réveil : la lumière du matin stabilise l’horloge biologique et est associée à une meilleure humeur.'
     : 'Ouvre les volets / sors 10–15 min : la lumière du matin cale ton horloge interne et améliore le sommeil du soir.', ['burns2023']);
   add(wake + 45, '🍳', 'Petit-déjeuner protéiné', `Vise ~${Math.round(t.protein * 0.25)} g de protéines et des fibres. Manger plus tôt dans la journée améliore la sensibilité à l’insuline.`, ['sutton2018']);
@@ -161,7 +165,24 @@ export function dailyPlan(sm, profile) {
   // créneau : fin d’après-midi (pic de performance), au moins 2 h avant le coucher pour l’intense
   let actStart = Math.min(Math.max(wake + 9 * 60, 17 * 60 + 30), bed - 2 * 60 - act.duration);
   if (ctx.lowMood) actStart = Math.min(actStart, 16 * 60 + 30); // profiter de la lumière du jour
-  add(actStart, '🏃', `${act.title} (${act.duration} min)`, act.why.join(' '), act.src);
+  const env = sm.env;
+  let actText = act.why.join(' ');
+  const actSrc = [...act.src];
+  if (env) {
+    if (env.aqi > 60 || env.tMax >= 33) {
+      actText += ` Aujourd’hui : ${env.aqi > 60 ? `air ${aqiLabel(env.aqi).label.toLowerCase()} (indice ${Math.round(env.aqi)})` : `forte chaleur (${Math.round(env.tMax)} °C)`}, fais ta séance en intérieur.`;
+      actSrc.push(env.aqi > 60 ? 'sinharay2018' : 'ebi2021');
+    } else {
+      const best = bestOutdoorHour(env, Math.max(wake + 60, 7 * 60), bed - 150 - act.duration);
+      if (best && Math.abs(best.hour * 60 - actStart) > 60 && (best.aqi ?? 0) + 15 < (env.hours.find((h) => h.hour === Math.floor(actStart / 60))?.aqi ?? 0)) {
+        actStart = best.hour * 60;
+        actText += ` Créneau choisi pour la meilleure qualité de l’air (indice ${Math.round(best.aqi)}).`;
+        actSrc.push('who2021air');
+      } else actText += ` Air ${aqiLabel(env.aqi).label.toLowerCase()} (indice ${Math.round(env.aqi)}), ${Math.round(env.temp)} °C : bouger dehors est recommandé, de préférence dans un parc.`;
+      actSrc.push('andersen2015');
+    }
+  }
+  add(actStart, '🏃', `${act.title} (${act.duration} min)`, actText, actSrc);
 
   if (ctx.workout || profile.goal === 'prendre' || actStart < 18 * 60) add(Math.max(lunch + 3.5 * 60, actStart - 75), '🍎', 'Collation', 'Fruit + source de protéines (yaourt, amandes) pour arriver en forme à la séance et éviter les fringales.', []);
 
@@ -181,7 +202,7 @@ export function dailyPlan(sm, profile) {
 
 // ---------- Messages personnalisés ----------
 export function insights(sm) {
-  const out = [];
+  const out = [...envInsights(sm.env, sm.p)];
   const { w, t, body, ctx, totToday, kcalAvg, dietAvg } = sm;
   const push = (level, title, text, src = []) => out.push({ level, title, text, src });
 
@@ -258,7 +279,7 @@ export function projection(sm, profile, improve = {}) {
   };
 }
 
-export function mealSuggestions(sm, profile, slot) {
+export function mealSuggestions(sm, profile, slot, taste) {
   const { t, totToday, ctx } = sm;
   const remaining = {
     kcal: Math.max(0, t.kcal - totToday.kcal),
@@ -266,7 +287,7 @@ export function mealSuggestions(sm, profile, slot) {
     fiber: Math.max(0, t.fiber - totToday.fiber),
     fruitVeg: Math.max(0, t.fruitVeg - totToday.fruitVeg),
   };
-  return suggestMeals(slot, { remaining, ctx, diet: profile.diet, allergies: profile.allergies });
+  return suggestMeals(slot, { remaining, ctx, diet: profile.diet, allergies: profile.allergies, taste });
 }
 
 export function currentSlot(date = new Date()) {

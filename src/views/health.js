@@ -6,6 +6,7 @@ import * as AI from '../ai.js';
 import * as N from '../native.js';
 import { parseCSV, CSV_TEMPLATE } from '../importer.js';
 import { summary } from '../context.js';
+import * as D from '../digestion.js';
 import { icon, esc, fmt, segmented, srcLinks, barChart, lineChart, toast, compressImage, pickImage, $, $$ } from '../ui.js';
 
 let seg = 'suivi';
@@ -96,7 +97,8 @@ function renderTrack(el, ctx) {
       <label class="row" style="margin-top:16px;justify-content:space-between;flex-wrap:nowrap"><span class="small">Téléphone utilisé au lit avant de dormir</span><span class="switch"><input type="checkbox" data-k="phoneInBed" ${d.phoneInBed ? 'checked' : ''}><span></span></span></label>
       ${d.topApps?.length ? `<p class="tiny muted" style="margin-top:10px">Applis les plus utilisées : ${d.topApps.map((a) => `${esc(a.name)} (${a.minutes} min)`).join(', ')}</p>` : ''}
       <label class="lbl">Note libre</label><textarea data-k="note" placeholder="Douleurs, événements, ressenti…">${esc(d.note || '')}</textarea>
-    </div>`;
+    </div>
+    ${stoolCard(key)}`;
 
   $$('[data-k]', el).forEach((inp) => inp.addEventListener('change', () => {
     const k = inp.dataset.k;
@@ -106,6 +108,8 @@ function renderTrack(el, ctx) {
     toast('Enregistré', 1000);
   }));
   $('#prev', el).onclick = () => { dayOffset--; renderTrack(el, ctx); };
+  $('#add-stool', el).onclick = () => ctx.action('stool');
+  $$('[data-stool-del]', el).forEach((b) => (b.onclick = () => { store.update((s) => (s.stools = s.stools.filter((x) => x.id !== b.dataset.stoolDel))); renderTrack(el, ctx); }));
   $('#next', el).onclick = () => { if (dayOffset < 0) { dayOffset++; renderTrack(el, ctx); } };
   const res = $('#sync-res', el);
   if (native) {
@@ -157,6 +161,7 @@ async function readShots(key, el, ctx) {
 
 // ---------- Tendances ----------
 function renderTrends(el) {
+  const dig = digestionCard();
   const st = store.get();
   const keys = store.lastDays(14);
   const t = S.targets(st.profile);
@@ -171,6 +176,7 @@ function renderTrends(el) {
     card('share', 'Réseaux sociaux (min)', 'var(--c-screen)', barChart(series((x) => x.socialMin), { ref: 30, unit: 'min', color: 'var(--c-screen)' }), ['hunt2018']),
     card('flame', 'Calories consommées', 'var(--c-food)', barChart(keys.map((k) => ({ label: k, short: k.slice(8), v: store.mealsOn(k).length ? S.sumNutrients(store.mealsOn(k)).kcal : null })), { ref: t.kcal, unit: 'kcal', color: 'var(--c-food)' })),
     st.days[keys.at(-1)]?.restingHR != null || keys.some((k) => st.days[k]?.restingHR) ? card('heart', 'FC au repos (bpm)', 'var(--bad)', barChart(series((x) => x.restingHR), { unit: 'bpm', color: 'var(--bad)' })) : '',
+    dig,
   ].join('');
   el.addEventListener('click', (e) => {
     const tip = e.target.closest('[data-tip]');
@@ -256,4 +262,33 @@ function renderScience(el) {
     <p class="tiny muted" style="text-align:center">Les études d’observation montrent des associations, pas forcément des causes. Les essais randomisés et méta-analyses sont privilégiés.</p>`;
   $('#sci-q', el).addEventListener('input', (e) => { query = e.target.value; draw(); });
   draw();
+}
+
+// ---------- Transit ----------
+function stoolCard(key) {
+  const localKey = (iso) => { const d = new Date(iso); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+  const list = store.get().stools.filter((s) => localKey(s.at) === key);
+  return `<div class="card">
+    <div class="card-head"><h2>${icon('activity', 18)} Transit</h2><button class="btn sm soft" id="add-stool">${icon('plus', 16)} Ajouter</button></div>
+    ${list.length ? list.map((s) => { const b = D.BRISTOL[s.bristol - 1]; return `<div class="list-item" style="grid-template-columns:auto 1fr auto"><span class="badge ${b.zone === 'ok' ? 'bon' : 'moyen'}">Type ${s.bristol}</span><div><div class="small"><b>${new Date(s.at).toTimeString().slice(0, 5)}</b> · ${b.label}</div><div class="tiny muted">${b.meaning}${s.pain ? ' · douleurs' : ''}${s.bloating ? ' · ballonnements' : ''}${s.urgency ? ' · urgence' : ''}</div></div><button class="icon-btn" data-stool-del="${s.id}" aria-label="Supprimer">${icon('trash', 14)}</button></div>`; }).join('') : '<p class="small muted" style="margin:0">Rien de noté ce jour. Le suivi aide à repérer les aliments qui ne te conviennent pas.</p>'}
+  </div>`;
+}
+
+function digestionCard() {
+  const st = store.get();
+  const sum = D.digestionSummary(st.stools);
+  const sus = D.suspects(st.stools, st.meals);
+  const head = `<div class="card-head"><h2><span style="color:var(--c-food)">${icon('activity', 18)}</span> Digestion & tolérance</h2></div>`;
+  if (!sum) return `<div class="card">${head}<p class="small muted" style="margin:0">Note tes passages aux toilettes (bouton +) : l’application croise l’échelle de Bristol avec tes repas des 8 à 48 h précédentes pour repérer les aliments mal tolérés.</p>${srcLinks(['lewis1997', 'asnicar2021'])}</div>`;
+  const total = sum.count;
+  const seg = (n, col) => `<div style="width:${(n / total) * 100}%;background:${col}"></div>`;
+  return `<div class="card">${head}
+    <div class="kpi-row"><div class="stat"><div class="k">Par semaine</div><div class="v">${fmt(sum.perWeek, 1)}</div></div><div class="stat"><div class="k">Types 3–4</div><div class="v">${Math.round((sum.zones.ok / total) * 100)}<small>%</small></div></div><div class="stat"><div class="k">Notés (14 j)</div><div class="v">${total}</div></div></div>
+    <div class="bar-mini" style="display:flex;height:10px;margin:12px 0 4px">${seg(sum.zones.lent, 'var(--warn)')}${seg(sum.zones.ok, 'var(--good)')}${seg(sum.zones.rapide, 'var(--c-move)')}</div>
+    <div class="legend"><span><i style="background:var(--warn)"></i>lent (1–2)</span><span><i style="background:var(--good)"></i>idéal (3–4)</span><span><i style="background:var(--c-move)"></i>rapide (5–7)</span></div>
+    ${sum.advice.map((a) => `<div class="note ${a.level === 'bon' ? 'good' : a.level === 'alerte' ? 'bad' : 'warn'}" style="margin:8px 0">${icon(a.level === 'bon' ? 'ok' : 'alert', 16)}<span>${esc(a.text)}</span></div>${srcLinks(a.src)}`).join('')}
+    <h3 style="font-size:.9rem;margin:14px 0 6px">Aliments à surveiller</h3>
+    ${sus.length ? sus.map((x) => `<div class="between small" style="padding:6px 0;border-top:1px solid var(--line)"><span style="text-transform:capitalize">${esc(x.word)}</span><span class="muted">suivi de troubles ${x.bad} fois sur ${x.total}</span></div>`).join('') + '<p class="tiny muted">Corrélation, pas preuve : retire un aliment 2–3 semaines puis réintroduis-le pour vérifier, idéalement avec un professionnel.</p>' : '<p class="small muted" style="margin:0">Aucun aliment suspect pour l’instant (il faut au moins 2 épisodes liés).</p>'}
+    ${srcLinks(['halmos2014', 'vandeputte2016'])}
+  </div>`;
 }

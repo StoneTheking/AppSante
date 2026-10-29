@@ -1,7 +1,9 @@
 // Accueil : score, prochaine étape, actions rapides, plan de la journée, nutrition, analyses.
 import * as store from '../store.js';
 import * as C from '../coach.js';
-import { summary } from '../context.js';
+import { summary, taste } from '../context.js';
+import * as SL from '../sleep.js';
+import { aqiLabel } from '../env.js';
 import { icon, esc, fmt, srcLinks, rings, DOMAIN, $$ } from '../ui.js';
 import { SLOT_LABEL } from '../planner.js';
 
@@ -41,7 +43,7 @@ export function render(view, ctx) {
   if (nextIdx === -1) nextIdx = plan.length;
   const next = plan[nextIdx];
   const slot = C.currentSlot(now);
-  const sugg = C.mealSuggestions(sm, profile, slot).slice(0, 2);
+  const sugg = C.mealSuggestions(sm, profile, slot, taste()).slice(0, 2);
   const order = { alerte: 0, attention: 1, bon: 2 };
   const ins = C.insights(sm).sort((a, b) => order[a.level] - order[b.level]);
   const t = sm.t, tot = sm.totToday, d = sm.today;
@@ -50,6 +52,7 @@ export function render(view, ctx) {
 
   view.innerHTML = `
     <section class="hero">
+      <div class="hero-kicker"><span>Score santé · 7 jours</span><span>${sm.w.loggedDays}/7 j. renseignés</span></div>
       <div class="hero-grid">
         ${rings(sm.scores, sm.scores.global)}
         <div class="legend-rows">
@@ -58,6 +61,9 @@ export function render(view, ctx) {
       </div>
       <div class="verdict">${icon('sparkles', 18)}<span>${esc(headline(sm))}</span></div>
     </section>
+
+    ${sleepCard(st)}
+    ${envCard(sm.env, st.location)}
 
     <div class="tiles">
       <button class="tile" data-act="photo"><span class="icon-badge" style="background:color-mix(in srgb,var(--c-food) 16%,transparent);color:var(--c-food)">${icon('camera')}</span>Photo repas</button>
@@ -106,6 +112,55 @@ export function render(view, ctx) {
       render(view, ctx);
     } else ctx.action(b.dataset.act);
   }));
+  view.querySelector('[data-sleep]')?.addEventListener('click', () => ctx.action('sleep'));
+  view.querySelector('[data-sleep-cancel]')?.addEventListener('click', () => { SL.cancelSleep(); ctx.syncWidget?.(); render(view, ctx); });
+  view.querySelector('[data-env-setup]')?.addEventListener('click', () => ctx.go('profile', () => document.getElementById('loc')?.scrollIntoView({ block: 'center' })));
   view.querySelector('[data-toggle-plan]').onclick = () => { showAllPlan = !showAllPlan; render(view, ctx); };
   view.querySelector('[data-go="#plan"]')?.addEventListener('click', () => document.getElementById('plan').scrollIntoView({ behavior: 'smooth', block: 'start' }));
+}
+
+// Carte « Je vais dormir » : un appui au coucher, un appui au réveil.
+function sleepCard(st) {
+  const p = st.profile;
+  if (st.sleepNow) {
+    const since = new Date(st.sleepNow);
+    const min = Math.round((Date.now() - since) / 60000);
+    return `<section class="sleep-card">
+      <div class="between"><span class="tiny muted" style="font-weight:700;letter-spacing:.08em;text-transform:uppercase">Nuit en cours</span>${icon('moon', 18)}</div>
+      <div class="big">${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}</div>
+      <div class="small muted">Au lit depuis ${since.toTimeString().slice(0, 5)} · réveil visé ${esc(p.wakeTime)}</div>
+      <div class="row" style="margin-top:14px;flex-wrap:nowrap"><button class="btn" style="flex:1" data-sleep>${icon('sun', 18)} Je suis réveillé</button><button class="btn ghost" data-sleep-cancel aria-label="Annuler">${icon('x', 18)}</button></div>
+    </section>`;
+  }
+  const h = new Date().getHours();
+  // en journée : simple raccourci, la carte complète apparaît le soir
+  if (h >= 6 && h < 19) return `<div class="card next"><span class="icon-badge" style="background:color-mix(in srgb,var(--c-sleep) 16%,transparent);color:var(--c-sleep)">${icon('moon')}</span><div><div class="ttl">Je vais dormir</div><div class="tiny muted">Coucher visé ${esc(p.bedTime)} · un appui au coucher, un au réveil</div></div><button class="btn sm" style="background:var(--c-sleep);color:#0b0f24" data-sleep>${icon('moon', 16)}</button></div>`;
+  const toTarget = SL.minutesToTarget(p.bedTime);
+  const reg = SL.regularity();
+  const status = toTarget > 30 ? `Coucher visé à ${esc(p.bedTime)}, dans ${Math.floor(toTarget / 60) ? Math.floor(toTarget / 60) + ' h ' : ''}${toTarget % 60} min.` : toTarget >= -30 ? `C’est l’heure visée (${esc(p.bedTime)}) : parfait pour la régularité.` : `${Math.abs(toTarget)} min après ton heure visée (${esc(p.bedTime)}).`;
+  return `<section class="sleep-card">
+    <div class="between"><span class="tiny muted" style="font-weight:700;letter-spacing:.08em;text-transform:uppercase">Sommeil</span>${reg != null ? `<span class="tiny muted">régularité ±${Math.round(reg)} min</span>` : ''}</div>
+    <div style="font-size:1.15rem;font-weight:700;margin:6px 0 2px">${status}</div>
+    <div class="small muted">Un horaire régulier compte plus que la durée pour la santé.</div>
+    <button class="btn block" style="margin-top:14px" data-sleep>${icon('moon', 18)} Je vais dormir</button>
+    ${srcLinks(['windred2024', 'phillips2017'])}
+  </section>`;
+}
+
+function envCard(env, location) {
+  if (!location) return `<div class="card next"><span class="icon-badge" style="background:var(--primary-soft);color:var(--primary)">${icon('leaf')}</span><div><div class="ttl">Air & météo de ton lieu de vie</div><div class="tiny muted">Pollution, pollens, UV et chaleur adaptent ton plan</div></div><button class="icon-btn" data-env-setup aria-label="Configurer">${icon('right')}</button></div>`;
+  if (!env) return '';
+  const aq = aqiLabel(env.aqi);
+  const col = aq.level === 'bon' ? 'var(--good)' : aq.level === 'moyen' ? 'var(--warn)' : 'var(--bad)';
+  return `<div class="card">
+    <div class="card-head"><h2>${icon('leaf', 18)} ${esc(env.place.split(',')[0])}</h2><span class="tiny muted">mis à jour ${new Date(env.fetched).toTimeString().slice(0, 5)}</span></div>
+    <div class="env-strip">
+      <div class="stat"><div class="k" style="justify-content:center">Air</div><div class="v" style="color:${col}">${Math.round(env.aqi ?? 0)}</div><div class="tiny muted">${aq.label}</div></div>
+      <div class="stat"><div class="k" style="justify-content:center">Temp.</div><div class="v">${Math.round(env.temp)}°</div><div class="tiny muted">max ${Math.round(env.tMax)}°</div></div>
+      <div class="stat"><div class="k" style="justify-content:center">UV max</div><div class="v">${Math.round(env.uvMax)}</div><div class="tiny muted">${env.uvMax >= 6 ? 'élevé' : env.uvMax >= 3 ? 'modéré' : 'faible'}</div></div>
+      <div class="stat"><div class="k" style="justify-content:center">Pollen</div><div class="v">${env.pollen[0] ? Math.round(env.pollen[0].value) : 0}</div><div class="tiny muted">${env.pollen[0] ? esc(env.pollen[0].name) : 'faible'}</div></div>
+    </div>
+    <div class="tiny muted" style="margin-top:8px">PM2,5 ${fmt(env.pm25, 1)} µg/m³ (repère OMS 24 h : 15) · lever ${env.sunrise} · coucher ${env.sunset}</div>
+    ${srcLinks(['who2021air'])}
+  </div>`;
 }

@@ -266,7 +266,7 @@ export async function planWeek({ apiKey, model }, personContext, { days, people 
       "Tu es diététicien. Tu composes des menus hebdomadaires réalistes, de saison, économiques et variés, inspirés du modèle méditerranéen et des repères du PNNS/ANSES (légumineuses 2×/semaine, poisson 2×/semaine dont 1 gras, viande rouge ≤ 500 g/semaine, charcuterie ≤ 150 g, céréales complètes, 5 fruits et légumes/jour). Respecte strictement régime, allergies et cibles nutritionnelles. Réutilise les ingrédients d'un jour à l'autre pour limiter le gaspillage. Quantités crues, pour le nombre de personnes indiqué.\n\nBase scientifique à respecter :\n" + FOOD_EVIDENCE,
     messages: [{
       role: 'user',
-      content: `Profil et données :\n${personContext}\n\nPrépare les menus pour : ${days.map((d) => d.label).join(', ')}.\nNombre de personnes : ${people}. Budget : ${budget}. Temps de cuisine max par repas : ${cookTime} min.${wishes ? `\nEnvies / contraintes : ${wishes}` : ''}\nPour chaque jour : petit-déjeuner, déjeuner, collation (si utile pour l'objectif) et dîner léger.`,
+      content: `Profil et données :\n${personContext}\n\nPrépare les menus pour : ${days.map((d) => d.label).join(', ')}.\nNombre de personnes : ${people}. Budget : ${budget}. Temps de cuisine max par repas : ${cookTime} min.${wishes ? `\nEnvies / contraintes : ${wishes}` : ''}\nPour chaque jour : petit-déjeuner, déjeuner, collation (si utile pour l'objectif) et dîner léger.\nUtilise en priorité les aliments du garde-manger, respecte les goûts, aversions et allergies de chaque membre du foyer (régime le plus strict pour les repas communs), et prévois des repas que toute la famille peut partager (adapter les portions des enfants plutôt que cuisiner à part). Les calories et protéines indiquées sont pour MA portion.`,
     }],
   });
   const resp = await stream.finalMessage();
@@ -277,4 +277,49 @@ export async function planWeek({ apiKey, model }, personContext, { days, people 
     tips: plan.tips,
     days: plan.days.map((d, i) => ({ ...d, date: days[i]?.date, label: days[i]?.label || d.label })),
   };
+}
+
+const RECEIPT_CATEGORIES = ['Fruits & légumes', 'Viande & poisson', 'Crèmerie & œufs', 'Féculents & céréales', 'Légumineuses', 'Épicerie salée', 'Snacks sucrés', 'Boissons sucrées', 'Boissons', 'Alcool', 'Plats préparés', 'Surgelés', 'Boulangerie', 'Non alimentaire'];
+const RECEIPT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['is_receipt', 'store', 'date', 'total', 'items'],
+  properties: {
+    is_receipt: { type: 'boolean' },
+    store: { type: 'string' },
+    date: { anyOf: [{ type: 'string', description: 'AAAA-MM-JJ' }, { type: 'null' }] },
+    total: num,
+    items: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['name', 'raw', 'qty', 'unit', 'price', 'category', 'nova', 'wholeGrain'],
+        properties: {
+          name: { type: 'string', description: 'Nom clair et générique en français (ex. « Yaourt nature », « Pâtes complètes »)' },
+          raw: { type: 'string', description: 'Libellé tel qu’imprimé sur le ticket' },
+          qty: { type: 'number', description: 'Quantité totale (poids/volume si lisible, sinon nombre d’articles)' },
+          unit: { type: 'string', enum: ['g', 'mL', 'pièce'] },
+          price: num,
+          category: { type: 'string', enum: RECEIPT_CATEGORIES },
+          nova: { type: 'integer', description: 'Groupe NOVA probable 1 à 4' },
+          wholeGrain: { type: 'boolean' },
+        },
+      },
+    },
+  },
+};
+
+// Ticket de caisse → liste d'articles normalisés (garde-manger).
+export async function readReceipt({ apiKey, model }, dataUrl) {
+  const c = await client(apiKey);
+  const resp = await c.beta.messages.create({
+    model,
+    max_tokens: 16000,
+    ...fallbackParams(model),
+    output_config: { effort: 'low', format: { type: 'json_schema', schema: RECEIPT_SCHEMA } },
+    system: "Tu lis des tickets de caisse de supermarchés français. Décode les abréviations (ex. « YAO NAT 4X125 » = yaourt nature, 500 g ; « CHOCAPIC » = céréales chocolatées, NOVA 4). Ignore les remises, consignes et lignes de paiement. Classe chaque article et estime son groupe NOVA.",
+    messages: [{ role: 'user', content: [imageBlock(dataUrl), { type: 'text', text: 'Extrais les articles de ce ticket.' }] }],
+  });
+  return parseJson(resp);
 }

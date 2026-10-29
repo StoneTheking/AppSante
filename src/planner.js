@@ -1,5 +1,7 @@
 // Menus de la semaine et liste de courses.
 import { allowedMeals } from './meals.js';
+import { familyConstraints, familyFactor, tasteScore } from './family.js';
+import { inPantry } from './pantry.js';
 
 export const SLOT_ORDER = ['petit-dej', 'dejeuner', 'collation', 'diner'];
 export const SLOT_LABEL = { 'petit-dej': 'Petit-déjeuner', dejeuner: 'Déjeuner', collation: 'Collation', diner: 'Dîner' };
@@ -16,10 +18,13 @@ export function weekDays(start = new Date()) {
 }
 
 // Planificateur hors-ligne : équilibre calories par créneau, varie les plats, respecte régime et allergies.
-export function offlinePlan({ targets, profile, ctx = {} }, start = new Date()) {
-  const pool = allowedMeals(profile.diet, profile.allergies);
+export function offlinePlan({ targets, profile, ctx = {}, household = [], taste = null, pantry = [] }, start = new Date()) {
+  const fam = familyConstraints(profile, household);
+  const people = familyFactor(profile, household);
+  const pool = allowedMeals(fam.diet, fam.allergies);
   const recent = [];
   return {
+    people: household.length + 1,
     source: 'local',
     created: new Date().toISOString(),
     days: weekDays(start).map(({ date, label }, di) => ({
@@ -35,6 +40,8 @@ export function offlinePlan({ targets, profile, ctx = {} }, start = new Date()) 
           if (m.tags.includes('omega3') && (di === 1 || di === 4)) sc += 3; // poisson gras 2×/semaine (ANSES)
           if (slot === 'diner' && m.tags.includes('leger')) sc += 1;
           if (ctx.lowMood && m.tags.includes('humeur')) sc += 1;
+          if (taste) sc += tasteScore(m.name + ' ' + m.ing.map((i) => i[0]).join(' '), taste).s;
+          sc += m.ing.filter(([n]) => inPantry(pantry, n)).length * 0.8; // utiliser ce qu'on a déjà
           return { m, sc: sc + Math.random() * 1.5 };
         }).sort((a, b) => b.sc - a.sc);
         const m = scored[0]?.m;
@@ -50,7 +57,7 @@ export function offlinePlan({ targets, profile, ctx = {} }, start = new Date()) 
           protein: Math.round(m.protein * factor),
           fiber: Math.round(m.fiber * factor),
           prep: m.prep,
-          ingredients: m.ing.map(([name, qty, unit, aisle]) => ({ name, qty: qty * factor, unit, aisle })),
+          ingredients: m.ing.map(([name, qty, unit, aisle]) => ({ name, qty: qty * factor * people, unit, aisle })),
           steps: '',
         };
       }).filter(Boolean),
@@ -59,7 +66,7 @@ export function offlinePlan({ targets, profile, ctx = {} }, start = new Date()) 
 }
 
 // Agrège les ingrédients de la semaine en liste de courses, groupée par rayon.
-export function shoppingList(plan) {
+export function shoppingList(plan, pantry = []) {
   const map = new Map();
   for (const d of plan.days) for (const m of d.meals) for (const i of m.ingredients || []) {
     const key = `${i.name.toLowerCase()}|${i.unit}`;
@@ -69,7 +76,10 @@ export function shoppingList(plan) {
   }
   const items = [...map.values()].map((i) => ({ ...i, qty: roundQty(i.qty, i.unit), id: `${i.name}|${i.unit}` }));
   const aisles = {};
-  for (const i of items.sort((a, b) => a.name.localeCompare(b.name, 'fr'))) (aisles[i.aisle] ||= []).push(i);
+  for (const i of items.sort((a, b) => a.name.localeCompare(b.name, 'fr'))) {
+    const have = inPantry(pantry, i.name);
+    (aisles[have ? 'Déjà dans tes placards' : i.aisle] ||= []).push(have ? { ...i, have: have.name } : i);
+  }
   return aisles;
 }
 

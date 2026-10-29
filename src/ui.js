@@ -3,8 +3,8 @@ import {
   House, Utensils, Plus, HeartPulse, MessageCircle, User, Camera, ScanBarcode, Moon, Sun, Footprints, Smartphone, Smile, Flame,
   Droplet, Coffee, Dumbbell, Apple, Salad, ChefHat, ShoppingCart, CalendarDays, TrendingUp, Bell, Sparkles, ChevronLeft,
   ChevronRight, Check, X, Trash2, RefreshCw, Download, Upload, Settings, Activity, Brain, Bed, Clock, Scale, Wine, Info,
-  TriangleAlert, CircleCheck, Send, Zap, BookOpen, Share2, Leaf, Watch, Link, ListChecks, Pencil, Image, Lightbulb, Target,
-  Sunrise, Bike, Copy, ArrowRight, KeyRound, Shield,
+  TriangleAlert, CircleCheck, Send, Zap, BookOpen, Share2, Leaf, Watch, Link, ListChecks, Pencil, Image as ImageIcon, Lightbulb, Target,
+  Sunrise, Bike, Copy, ArrowRight, KeyRound, Shield, Star, Users, MapPin, Receipt, Palette,
 } from 'lucide';
 import * as S from './science.js';
 
@@ -15,8 +15,8 @@ const ICONS = {
   left: ChevronLeft, right: ChevronRight, check: Check, x: X, trash: Trash2, refresh: RefreshCw, download: Download, upload: Upload,
   settings: Settings, activity: Activity, brain: Brain, bed: Bed, clock: Clock, scale: Scale, wine: Wine, info: Info, alert: TriangleAlert,
   ok: CircleCheck, send: Send, zap: Zap, book: BookOpen, share: Share2, leaf: Leaf, watch: Watch, link: Link, list: ListChecks,
-  pencil: Pencil, image: Image, bulb: Lightbulb, target: Target, sunrise: Sunrise, bike: Bike, copy: Copy, arrow: ArrowRight,
-  key: KeyRound, shield: Shield,
+  pencil: Pencil, image: ImageIcon, bulb: Lightbulb, target: Target, sunrise: Sunrise, bike: Bike, copy: Copy, arrow: ArrowRight,
+  key: KeyRound, shield: Shield, star: Star, users: Users, pin: MapPin, receipt: Receipt, palette: Palette,
 };
 
 const attrs = (o) => Object.entries(o).map(([k, v]) => `${k}="${v}"`).join(' ');
