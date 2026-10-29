@@ -109,7 +109,7 @@ export function weekStats(workouts, days, now = new Date()) {
   };
 }
 
-const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+export const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
 // Semaine type selon l'objectif (OMS : 150–300 min modérées + 2 séances de renforcement ; ACSM : 48 h entre deux séances d'un même muscle).
 const TEMPLATES = {
   perdre: [['cardio', 40, 'moderee'], ['renfo', 35, 'moderee'], ['marche', 45, 'moderee'], ['renfo', 35, 'moderee'], ['hiit', 20, 'intense'], ['randonnee', 75, 'moderee'], ['yoga', 25, 'legere']],
@@ -126,15 +126,29 @@ export function preferredActivity(profile) {
   return hit ? PREFERRED[hit] : null;
 }
 
-export function weekPlan(profile, workouts, now = new Date(), days = {}) {
+// Semaine type : celle choisie par l'utilisateur, sinon celle conseillée selon l'objectif et les sports aimés.
+export function currentTemplate(profile) {
+  if (Array.isArray(profile.weekTemplate) && profile.weekTemplate.length === 7) return profile.weekTemplate;
   const fav = preferredActivity(profile);
   const tpl = TEMPLATES[profile.goal] || TEMPLATES.maintenir;
+  return tpl.map(([slot, minutes, intensity]) => {
+    const raw = slot === 'cardio' ? fav && activity(fav).kind === 'cardio' ? fav : 'course' : slot === 'loisir' ? fav || 'velo' : slot === 'repos' ? null : slot;
+    return { type: substitute(raw, profile), minutes, intensity };
+  });
+}
+export function templateStats(tpl) {
+  return {
+    modEq: tpl.reduce((a, d) => a + (!d.type ? 0 : whoClass(d.type, d.intensity) === 'vig' ? 2 * d.minutes : whoClass(d.type, d.intensity) === 'mod' ? d.minutes : 0), 0),
+    strength: tpl.filter((d) => d.type && activity(d.type).kind === 'renfo').length,
+  };
+}
+
+export function weekPlan(profile, workouts, now = new Date(), days = {}) {
   const monday = new Date(now); monday.setHours(0, 0, 0, 0); monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
-  return tpl.map(([slot, minutes, intensity], i) => {
+  return currentTemplate(profile).map(({ type: t0, minutes, intensity }, i) => {
     const d = new Date(monday); d.setDate(d.getDate() + i);
     const date = localKey(d);
-    const raw = slot === 'cardio' ? fav && activity(fav).kind === 'cardio' ? fav : 'course' : slot === 'loisir' ? fav || 'velo' : slot === 'repos' ? null : slot;
-    const type = substitute(raw, profile);
+    const type = substitute(t0, profile);
     const done = workouts.filter((w) => w.date === date);
     // séance enregistrée du même type, ou minutes saisies à la main / synchronisées pour ce jour
     const d0 = days[date] || {};

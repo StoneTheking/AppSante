@@ -132,14 +132,46 @@ function yogaSession({ minutes }) {
   return [block('Enchaînement mobilité / yoga', YOGA.map(([l, s, d]) => step(l, Math.round((s * k) / 15) * 15, d)), 'Mouvements lents, sans douleur ; respire par le nez.')];
 }
 
+// Exercices techniques et physiques propres à chaque sport (en plus de l'échauffement « 11+ »).
+const SPORT_DRILLS = {
+  raquette: { label: 'Jeu (tennis, padel, badminton)', drills: [
+    ['Split-step et déplacements latéraux', 60, 'Petit saut d’appel au moment de la frappe adverse, puis pas chassés de chaque côté.'],
+    ['Shadow : coups dans le vide (coup droit, revers)', 90, 'Geste complet, lent puis plus rapide, en te replaçant au centre après chaque coup.'],
+    ['Fentes latérales', 45, 'Genou dans l’axe du pied, buste droit : les appuis des frappes basses.'],
+    ['Sauts à la corde (ou sans corde)', 60, 'Sur l’avant du pied, rythme régulier : réactivité des chevilles.'],
+    ['Rotation du buste avec gainage', 45, 'En planche, ouvre un bras vers le plafond puis l’autre : force de rotation des frappes.'],
+  ] },
+  collectif: { label: 'Match ou entraînement collectif', drills: [
+    ['Sprints navette 5-10-5', 60, 'Accélère, touche le sol, repars dans l’autre sens : changements de direction.'],
+    ['Conduite de balle / dribble en slalom', 90, 'Petits touchers, regard levé, autour de plots ou de bouteilles.'],
+    ['Passes contre un mur', 90, 'Alterne pied droit et gauche (ou main droite et gauche), en contrôlant le rebond.'],
+    ['Squats sautés réception amortie', 45, 'Atterris souplement, genoux dans l’axe : prévention des entorses du genou.'],
+    ['Équilibre sur une jambe', 60, '30 s par jambe, yeux ouverts puis fermés : prévention des entorses de cheville.'],
+  ] },
+  danse: { label: 'Danse', drills: [
+    ['Échauffement articulaire en musique', 120, 'Cou, épaules, hanches, genoux, chevilles : grands cercles lents.'],
+    ['Pas de base (step-touch, grapevine, pas chassé)', 120, 'Répète chaque pas 8 temps, puis enchaîne-les.'],
+    ['Isolations (épaules, cage thoracique, bassin)', 90, 'Une seule partie du corps bouge, le reste reste immobile.'],
+    ['Enchaînement chorégraphique', 180, 'Apprends 4 × 8 temps, puis répète en accélérant.'],
+  ] },
+  autre: { label: 'Activité', drills: [] },
+};
+
 function sportSession({ activity, minutes }) {
-  const label = { collectif: 'Match ou entraînement collectif', raquette: 'Jeu (tennis, padel, badminton)', danse: 'Danse', autre: 'Activité' }[activity] || 'Activité';
+  const sp = SPORT_DRILLS[activity] || SPORT_DRILLS.autre;
+  const drillMin = Math.round(sp.drills.reduce((a, [, s2]) => a + s2, 0) / 60);
   return [
-    block('Échauffement (prévention des blessures)', [...WARMUP.map(([l, s]) => step(l, s)), step('Courses avec changements de direction et appuis', 90), step('Gainage avant puis latéral', 60)], 'Inspiré du programme d’échauffement « 11+ » qui réduit les blessures.'),
-    block('Activité', [step(label, Math.max(15, minutes - 14) * 60, 'Hydrate-toi toutes les 15–20 minutes.')]),
-    block('Retour au calme', COOLDOWN.map(([l, s]) => step(l, s))),
+    block('Échauffement (prévention des blessures)', [...WARMUP.map(([l, s2]) => step(l, s2)), step('Courses avec changements de direction et appuis', 90), step('Gainage avant puis latéral', 60)], 'Inspiré du programme d’échauffement « 11+ » qui réduit les blessures.'),
+    ...(sp.drills.length ? [block('Exercices spécifiques', sp.drills.map(([l, s2, d]) => step(l, s2, d)), 'Technique et qualités physiques propres à ce sport.')] : []),
+    block('Activité', [step(sp.label, Math.max(10, minutes - 14 - drillMin) * 60, 'Hydrate-toi toutes les 15–20 minutes.')]),
+    block('Retour au calme', COOLDOWN.map(([l, s2]) => step(l, s2))),
   ];
 }
+
+// Lien vers des tutoriels vidéo YouTube pour un exercice (recherche, donc toujours à jour).
+export const tutoUrl = (label) => `https://www.youtube.com/results?search_query=${encodeURIComponent(`${label.replace(/\(.*?\)/g, '').trim()} tuto exercice`)}`;
+const NO_TUTO = /^(Marche|Footing|Pédalage|Allure|Course|Vélo|Randonnée|Respiration|Repos|Récupération|Activité|Jeu|Match|Danse$|Option)/;
+export const hasTuto = (it) => !NO_TUTO.test(it.label);
 
 // Point d'entrée : construit la séance du jour (ou d'un jour de la semaine type).
 export function buildSession({ activity, minutes = 30, intensity = 'moderee', level = 'debutant', equipment = 'aucun', goal = 'maintenir', dayIndex = 0, zones }) {
@@ -164,7 +196,7 @@ export function buildSession({ activity, minutes = 30, intensity = 'moderee', le
     src = ['cramer2013', 'balban2023'];
   } else {
     blocks = sportSession({ activity, minutes });
-    title = 'Séance';
+    title = { raquette: 'Sport de raquette', collectif: 'Sport collectif', danse: 'Danse' }[activity] || 'Séance';
     src = ['soligard2008'];
   }
   return { title, blocks, minutes: Math.max(minutes, minutesOf(blocks)), src };

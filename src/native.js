@@ -29,18 +29,22 @@ export async function connectHealth() {
 }
 
 export const openHealthSettings = async () => (await health()).openHealthConnectSettings();
+// Page « Autorisations » de Diana Health dans Health Connect (repli : réglages de Health Connect, puis Play Store).
+export const openHealthPermissions = () => UsageStats.openHealthPermissions().then((r) => r.opened);
+const healthInfo = () => UsageStats.healthInfo().catch(() => ({}));
 
 // État détaillé de Health Connect pour expliquer ce qui bloque.
 export async function healthDiagnose() {
   if (!isNative) return { ok: false, reason: 'web' };
+  const info = await healthInfo();
   try {
     const H = await health();
     const a = await H.isAvailable();
-    if (!a.available) return { ok: false, reason: 'unavailable', detail: a.reason || '' };
+    if (!a.available) return { ok: false, reason: /update/i.test(a.reason || '') ? 'update' : 'unavailable', detail: a.reason || '', info };
     const st = await H.checkAuthorization({ read: HEALTH_READ });
     const granted = st.readAuthorized || [];
-    return { ok: granted.length > 0, reason: granted.length ? 'ok' : 'denied', granted, steps: granted.includes('steps') };
-  } catch (e) { return { ok: false, reason: 'error', detail: e.message || String(e) }; }
+    return { ok: granted.length > 0, reason: granted.length ? 'ok' : 'denied', granted, steps: granted.includes('steps'), info };
+  } catch (e) { return { ok: false, reason: 'error', detail: e.message || String(e), info }; }
 }
 
 // ---------- Podomètre intégré (repli sans Health Connect) ----------

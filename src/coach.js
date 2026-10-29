@@ -3,7 +3,8 @@ import * as S from './science.js';
 import { suggestMeals } from './meals.js';
 import { bestOutdoorHour, envInsights, aqiLabel } from './env.js';
 import { busyBlocks, suggestSlot, usualHour, DEFAULT_WORK } from './schedule.js';
-import { weekPlan, activity as sportActivity } from './sport.js';
+import { weekPlan, activity as sportActivity, substitute } from './sport.js';
+import { sunTimes, PARIS } from './sun.js';
 
 const avg = (xs) => {
   const v = xs.filter((x) => x != null && !Number.isNaN(x));
@@ -20,7 +21,7 @@ const toMin = (hhmm) => {
 };
 
 // keys : liste de dates (anciennes → récentes), days : objet date → check-in, meals : tous les repas
-export function summarize({ profile, days, meals, weights, env, household = [], stools = [], workouts = [], calEvents = [] }, keys) {
+export function summarize({ profile, days, meals, weights, env, household = [], stools = [], workouts = [], calEvents = [], location = null }, keys) {
   const t = S.targets(profile);
   const todayKey = keys[keys.length - 1];
   const week = keys.slice(-7);
@@ -100,28 +101,40 @@ export function summarize({ profile, days, meals, weights, env, household = [], 
   const busy = busyBlocks(new Date(), profile.work || DEFAULT_WORK, calEvents);
   const sportToday = weekPlan(profile, workouts, new Date(), days).find((x) => x.today) || null;
   const workoutsToday = workouts.filter((x) => x.date === todayKey);
-  return { busy, usualHour: usualHour(workouts), env: envFresh, mealsToday: mealsOf(todayKey), sportToday, workoutsToday, household, stools, lateMeals, t, p, body, today, todayKey, lastNight, totToday, w, scores, dietAvg, kcalAvg, dietDaysCount: dietDays.length, ctx };
+  const sun = { ...sunTimes(new Date(), location || PARIS), approx: !location };
+  return { sun, busy, usualHour: usualHour(workouts), env: envFresh, mealsToday: mealsOf(todayKey), sportToday, workoutsToday, household, stools, lateMeals, t, p, body, today, todayKey, lastNight, totToday, w, scores, dietAvg, kcalAvg, dietDaysCount: dietDays.length, ctx };
 }
 
 // ---------- Activité physique recommandée ----------
+// Libellé d'une suggestion à partir des activités acceptées (les sports exclus sont retirés ou remplacés).
+export function activityLabel(ids, profile = {}, fallback = 'Activité au choix') {
+  const ex = profile.excludedSports || [];
+  const ok = [...new Set(ids.map((id) => (ex.includes(id) ? substitute(id, profile) : id)))].filter((id) => id && !ex.includes(id));
+  const names = ok.map((id) => ({ marche: 'marche rapide', course: 'footing', velo: 'vélo', yoga: 'yoga doux', natation: 'natation' }[id] || sportActivity(id).label.toLowerCase()));
+  if (!names.length) return fallback;
+  const txt = names.length > 1 ? `${names.slice(0, -1).join(', ')} ou ${names.at(-1)}` : names[0];
+  return txt[0].toUpperCase() + txt.slice(1);
+}
+
 export function recommendActivity(sm, profile) {
   const { w, ctx, t, today } = sm;
   const why = [];
   const src = ['who2020'];
   const remainingMod = Math.max(0, t.modMinWeek - w.modMin - 2 * w.vigMin);
+  const L = (ids, fb) => activityLabel(ids, profile, fb);
   let r;
   if (ctx.poorSleep) {
-    r = { title: 'Marche rapide ou yoga doux', duration: 30, intensity: 'légère à modérée' };
+    r = { title: L(['marche', 'yoga']), duration: 30, intensity: 'légère à modérée' };
     why.push('Nuit courte : on privilégie une activité modérée, l’effort intense après une privation de sommeil augmente le risque de blessure et le ressenti d’effort.');
   } else if (ctx.workout) {
-    r = { title: 'Récupération active : marche ou étirements', duration: 20, intensity: 'légère' };
+    r = { title: `Récupération active : ${L(['marche', 'yoga'], 'étirements').toLowerCase()}`, duration: 20, intensity: 'légère' };
     why.push('Tu as déjà fait ta séance aujourd’hui 👏 : une activité douce favorise la récupération.');
   } else if (w.strength < t.strengthPerWeek) {
     r = { title: 'Renforcement musculaire (corps entier)', duration: 40, intensity: 'modérée à soutenue' };
     why.push(`Seulement ${w.strength} séance(s) de renforcement cette semaine : l’OMS en recommande 2, associées à −10 à −17 % de mortalité.`);
     src.push('momma2022');
   } else if (remainingMod > 0) {
-    r = { title: 'Cardio : marche rapide, vélo ou footing', duration: Math.min(45, Math.max(20, Math.round(remainingMod / 3))), intensity: 'modérée' };
+    r = { title: `Cardio : ${L(['marche', 'velo', 'course']).toLowerCase()}`, duration: Math.min(45, Math.max(20, Math.round(remainingMod / 3))), intensity: 'modérée' };
     why.push(`Il te reste ~${Math.round(remainingMod)} min d’activité modérée pour atteindre les 150 min/semaine.`);
   } else {
     r = { title: 'Séance plaisir ou intervalles (HIIT court)', duration: 25, intensity: 'soutenue' };
@@ -149,7 +162,7 @@ export function dailyPlan(sm, profile) {
   let bed = toMin(profile.bedTime || '23:00');
   if (bed <= wake) bed += 1440;
   const items = [];
-  const add = (min, icon, title, text, src = [], done = false) => items.push({ min, time: hm(min), icon, title, text, src, done });
+  const add = (min, icon, title, text, src = [], done = false) => items.push({ key: icon, min, time: hm(min), icon, title, text, src, done });
   const { ctx, t } = sm;
   const eaten = (sm.mealsToday || []).filter((m) => !m.snack);
   const snacks = (sm.mealsToday || []).filter((m) => m.snack);
@@ -170,10 +183,19 @@ export function dailyPlan(sm, profile) {
   };
   const budget = (slot) => (tot.kcal > 0 ? ` Il te reste ~${Math.round(leftKcal)} kcal et ${Math.round(leftProt)} g de protéines aujourd’hui : vise ~${target(slot)} kcal à ce repas.` : '');
 
-  const sunrise = sm.env?.sunrise ? Number(sm.env.sunrise.slice(0, 2)) * 60 + Number(sm.env.sunrise.slice(3)) : null;
-  add(sunrise && sunrise > wake && sunrise < wake + 180 ? sunrise : wake, '☀️', sunrise && sunrise > wake + 20 ? `Lumière du jour (lever du soleil ${sm.env.sunrise})` : 'Lumière du jour', ctx.lowMood
-    ? 'Sors 15–30 min à la lumière naturelle dès le réveil : la lumière du matin stabilise l’horloge biologique et est associée à une meilleure humeur.'
-    : 'Ouvre les volets / sors 10–15 min : la lumière du matin cale ton horloge interne et améliore le sommeil du soir.', ['burns2023']);
+  // Lever / coucher du soleil : ville choisie (sinon Paris par défaut)
+  const sun = sm.sun?.rise != null ? sm.sun : null;
+  const where = sm.sun?.approx ? ' (heure de Paris : choisis ta ville dans Profil pour la tienne)' : '';
+  if (sun) {
+    add(sun.rise, '🌅', `Lever du soleil`, sun.rise > wake + 10
+      ? `Le soleil se lève après ton réveil${where}. En attendant, allume une lumière vive ; dès qu’il fait jour, 10–15 min dehors.`
+      : `Il fait déjà jour à ton réveil${where} : ouvre les volets tout de suite.`, ['burns2023']);
+    add(sun.set, '🌇', 'Coucher du soleil', `Après le coucher du soleil, tamise les lumières et baisse la luminosité des écrans : la lumière vive le soir retarde la mélatonine${where}.`, ['chang2015', 'burns2023']);
+  }
+  const light = sun && sun.rise > wake + 10 && sun.rise < wake + 180 ? sun.rise + 15 : wake + 15;
+  add(light, '☀️', 'Lumière du jour (10–15 min dehors)', ctx.lowMood
+    ? 'Sors 15–30 min à la lumière naturelle le matin : la lumière du matin stabilise l’horloge biologique et est associée à une meilleure humeur.'
+    : 'Ouvre les volets et sors 10–15 min : la lumière du matin cale ton horloge interne et améliore le sommeil du soir.', ['burns2023']);
 
   // Petit-déjeuner
   let breakfast = wake + 45;
@@ -188,7 +210,8 @@ export function dailyPlan(sm, profile) {
   if (logged('dejeuner').length) lunch = mealDone('dejeuner');
   else add(lunch, '🥗', 'Déjeuner — repas principal', `Moitié légumes, un quart protéines, un quart féculents complets. Concentrer l’apport calorique le midi plutôt que le soir favorise la perte de poids.${budget('dejeuner')}`, ['garaulet2013']);
   if ((sm.w.screenMin ?? 0) > 180 || ['sedentaire', 'leger'].includes(profile.activityLevel)) add(wake + 150, '⚡', 'Snack d’exercice (2 min)', 'Monte des escaliers ou marche très vite 1–2 min, à refaire 3× dans la journée. Et lève-toi 5 min toutes les 30 min assis.', ['stamatakis2022', 'duran2023']);
-  add(lunch + 30, '🚶', 'Marche digestive 10–15 min', 'Une marche légère après le repas abaisse nettement le pic de glycémie.', ['buffey2022']);
+  if ((profile.excludedSports || []).includes('marche')) add(lunch + 30, '🚶', 'Bouger 10 min après le repas', 'Rester debout et bouger un peu (rangement, vaisselle, escaliers) après le repas abaisse le pic de glycémie.', ['buffey2022']);
+  else add(lunch + 30, '🚶', 'Marche digestive 10–15 min', 'Une marche légère après le repas abaisse nettement le pic de glycémie.', ['buffey2022']);
 
   if (ctx.poorSleep && sm.lastNight != null) add(Math.min(lunch + 60, 15 * 60), '😴', 'Micro-sieste (10–20 min)', 'Nuit courte : une sieste brève avant 15 h restaure la vigilance sans perturber la nuit suivante.', ['watson2015']);
 
@@ -252,6 +275,14 @@ export function dailyPlan(sm, profile) {
   add(bed, '🌙', 'Coucher', `Même heure chaque soir (±30 min) : la régularité du sommeil prédit la mortalité mieux que sa durée. Vise ${t.sleepMin}–${t.sleepMax} h.`, ['windred2024', 'watson2015']);
 
   return items.sort((a, b) => a.min - b.min);
+}
+
+// Étapes masquées (aujourd'hui ou toujours) et étapes ajoutées par l'utilisateur.
+// edits = { hidden: { clé: true }, hiddenOn: { date: [clés] }, custom: [{ id, time, title, text, date|null }] }
+export function applyPlanEdits(plan, edits = {}, dateKey) {
+  const off = new Set([...Object.keys(edits.hidden || {}), ...((edits.hiddenOn || {})[dateKey] || [])]);
+  const custom = (edits.custom || []).filter((c) => !c.date || c.date === dateKey).map((c) => ({ key: 'c:' + c.id, id: c.id, custom: true, daily: !c.date, min: toMin(c.time), time: c.time, icon: '⭐', title: c.title, text: c.text || '', src: [] }));
+  return [...plan.filter((p) => !off.has(p.key)), ...custom].sort((a, b) => a.min - b.min);
 }
 
 // ---------- Score d'hygiène de vie expliqué ----------

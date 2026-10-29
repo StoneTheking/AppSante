@@ -97,7 +97,7 @@ function renderView(after, animate = false) {
   VIEWS[tab].render(view, ctx);
   // l'animation d'entrée ne joue qu'à la navigation, pas à chaque mise à jour
   clearTimeout(renderView.t);
-  renderView.t = setTimeout(() => $$('.view-enter').forEach((e) => e.classList.remove('view-enter')), 700);
+  renderView.t = setTimeout(() => $$('.view-enter').forEach((e) => e.classList.remove('view-enter')), 1200);
   const s = G.streak(store.get());
   const sb = $('#streak-btn');
   sb.innerHTML = `🔥 ${s.current}`;
@@ -115,7 +115,7 @@ function go(t, after) {
 
 function start() {
   if (!store.get().onboarded) {
-    Onboarding.render(app, () => { shell(); go('home'); refreshReminders(); });
+    Onboarding.render(app, () => { shell(); go('home'); refreshReminders(); }, 'in');
     return;
   }
   shell();

@@ -4,7 +4,7 @@ import * as C from '../coach.js';
 import * as AI from '../ai.js';
 import * as BC from '../barcode.js';
 import { summary, personContext } from '../context.js';
-import { icon, esc, fmt, sheet, toast, compressImage, pickImage, releaseCamera, srcLinks, faces, bindFaces, $, $$ } from '../ui.js';
+import { icon, esc, fmt, sheet, toast, compressImage, pickImage, releaseCamera, BLANK, srcLinks, faces, bindFaces, $, $$ } from '../ui.js';
 import * as SL from '../sleep.js';
 import * as N from '../native.js';
 import * as D from '../digestion.js';
@@ -126,7 +126,7 @@ function showResult(res, p, body) {
 export function openScanner(ctx, slot = null) {
   let stop = () => {};
   const body = sheet(`
-    <div class="scanner"><video muted playsinline></video><div class="frame"></div><div class="laser"></div></div>
+    <div class="scanner"><video muted playsinline poster="${BLANK}"></video><div class="frame"></div><div class="laser"></div></div>
     <p class="small muted" style="text-align:center">Vise le code-barres du produit</p>
     <div class="row" style="flex-wrap:nowrap"><input id="code" inputmode="numeric" placeholder="ou tape le code (EAN)"><button class="btn" id="lookup">${icon('arrow', 18)}</button></div>
     <div id="prod" style="margin-top:14px"></div>`, { title: 'Scanner un produit', full: true, onClose: () => { stop(); ctx.render(); } });

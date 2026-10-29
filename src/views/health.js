@@ -8,8 +8,9 @@ import { parseCSV, CSV_TEMPLATE } from '../importer.js';
 import { summary } from '../context.js';
 import * as D from '../digestion.js';
 import * as SP from '../sport.js';
-import { icon, esc, fmt, fmtMin, segmented, srcLinks, barChart, lineChart, timeChart, faces, bindFaces, toast, compressImage, pickImage, sheet, $, $$ } from '../ui.js';
+import { icon, esc, fmt, fmtMin, segmented, srcLinks, barChart, timeChart, faces, bindFaces, toast, compressImage, pickImage, sheet, $, $$ } from '../ui.js';
 import * as E from '../energy.js';
+import { correlations } from '../correlate.js';
 
 let seg = 'suivi';
 let dayOffset = 0;
@@ -19,7 +20,7 @@ export function render(view, ctx) {
   $$('[data-seg="hl"]', view).forEach((b) => (b.onclick = () => { seg = b.dataset.v; render(view, ctx); }));
   const body = $('#hl-body', view);
   ({ suivi: renderTrack, tendances: renderTrends, projection: renderFuture, science: renderScience })[seg](body, ctx);
-  setTimeout(() => body.classList.remove('view-enter'), 700);
+  setTimeout(() => body.classList.remove('view-enter'), 1200);
 }
 
 export function openSection(s) { seg = s; }
@@ -90,12 +91,12 @@ function sourcesCard(st) {
       <div class="grid2"><button class="btn soft" id="shot">${icon('image', 18)} Capture d’écran</button><button class="btn ghost" id="csv-btn">${icon('upload', 18)} Import CSV</button></div>
       <details style="margin-top:10px"><summary class="small">Format CSV ${icon('right', 14)}</summary><p class="tiny muted">Export Google Fit (Takeout → « Daily activity metrics ») ou ce modèle :</p><pre class="tiny" style="white-space:pre-wrap;background:var(--card-2);padding:8px;border-radius:10px">${esc(CSV_TEMPLATE)}</pre></details>
       <input id="csv" type="file" accept=".csv,text/csv" hidden><div id="sync-res" class="small" style="margin-top:8px"></div></div>`;
-  const hc = !d ? ['…', 'vérification'] : d.ok ? ['ok', `connecté${d.steps ? '' : ' (pas non autorisés)'}`] : d.reason === 'unavailable' ? ['bad', 'indisponible sur ce téléphone'] : d.reason === 'denied' ? ['warn', 'accès non autorisé'] : ['bad', 'erreur'];
+  const hc = !d ? ['…', 'vérification'] : d.ok ? ['ok', `connecté${d.steps ? '' : ' (pas non autorisés)'}`] : d.reason === 'unavailable' ? ['bad', d.info?.managedProfile ? 'bloqué (profil géré)' : 'indisponible sur ce téléphone'] : d.reason === 'update' ? ['warn', 'mise à jour nécessaire'] : d.reason === 'denied' ? ['warn', 'accès non autorisé'] : ['bad', 'erreur'];
   const line = (ic, name, [lvl, txt], btn) => `<div class="between" style="padding:8px 0;border-top:1px solid var(--line)"><span class="small">${icon(ic, 14)} <b>${name}</b> · <span style="color:var(--${lvl === 'ok' ? 'good' : lvl === 'warn' ? 'warn' : lvl === 'bad' ? 'bad' : 'muted'})">${txt}</span></span>${btn || ''}</div>`;
   return `<div class="card">
     <div class="card-head"><h2>${icon('refresh', 18)} Données du téléphone</h2>${st.lastSync ? `<span class="tiny muted">à jour ${new Date(st.lastSync).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>` : ''}</div>
     <p class="tiny muted" style="margin-top:-6px">Synchronisées automatiquement à chaque ouverture de l’application.</p>
-    ${line('heart', 'Health Connect', hc, d?.ok ? '' : `<button class="btn sm soft" id="hc">${d?.reason === 'unavailable' ? 'Pourquoi ?' : 'Autoriser'}</button>`)}
+    ${line('heart', 'Health Connect', hc, d?.ok ? '' : `<button class="btn sm soft" id="hc">${d?.reason === 'unavailable' || d?.reason === 'update' ? 'Pourquoi ?' : 'Autoriser'}</button>`)}
     ${line('steps', 'Podomètre du téléphone', st.stepsAccess ? ['ok', 'actif'] : ['muted', d?.ok ? 'inutile (Health Connect)' : 'non activé'], st.stepsAccess || d?.ok ? '' : `<button class="btn sm soft" id="steps-on">Activer</button>`)}
     ${line('phone', 'Temps d’écran', st.usageOk ? ['ok', 'autorisé'] : ['warn', 'non autorisé'], st.usageOk ? '' : `<button class="btn sm soft" id="usage">Autoriser</button>`)}
     <div id="sync-res" class="small" style="margin-top:8px"></div>
@@ -174,12 +175,16 @@ function renderTrack(el, ctx) {
   if (N.isNative) {
     $('#hc', el)?.addEventListener('click', async () => {
       const res = $('#sync-res', el);
-      const d0 = store.get().healthDiag;
-      if (d0?.reason === 'unavailable') return openHealthHelp(d0);
-      try { await N.connectHealth(); } catch (e) { return openHealthHelp({ reason: 'error', detail: e.message }); }
+      res.innerHTML = '<span class="spinner"></span> Connexion à Health Connect…';
+      const d0 = await N.healthDiagnose(); // toujours un état frais (pas celui de la dernière ouverture)
+      store.update((s) => { s.healthDiag = { ...d0, at: Date.now() }; });
+      if (['unavailable', 'update'].includes(d0.reason)) { res.innerHTML = ''; return openHealthHelp(d0, re); }
+      if (!d0.ok) { try { await N.connectHealth(); } catch (e) { res.innerHTML = ''; return openHealthHelp({ ...d0, reason: 'error', detail: e.message }, re); } }
       res.innerHTML = '<span class="spinner"></span> Synchronisation…';
       await syncAll();
-      if (!store.get().healthDiag?.ok) return openHealthHelp(store.get().healthDiag);
+      res.innerHTML = '';
+      if (!store.get().healthDiag?.ok) return openHealthHelp(store.get().healthDiag, re);
+      toast('Health Connect synchronisé ✅');
       re();
     });
     $('#steps-on', el)?.addEventListener('click', async () => {
@@ -207,21 +212,34 @@ function renderTrack(el, ctx) {
   }
 }
 
-// Explique pourquoi Health Connect ne répond pas, et les solutions.
-function openHealthHelp(d = {}) {
+// Explique pourquoi Health Connect ne répond pas, et ouvre directement la bonne page des réglages.
+// Après deux refus, Android n'affiche plus la fenêtre d'autorisation : il faut activer l'accès depuis Health Connect.
+function openHealthHelp(d = {}, done) {
+  const inf = d.info || {};
+  const diag = [`Android ${inf.release || '?'} (API ${inf.sdk || '?'})`, inf.maker, inf.managedProfile ? 'profil géré par une organisation' : null, inf.sdk && inf.sdk < 34 ? `appli Health Connect ${inf.hcApp ? 'installée' : 'absente'}` : null, d.detail].filter(Boolean).join(' · ');
   const body = sheet(`
-    ${d.reason === 'unavailable' ? `<div class="note warn">${icon('shield', 18)}<span>Health Connect n’est pas accessible pour Diana Health sur ce téléphone${d.detail ? ` (${esc(d.detail)})` : ''}.</span></div>
-      <p class="small">Causes fréquentes :</p>
-      <ul class="small" style="padding-left:20px;line-height:1.6">
-        <li><b>Téléphone géré par une organisation</b> (profil professionnel) : Health Connect n’est pas disponible dans ce profil.</li>
-        <li>Android 13 ou moins : installe <b>Health Connect</b> depuis le Play Store.</li>
-        <li>Health Connect doit être mis à jour (Play Store).</li>
-      </ul>` : d.reason === 'denied' ? `<p class="small" style="margin-top:0">L’accès a été refusé ou la fenêtre d’autorisation ne s’est pas ouverte. Ouvre Health Connect → <b>Autorisations des applis</b> → <b>Diana Health</b> → active <b>Pas, Sommeil, Exercice, Poids</b>.</p>
-      <p class="small">Vérifie aussi qu’une application <b>écrit</b> tes pas dans Health Connect (Google Fit, Samsung Health, Fitbit, ta montre…) : sinon il n’y a rien à lire.</p>` : `<div class="note bad">${icon('alert', 18)}<span>${esc(d.detail || 'Erreur inconnue')}</span></div>`}
-    <div class="note">${icon('steps', 18)}<span>En attendant, active le <b>podomètre du téléphone</b> : tes pas sont comptés sans Health Connect.</span></div>
-    <div class="grid2"><button class="btn ghost" id="open-hc">${icon('settings', 18)} Ouvrir Health Connect</button><button class="btn" id="steps2">${icon('steps', 18)} Podomètre</button></div>`, { title: 'Health Connect' });
-  $('#open-hc', body).onclick = () => N.openHealthSettings().catch(() => toast('Impossible d’ouvrir Health Connect'));
-  $('#steps2', body).onclick = async () => { const ok = await N.stepsAccess(); store.update((s) => { s.stepsAccess = ok; }); toast(ok ? 'Podomètre activé 👟' : 'Autorisation refusée'); body.close(); };
+    ${d.reason === 'unavailable' || d.reason === 'update' ? `<div class="note warn">${icon('shield', 18)}<span>${d.reason === 'update' ? 'Health Connect doit être <b>mis à jour</b> depuis le Play Store.' : inf.managedProfile ? 'Diana Health est installée dans un <b>profil géré par une organisation</b> (profil professionnel) : Health Connect n’y est pas disponible. Installe l’APK dans ton profil personnel.' : inf.sdk && inf.sdk < 34 && !inf.hcApp ? 'Sur ton Android, Health Connect est une application à installer depuis le Play Store.' : 'Health Connect n’est pas disponible sur ce téléphone.'}</span></div>`
+      : `<p class="small" style="margin-top:0">${d.reason === 'denied' ? 'Diana Health n’a pas encore accès à tes données. Si aucune fenêtre ne s’est ouverte, c’est normal : <b>Android ne la réaffiche plus après deux refus</b>.' : 'La fenêtre d’autorisation n’a pas pu s’ouvrir.'}</p>
+      <ol class="small" style="padding-left:20px;line-height:1.7;margin:6px 0 12px"><li>Touche <b>Ouvrir les autorisations</b> ci-dessous.</li><li>Active <b>Tout autoriser</b> (ou au moins Pas, Sommeil, Exercice, Poids).</li><li>Reviens dans Diana Health : la synchronisation se lance seule.</li></ol>
+      <p class="tiny muted">Il faut aussi qu’une application <b>écrive</b> dans Health Connect (Samsung Health, Google Fit, Fitbit, ta montre…). Dans Samsung Health : Paramètres → Health Connect → autoriser l’écriture.</p>`}
+    <button class="btn block" id="open-hc">${icon('settings', 18)} ${d.reason === 'unavailable' || d.reason === 'update' ? 'Ouvrir Health Connect / Play Store' : 'Ouvrir les autorisations'}</button>
+    <div class="note" style="margin-top:12px">${icon('steps', 18)}<span>En attendant, le <b>podomètre du téléphone</b> compte tes pas sans Health Connect.</span></div>
+    <button class="btn ghost block" id="steps2">${icon('steps', 18)} Activer le podomètre</button>
+    <p class="tiny muted" style="margin-top:12px">Diagnostic : ${esc(diag || d.reason || 'inconnu')}</p>`, { title: 'Health Connect', onClose: done });
+  $('#open-hc', body).onclick = async () => {
+    try { await N.openHealthPermissions(); } catch { await N.openHealthSettings().catch(() => toast('Impossible d’ouvrir Health Connect')); }
+    // au retour dans l'application : nouvelle tentative de synchronisation
+    const back = async () => {
+      if (document.visibilityState !== 'visible') return;
+      document.removeEventListener('visibilitychange', back);
+      await syncAll({ silent: true });
+      const ok = store.get().healthDiag?.ok;
+      toast(ok ? 'Health Connect connecté ✅' : 'Toujours pas d’accès à Health Connect');
+      if (ok) body.close();
+    };
+    document.addEventListener('visibilitychange', back);
+  };
+  $('#steps2', body).onclick = async () => { const ok = await N.stepsAccess(); store.update((s) => { s.stepsAccess = ok; }); if (ok) await syncAll({ silent: true }); toast(ok ? 'Podomètre activé 👟' : 'Autorisation refusée'); body.close(); };
 }
 
 // Pesée rapide (rappel toutes les 2 semaines).
@@ -282,6 +300,7 @@ function renderTrends(el) {
   };
   const we = E.weightEstimate(st);
   el.innerHTML = [
+    linksCard(st),
     weightCard(we),
     card('sleep', 'moon', 'Sommeil', 'var(--c-sleep)', series(sleepFn), { ref: 7, fmtV: (v) => fmtMin(v * 60) }, ['watson2015']),
     card('steps', 'steps', 'Pas', 'var(--c-move)', series((x) => x.steps), { ref: t.steps, unit: 'pas' }, ['paluch2022']),
@@ -322,6 +341,15 @@ function weightCard(we) {
     ${srcLinks(['hall2011', 'dhurandhar2015', 'subar2015'])}</div>`;
 }
 
+// Ce qui joue sur ton sommeil et ton humeur : tes propres jours comparés entre eux.
+function linksCard(st) {
+  const found = correlations(st).slice(0, 5);
+  return `<div class="card"><div class="card-head"><h2>${icon('bulb', 18)} Ce qui joue sur ton sommeil et ton humeur</h2></div>
+    ${found.length ? found.map((c) => `<div class="link-row"><span>${c.good ? '✅' : '⚠️'}</span><div><div class="small" style="font-weight:600">${esc(c.text)}</div><div class="tiny muted">${c.nYes} jours comparés à ${c.nNo}</div></div></div>`).join('')
+      : '<p class="small muted" style="margin:0">Il faut quelques semaines de données (sommeil, pas, humeur…) pour repérer ce qui t’aide vraiment. Continue à utiliser « Je vais dormir » et à répondre à la question du jour.</p>'}
+    <p class="tiny muted" style="margin:10px 0 0">Comparaison de tes propres jours sur 60 jours : c’est une piste, pas une preuve que l’un cause l’autre.</p></div>`;
+}
+
 // ---------- Projection ----------
 function renderFuture(el) {
   const st = store.get();
@@ -347,13 +375,6 @@ function renderFuture(el) {
       <h3 style="font-size:.9rem;margin:16px 0 6px">Tes cibles quotidiennes</h3>
       <div class="chips" style="flex-wrap:wrap">${[`${t.kcal} kcal`, `${t.protein} g protéines`, `≥ ${t.fiber} g fibres`, `≥ ${t.fruitVeg} g fruits & légumes`, `sucres < ${t.sugarMax} g`, `sel < 5 g`, `${t.steps} pas`, '150 min d’activité/sem', '2 séances renfo/sem', `${t.sleepMin}–${t.sleepMax} h de sommeil`].map((x) => `<span class="chip">${x}</span>`).join('')}</div>
       ${srcLinks(['mifflin1990', 'ashwell2012', 'who2020', 'who2015sugar', 'who2012sodium', 'morton2018'])}
-    </div>
-
-    <div class="card">
-      <div class="card-head"><h2>${icon('trend', 18)} Ton poids dans 5 ans</h2></div>
-      ${b.weight ? lineChart([{ name: 'Si rien ne change', color: 'var(--series-2)', pts: pr.curveCurrent }, { name: 'En suivant les conseils', color: 'var(--series-1)', pts: pr.curveImproved }]) : '<p class="muted">Renseigne ton poids dans le profil.</p>'}
-      <div class="note ${pr.reliable ? '' : 'warn'}" style="margin-top:10px">${icon('info', 18)}<span>Bilan énergétique moyen : <b>${pr.balance > 0 ? '+' : ''}${fmt(pr.balance)} kcal/j</b>. ${pr.reliable ? `Calculé sur ${sm.dietDaysCount} jours de repas saisis.` : 'Saisis tes repas au moins 3 jours complets pour une projection fiable.'}</span></div>
-      ${srcLinks(['hall2011'])}
     </div>
 
     <div class="card">

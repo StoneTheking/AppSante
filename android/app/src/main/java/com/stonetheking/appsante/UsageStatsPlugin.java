@@ -84,6 +84,60 @@ public class UsageStatsPlugin extends Plugin {
         call.resolve();
     }
 
+    // Health Connect : ouvre directement la page des autorisations de Diana Health.
+    // Utile quand Android n'affiche plus la fenêtre d'autorisation (après deux refus, elle ne s'ouvre plus).
+    @PluginMethod
+    public void openHealthPermissions(PluginCall call) {
+        String pkg = getContext().getPackageName();
+        String[][] tries = {
+            {"android.health.connect.action.MANAGE_HEALTH_PERMISSIONS", "pkg"},
+            {"androidx.health.ACTION_MANAGE_HEALTH_PERMISSIONS", "pkg"},
+            {"android.health.connect.action.HEALTH_HOME_SETTINGS", ""},
+            {"androidx.health.ACTION_HEALTH_CONNECT_SETTINGS", ""},
+        };
+        for (String[] t : tries) {
+            Intent i = new Intent(t[0]);
+            if (!t[1].isEmpty()) i.putExtra(Intent.EXTRA_PACKAGE_NAME, pkg);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try {
+                getContext().startActivity(i);
+                JSObject r = new JSObject();
+                r.put("opened", t[0]);
+                call.resolve(r);
+                return;
+            } catch (Exception ignored) { }
+        }
+        try {
+            Intent store = new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.healthdata"));
+            store.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(store);
+            JSObject r = new JSObject();
+            r.put("opened", "store");
+            call.resolve(r);
+        } catch (Exception e) {
+            call.reject("Impossible d'ouvrir Health Connect");
+        }
+    }
+
+    // Informations utiles au diagnostic de Health Connect (version d'Android, profil géré, application installée).
+    @PluginMethod
+    public void healthInfo(PluginCall call) {
+        JSObject r = new JSObject();
+        r.put("sdk", Build.VERSION.SDK_INT);
+        r.put("release", Build.VERSION.RELEASE);
+        r.put("maker", Build.MANUFACTURER);
+        boolean managed = false;
+        try {
+            android.os.UserManager um = (android.os.UserManager) getContext().getSystemService(Context.USER_SERVICE);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) managed = um.isManagedProfile();
+        } catch (Exception ignored) { }
+        r.put("managedProfile", managed);
+        boolean app = false;
+        try { getContext().getPackageManager().getPackageInfo("com.google.android.apps.healthdata", 0); app = true; } catch (Exception ignored) { }
+        r.put("hcApp", app);
+        call.resolve(r);
+    }
+
     @PluginMethod
     public void getDaily(PluginCall call) {
         if (!hasAccess()) {

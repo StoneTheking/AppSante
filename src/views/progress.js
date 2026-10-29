@@ -29,7 +29,7 @@ export function bindQuests(view, ctx) {
     else if (id === 'food') ctx.action('photo');
     else if (id === 'sleep') ctx.action('sleep');
     else if (id === 'mood') ctx.action('checkin');
-    else if (id === 'water') { const d = store.getDay(); store.setDay(store.today(), { waterMl: (d.waterMl || 0) + 250 }); toast('+250 mL 💧', 1000); ctx.render(); }
+    else if (id === 'water') { const d = store.getDay(); store.setDay(store.today(), { waterMl: (d.waterMl || 0) + 250 }); toast('+25 cL 💧', 1000); ctx.render(); }
   }));
   $$('[data-progress]', view).forEach((b) => (b.onclick = () => openProgress()));
 }

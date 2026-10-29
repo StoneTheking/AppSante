@@ -40,10 +40,41 @@ export function toast(msg, ms = 2600) {
   toast.h = setTimeout(() => t.classList.remove('show'), ms);
 }
 
+// Sources : touchées, elles expliquent ce que l'étude a montré et pourquoi elle appuie ce conseil.
 export function srcLinks(ids = []) {
-  const links = ids.map((id) => S.SOURCES[id] && `<a href="${S.SOURCES[id].u}" target="_blank" rel="noopener">${esc(S.SOURCES[id].t.split(' – ')[0])}</a>`).filter(Boolean);
-  return links.length ? `<details class="src"><summary>${icon('book', 12)} ${links.length} source${links.length > 1 ? 's' : ''}</summary><div>${links.join(' · ')}</div></details>` : '';
+  const ok = [...new Set(ids)].filter((id) => S.SOURCES[id]);
+  return ok.length ? `<details class="src"><summary>${icon('book', 12)} ${ok.length} source${ok.length > 1 ? 's' : ''}</summary><div class="src-chips">${ok.map((id) => `<button type="button" class="src-chip" data-src="${id}">${esc(S.SOURCES[id].t.split(' – ')[0])}</button>`).join('')}</div></details>` : '';
 }
+
+// Ce que la source vient appuyer : le titre et le texte de l'élément qui la cite.
+function citedFor(el) {
+  const box = el.closest('.insight, .pillar, li, .suggest, .feature, .sheet-body > div, .card, details:not(.src), .sheet-body') || el.parentElement;
+  const pick = (sel) => [...box.querySelectorAll(sel)].map((x) => x.textContent.trim()).find((t) => t && !t.match(/^\d+ sources?$/));
+  const title = pick('h2, h3, .ttl, summary:not(.src summary), b');
+  const text = pick('.txt, p, .small');
+  return { title, text: text && text !== title ? text : '' };
+}
+
+export function openSource(id, from) {
+  const info = S.sourceInfo(id);
+  if (!info) return;
+  const why = from ? citedFor(from) : {};
+  const cut = (t, n) => (t.length > n ? t.slice(0, n).replace(/\s\S*$/, '') + '…' : t);
+  sheet(`
+    <div class="tiny muted" style="font-weight:700;text-transform:uppercase;letter-spacing:.06em">${esc(info.name)}</div>
+    <p style="font-weight:650;margin:4px 0 12px">${esc(info.title)}</p>
+    ${why.title ? `<div class="note">${icon('target', 18)}<span><b>Pourquoi elle est citée ici</b><br>Elle appuie « ${esc(cut(why.title, 90))} »${why.text ? ` : ${esc(cut(why.text, 170))}` : '.'}</span></div>` : ''}
+    ${info.facts.length ? `<h3 style="font-size:.9rem;margin:14px 0 6px">Ce qu’elle a montré</h3><ul class="small" style="padding-left:18px;margin:0;line-height:1.55">${info.facts.slice(0, 4).map((f) => `<li>${esc(f.text)}</li>`).join('')}</ul>` : ''}
+    <a class="btn block" style="margin-top:16px" href="${info.url}" target="_blank" rel="noopener">${icon('book', 18)} Lire l’étude</a>
+    <p class="tiny muted" style="margin-top:8px">Lien DOI vers la publication originale (résumé gratuit, article parfois payant).</p>`, { title: 'Source scientifique' });
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest?.('[data-src]');
+  if (!b) return;
+  e.preventDefault();
+  e.stopPropagation();
+  openSource(b.dataset.src, b);
+}, true);
 
 // Feuille modale montant du bas de l'écran. Renvoie l'élément de contenu ; close() la ferme.
 export function sheet(html, { title = '', onClose, full = false } = {}) {
@@ -143,11 +174,13 @@ export async function pickImage({ camera = true, multiple = false } = {}) {
 
 // Caméra plein écran dans l'application : renvoie un Blob JPEG, 'gallery', ou undefined si annulé.
 let camStream = null, camStop = null;
+// Image vide : sans « poster », la WebView Android affiche une grosse icône ▶ avant la première image.
+export const BLANK = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 function quickCamera() {
   return new Promise(async (resolve, reject) => {
     const root = document.createElement('div');
     root.className = 'qcam';
-    root.innerHTML = `<video playsinline muted autoplay></video><div class="qcam-flash"></div>
+    root.innerHTML = `<video playsinline muted autoplay poster="${BLANK}"></video><div class="qcam-flash"></div>
       <button class="qcam-x" aria-label="Fermer">${icon('x', 26)}</button>
       <div class="qcam-bar"><button class="qcam-side" data-gal aria-label="Galerie">${icon('image', 24)}</button><button class="qcam-shot" aria-label="Prendre la photo"></button><span class="qcam-side"></span></div>`;
     document.body.appendChild(root);
@@ -159,6 +192,7 @@ function quickCamera() {
       clearTimeout(camStop);
       // le flux reste ouvert 20 s après fermeture : la photo suivante s'ouvre instantanément
       if (!camStream || !camStream.active) camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+      video.addEventListener('playing', () => video.classList.add('on'), { once: true });
       video.srcObject = camStream;
       await video.play().catch(() => {});
     } catch (e) {
@@ -207,15 +241,15 @@ export function bindFaces(el, onPick) {
 }
 
 // Appui court / appui long sur un même bouton (ex. eau : +25 cL / −25 cL).
-export function onTapHold(btn, tap, hold, ms = 500) {
+export function onTapHold(btn, tap, hold, ms = 420) {
   let t = null, held = false;
-  const start = () => { held = false; t = setTimeout(() => { held = true; navigator.vibrate?.(30); hold(); }, ms); };
-  const cancel = () => clearTimeout(t);
-  btn.addEventListener('pointerdown', start);
-  btn.addEventListener('pointerup', cancel);
-  btn.addEventListener('pointerleave', cancel);
-  btn.addEventListener('pointercancel', cancel);
-  btn.addEventListener('contextmenu', (e) => e.preventDefault());
+  const fire = () => { if (held) return; held = true; clearTimeout(t); navigator.vibrate?.(30); hold(); };
+  btn.classList.add('holdable');
+  btn.addEventListener('pointerdown', () => { held = false; clearTimeout(t); t = setTimeout(fire, ms); });
+  btn.addEventListener('pointerup', () => clearTimeout(t));
+  btn.addEventListener('pointerleave', () => clearTimeout(t));
+  // sur Android, l'appui long système annule le pointeur et déclenche « contextmenu » : c'est notre appui long
+  btn.addEventListener('contextmenu', (e) => { e.preventDefault(); fire(); });
   btn.addEventListener('click', (e) => { if (held) { e.preventDefault(); held = false; return; } tap(); });
 }
 

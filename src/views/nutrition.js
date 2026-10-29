@@ -12,6 +12,7 @@ import * as SN from '../snacks.js';
 import { icon, esc, fmt, segmented, donut, toast, sheet, srcLinks, $, $$ } from '../ui.js';
 import { meter } from './home.js';
 import { addMeal } from './actions.js';
+import { openTastePicker } from './tastes.js';
 
 let seg = 'jour';
 let slot = null;
@@ -27,7 +28,7 @@ export function render(view, ctx) {
   $$('[data-seg="nut"]', view).forEach((b) => (b.onclick = () => { seg = b.dataset.v; render(view, ctx); }));
   const body = $('#nut-body', view);
   ({ jour: renderDay, historique: renderHistory, menus: renderMenus, courses: renderShop })[seg](body, ctx, view);
-  setTimeout(() => body.classList.remove('view-enter'), 700);
+  setTimeout(() => body.classList.remove('view-enter'), 1200);
 }
 
 // Ligne de repas épurée : heure, calories, qualité. Le détail s'ouvre au toucher.
@@ -127,7 +128,10 @@ function renderDay(el, ctx) {
   const left = t.kcal - tot.kcal;
   const dishes = st.dishes || [];
 
+  const askTastes = !st.tastesAsked && !Object.keys(st.profile.tastes || {}).length;
   el.innerHTML = `
+    ${askTastes ? `<div class="card" id="ask-tastes" style="border-color:color-mix(in srgb,var(--primary) 40%,transparent)"><div class="row" style="flex-wrap:nowrap;gap:12px"><span class="icon-badge" style="background:var(--primary-soft);color:var(--primary)">${icon('chef')}</span><div><b>Qu’est-ce que tu aimes manger ?</b><div class="tiny muted">30 secondes pour des menus et des idées à ton goût.</div></div></div>
+      <div class="grid2" style="margin-top:10px"><button class="btn ghost" id="tastes-later">Plus tard</button><button class="btn" id="tastes-go">${icon('heart', 16)} Choisir</button></div></div>` : ''}
     <div class="card">
       <div class="row" style="flex-wrap:nowrap;gap:16px">
         ${donut(tot.kcal, t.kcal, { label: fmt(Math.abs(left)), sub: left >= 0 ? 'kcal restantes' : 'kcal en trop', color: 'var(--c-move)', size: 128 })}
@@ -189,6 +193,8 @@ function renderDay(el, ctx) {
   $$('[data-idea]', el).forEach((r) => (r.onclick = () => { const m = sugg.find((x) => x.name === r.dataset.idea); openRecipe({ name: m.name, kcal: m.kcal, protein: m.protein, prep: m.prep, why: m.why }); }));
   $$('[data-eat-dish]', el).forEach((b) => (b.onclick = stop(() => { eatDish(dishes.find((d) => d.id === b.dataset.eatDish)); re(); })));
   $$('[data-dish-recipe]', el).forEach((r) => (r.onclick = () => openDish(dishes.find((d) => d.id === r.dataset.dishRecipe), re)));
+  $('#tastes-later', el)?.addEventListener('click', () => { store.update((x) => { x.tastesAsked = true; }); renderDay(el, ctx); });
+  $('#tastes-go', el)?.addEventListener('click', () => { store.update((x) => { x.tastesAsked = true; }); openTastePicker(() => renderDay(el, ctx)); });
   $$('[data-eat-plan]', el).forEach((b) => (b.onclick = stop(() => {
     const m = planToday.meals[Number(b.dataset.eatPlan)];
     addMeal({ title: m.name, nutrients: { kcal: m.kcal, protein: m.protein, fiber: m.fiber, fruitVeg: 150, sugar: 5, satFat: 4, sodium: 500, carbs: 0, fat: 0 }, nova: 1, quality: 85, verdict: 'bon', slot: m.slot });
@@ -255,20 +261,22 @@ function renderMenus(el, ctx, view) {
   const plan = st.plan;
   el.innerHTML = `
     <div class="card">
-      <div class="card-head"><h2>${icon('calendar', 18)} Menus de la semaine</h2>${plan ? `<button class="link" id="clear-plan" style="color:var(--bad)">${icon('trash', 14)} Tout effacer</button>` : ''}</div>
+      <div class="card-head"><h2>${icon('calendar', 18)} Mes menus</h2>${plan ? `<button class="link" id="clear-plan" style="color:var(--bad)">${icon('trash', 14)} Tout effacer</button>` : ''}</div>
       <p class="small muted" style="margin-top:-6px">${summary().t.kcal} kcal/j, adaptés à ton foyer, tes goûts${st.pantry.length ? ' et à ce que tu as déjà' : ''}. Touche un plat pour sa recette.</p>
-      <button class="btn block" id="gen-ai">${icon('sparkles', 18)} ${plan ? 'Refaire mes menus' : 'Créer mes menus'}</button>
+      <div class="grid2"><button class="btn soft" id="gen-day">${icon('sparkles', 18)} Une journée</button><button class="btn" id="gen-ai">${icon('calendar', 18)} La semaine</button></div>
     </div>
     ${plan ? `
       ${plan.tips ? `<div class="note">${icon('bulb', 18)}<span>${esc(plan.tips)}</span></div>` : ''}
-      ${plan.days.map((d, di) => `<div class="day-card"><header><span>${esc(d.label)} <span class="muted tiny">${d.date ? new Date(d.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : ''}</span></span><span class="row" style="gap:6px;flex-wrap:nowrap"><span class="muted small">${fmt(d.meals.reduce((a, m) => a + (m.kcal || 0), 0))} kcal</span>${d.meals.length ? `<button class="icon-btn" data-clear-day="${di}" aria-label="Effacer ce jour">${icon('trash', 14)}</button>` : ''}</span></header>
+      ${plan.days.map((d, di) => `<div class="day-card"><header><span>${esc(d.label)} <span class="muted tiny">${d.date ? new Date(d.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : ''}</span></span><span class="row" style="gap:6px;flex-wrap:nowrap"><span class="muted small">${fmt(d.meals.reduce((a, m) => a + (m.kcal || 0), 0))} kcal</span><button class="icon-btn" data-redo-day="${di}" aria-label="Refaire ce jour">${icon('sparkles', 14)}</button>${d.meals.length ? `<button class="icon-btn" data-clear-day="${di}" aria-label="Effacer ce jour">${icon('trash', 14)}</button>` : ''}</span></header>
         ${d.meals.length ? d.meals.map((m, i) => `<div class="meal-row" data-recipe="${di}:${i}" style="cursor:pointer"><div><div class="slot">${P.SLOT_LABEL[m.slot] || m.slot}</div><div style="font-weight:600">${esc(m.name)}</div><div class="tiny muted">${m.kcal} kcal</div></div>
           <button class="icon-btn" data-del-meal="${di}:${i}" aria-label="Retirer ce plat">${icon('x', 14)}</button></div>`).join('') : '<p class="tiny muted" style="margin:6px 0">Jour libre.</p>'}
       </div>`).join('')}
       <button class="btn soft block" data-seg-go="courses">${icon('cart', 18)} Voir la liste de courses</button>` : `<div class="empty">${icon('calendar', 32)}<p>Pas encore de menus.</p></div>`}`;
 
   const re = () => renderMenus(el, ctx, view);
-  $('#gen-ai', el).onclick = () => openAiPlanner(re);
+  $('#gen-ai', el).onclick = () => openAiPlanner(re, { scope: 'week' });
+  $('#gen-day', el).onclick = () => openAiPlanner(re, { scope: 'day' });
+  $$('[data-redo-day]', el).forEach((b) => (b.onclick = () => openAiPlanner(re, { scope: 'day', date: plan.days[Number(b.dataset.redoDay)].date })));
   $('#clear-plan', el)?.addEventListener('click', () => { if (confirm('Effacer tous les menus de la semaine ?')) { store.update((s) => { s.plan = null; s.shopChecked = {}; }); re(); } });
   $$('[data-clear-day]', el).forEach((b) => (b.onclick = () => { store.update((s) => { s.plan.days[Number(b.dataset.clearDay)].meals = []; }); re(); }));
   $$('[data-del-meal]', el).forEach((b) => (b.onclick = (e) => { e.stopPropagation(); const [di, mi] = b.dataset.delMeal.split(':').map(Number); store.update((s) => { s.plan.days[di].meals.splice(mi, 1); }); re(); }));
@@ -276,31 +284,50 @@ function renderMenus(el, ctx, view) {
   $$('[data-recipe]', el).forEach((b) => (b.onclick = () => { const [di, mi] = b.dataset.recipe.split(':').map(Number); openRecipe(plan.days[di].meals[mi]); }));
 }
 
-function openAiPlanner(done, { pantryFirst = store.get().pantry.length > 0 } = {}) {
+// Menus d'une journée ou de la semaine. Une journée remplace (ou ajoute) ce jour dans les menus existants.
+function openAiPlanner(done, { pantryFirst = store.get().pantry.length > 0, scope = 'week', date = null } = {}) {
   const st = store.get();
+  const week = P.weekDays();
+  let sc = scope, day = date && week.some((d) => d.date === date) ? date : week[0].date;
   const body = sheet(`
+    <div class="seg" id="scope"><button data-sc="day" class="${sc === 'day' ? 'on' : ''}">Une journée</button><button data-sc="week" class="${sc === 'week' ? 'on' : ''}">La semaine</button></div>
+    <div id="days" class="chips" style="margin-top:10px;${sc === 'day' ? '' : 'display:none'}">${week.map((d, i) => `<button class="chip ${d.date === day ? 'on' : ''}" data-day="${d.date}">${i === 0 ? 'Aujourd’hui' : i === 1 ? 'Demain' : d.label}</button>`).join('')}</div>
     <div class="grid2">
-      <div><label class="lbl">Personnes</label><select id="pp">${[1, 2, 3, 4, 5, 6].map((n) => `<option ${n === st.household.length + 1 ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+      <div><label class="lbl">Personnes</label><select id="pp">${[1, 2, 3, 4, 5, 6].map((n) => `<option ${n === (st.plan?.people || st.household.length + 1) ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
       <div><label class="lbl">Budget</label><select id="bud"><option value="serré">Serré</option><option value="moyen" selected>Moyen</option><option value="confortable">Confortable</option></select></div>
     </div>
     <label class="lbl">Temps de cuisine max par repas</label><select id="time"><option value="15">15 min</option><option value="30" selected>30 min</option><option value="45">45 min</option><option value="60">1 h</option></select>
     ${st.pantry.length ? `<label class="between" style="margin-top:14px;flex-wrap:nowrap"><span class="small">Cuisiner d’abord ce que j’ai déjà (${st.pantry.length} produits)</span><span class="switch"><input type="checkbox" id="pf" ${pantryFirst ? 'checked' : ''}><span></span></span></label>` : ''}
     <label class="lbl">Envies, contraintes (facultatif)</label><textarea id="wish" placeholder="ex. batch cooking le dimanche, pas de poisson le lundi…"></textarea>
     ${!st.settings.apiKey ? `<div class="note warn" style="margin-top:12px">${icon('key', 18)}<span>Ajoute ta clé API dans Profil pour créer tes menus.</span></div>` : ''}
-    <button class="btn block" id="go" style="margin-top:16px">${icon('sparkles', 18)} Créer mes menus</button>
+    <button class="btn block" id="go" style="margin-top:16px">${icon('sparkles', 18)} <span id="go-l">${sc === 'day' ? 'Créer le menu du jour' : 'Créer mes menus'}</span></button>
     <div id="st" style="margin-top:12px"></div>`, { title: 'Mes menus' });
+  $$('[data-sc]', body).forEach((b) => (b.onclick = () => {
+    sc = b.dataset.sc;
+    $$('[data-sc]', body).forEach((x) => x.classList.toggle('on', x === b));
+    $('#days', body).style.display = sc === 'day' ? '' : 'none';
+    $('#go-l', body).textContent = sc === 'day' ? 'Créer le menu du jour' : 'Créer mes menus';
+  }));
+  $$('[data-day]', body).forEach((b) => (b.onclick = () => { day = b.dataset.day; $$('[data-day]', body).forEach((x) => x.classList.toggle('on', x === b)); }));
   $('#go', body).onclick = async () => {
     const people = Number($('#pp', body).value);
     const pf = $('#pf', body)?.checked;
+    const days = sc === 'day' ? week.filter((d) => d.date === day) : week;
     $('#go', body).disabled = true;
-    $('#st', body).innerHTML = `<div class="empty"><span class="spinner"></span><p>Le coach compose ta semaine (environ 1 minute)…</p></div>`;
+    $('#st', body).innerHTML = `<div class="empty"><span class="spinner"></span><p>${sc === 'day' ? 'Le coach compose ta journée (environ 20 secondes)…' : 'Le coach compose ta semaine (environ 1 minute)…'}</p></div>`;
     try {
       const wishes = [$('#wish', body).value, pf ? `Construis les menus AUTOUR des produits du garde-manger (${PT.pantryText(st.pantry)}) : utilise-les en premier, avant leur péremption, et ajoute le moins d'achats possible.` : ''].filter(Boolean).join('\n');
-      const plan = await AI.planWeek(st.settings, personContext(), { days: P.weekDays(), people, budget: $('#bud', body).value, cookTime: Number($('#time', body).value), wishes });
-      plan.people = people;
-      store.update((s) => { s.plan = plan; s.shopChecked = {}; });
+      const res = await AI.planWeek(st.settings, personContext(), { days, people, budget: $('#bud', body).value, cookTime: Number($('#time', body).value), wishes });
+      store.update((s) => {
+        if (sc === 'week' || !s.plan) { s.plan = { ...res, people }; }
+        else {
+          const kept = s.plan.days.filter((d) => d.date !== day);
+          s.plan = { ...s.plan, people, days: [...kept, ...res.days].sort((a, b) => (a.date || '').localeCompare(b.date || '')) };
+        }
+        s.shopChecked = {};
+      });
       body.close();
-      toast('Menus prêts 🎉');
+      toast(sc === 'day' ? 'Menu du jour prêt 🎉' : 'Menus prêts 🎉');
       done();
     } catch (e) {
       $('#go', body).disabled = false;

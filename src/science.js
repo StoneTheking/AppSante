@@ -455,3 +455,23 @@ export const EVIDENCE = [
 // Version texte pour le coach IA.
 export const evidenceText = (themes) => EVIDENCE.filter((t) => !themes || themes.includes(t.theme)).map((t) => `## ${t.theme}\n${t.facts.map(([f, src]) => `- ${f} [${src.map((id) => SOURCES[id].t.split(' – ')[0] + ' ' + (SOURCES[id].t.match(/\((.*)\)\s*$/)?.[1] || '')).join(' ; ')}]`).join('\n')}`).join('\n\n');
 export const EVIDENCE_TEXT = evidenceText();
+
+// Résultat clé des sources qui ne sont pas reprises dans EVIDENCE.
+const KEY_FINDINGS = {
+  ekelund2019: 'Plus d’activité physique (même légère) et moins de temps assis sont associés à une mortalité nettement plus basse, mesurés par accéléromètre chez 36 000 adultes.',
+  mifflin1990: 'Équation de référence pour estimer le métabolisme de repos à partir du poids, de la taille, de l’âge et du sexe ; c’est la plus précise des formules usuelles.',
+  gbmc2016: 'Un IMC au-dessus de 25 est associé à une hausse progressive de la mortalité (méta-analyse de 239 cohortes, 10,6 millions de personnes).',
+  ashwell2012: 'Le rapport tour de taille / taille (idéal < 0,5) prédit mieux le risque cardio-métabolique que l’IMC.',
+  efsa2010water: 'Apports en eau adéquats : environ 2,5 L/j pour un homme et 2,0 L/j pour une femme, boissons et aliments compris (≈ 70–80 % via les boissons).',
+  cramer2013: 'Le yoga réduit les douleurs lombaires chroniques et améliore la mobilité à court terme (méta-analyse d’essais randomisés).',
+};
+
+// Ce qu'une source a montré (faits qui la citent) : affiché quand on touche une source.
+export function sourceInfo(id) {
+  const src = SOURCES[id];
+  if (!src) return null;
+  const facts = EVIDENCE.flatMap((t) => t.facts.filter(([, ids]) => ids.includes(id)).map(([f]) => ({ theme: t.theme, text: f })));
+  if (!facts.length && KEY_FINDINGS[id]) facts.push({ theme: '', text: KEY_FINDINGS[id] });
+  const [name, ...rest] = src.t.split(' – ');
+  return { id, name, title: rest.join(' – ') || src.t, url: src.u, facts };
+}

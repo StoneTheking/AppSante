@@ -6,7 +6,7 @@ Application Android native **et** application web installable, qui croise **somm
 - **analyser ton assiette en photo** (IA) ou **scanner un code-barres** (Open Food Facts : Nutri-Score, NOVA, additifs à surveiller, allergènes) avec un avis personnalisé ;
 - te proposer un **plan heure par heure** (lumière du matin, repas, dernier café, pauses actives, marche digestive, sport au bon moment, coupure des écrans, coucher), avec **rappels** ;
 - générer tes **menus de la semaine**, avec recettes et **liste de courses** par rayon ;
-- **projeter ton poids et ton risque santé** à 1, 5 et 10 ans ;
+- **projeter ton risque santé** à 1, 5 et 10 ans ;
 - discuter avec un **coach IA** qui connaît tes données et peut consulter PubMed, Cochrane, l'OMS, l'ANSES et les grandes revues médicales ;
 - noter ton sommeil en un geste : bouton **« Je vais dormir »** sur l'accueil, **widget Android** et raccourci de l'icône ; le **réveil est détecté automatiquement** dans l'appli Android (sonnerie de l'alarme ou premier déverrouillage du matin, réveils nocturnes comptés) ;
 - gérer ton **sport** : activité conseillée du jour (type, durée, intensité, zone de fréquence cardiaque, heure), semaine type selon ton objectif, **séances détaillées avec exercices** (renforcement selon ton niveau et ton matériel, fractionné 10 × 1 min ou 4 × 4 min, course-marche, natation, mobilité) et **mode guidé** (minuteur, séries, repos), **chronomètre** de séance, saisie et historique (durée, calories d'après le Compendium 2024), séances Health Connect importées ;
@@ -25,7 +25,12 @@ Application Android native **et** application web installable, qui croise **somm
 - des séances qui **s'adaptent à ton ressenti** (« trop dur / bien / pas assez dur »), une durée au choix et des sports à exclure ;
 - un **poids estimé** d'après tes repas et ton activité, comparé à tes pesées (rappel toutes les 2 semaines) ;
 - des **widgets** : « Je vais dormir » (chronomètre de la nuit, arrêt au déverrouillage du téléphone, « Je me rendors ») et « Photo du repas » ;
-- un **podomètre intégré** quand Health Connect n'est pas disponible.
+- un **podomètre intégré** quand Health Connect n'est pas disponible ;
+- un **bilan du dimanche** (progrès par pilier, un seul objectif mesurable suivi pendant la semaine) ;
+- **ce qui joue sur ton sommeil et ton humeur**, d'après tes propres jours (ex. « tu dors 40 min de plus les nuits qui suivent un jour à plus de 8 000 pas ») ;
+- un plan du jour **modifiable** (détail de chaque étape, étapes masquées ou ajoutées) avec l'heure du **lever et du coucher du soleil** ;
+- des **sources touchables** : ce que l'étude a montré et pourquoi elle appuie le conseil ;
+- des **menus pour une journée** ou pour la semaine, une **semaine type de sport modifiable**, des exercices pour chaque sport avec **tutos vidéo**.
 
 Tout repose sur une **bibliothèque de 115 publications** (OMS, Lancet, BMJ, JAMA, NEJM, Nature…) consultable dans l'appli (Santé → Science) et dans `src/science.js`. Chaque DOI a été vérifié auprès de Crossref.
 

@@ -5,28 +5,34 @@ import { icon, esc, sheet, $, $$ } from '../ui.js';
 
 const allergyList = (p) => (p.allergies || '').split(/[,;]/).map((s) => s.trim()).filter(Boolean);
 
+// Mode de marquage explicite : on choisit d'abord « J'aime » ou « J'évite », puis on touche les aliments.
+export function markMode(mode, labels = ['J’aime', 'J’évite']) {
+  return `<div class="mark-mode"><span class="tiny muted">Je marque :</span><button data-mode="1" class="${mode > 0 ? 'on like' : ''}">♥ ${labels[0]}</button><button data-mode="-1" class="${mode < 0 ? 'on dislike' : ''}">✕ ${labels[1]}</button></div>`;
+}
+
 export function openTastePicker(done) {
-  let tab = 'aliments';
   const body = sheet('<div id="tp"></div>', { title: 'Mes goûts', full: true, onClose: done });
-  const el = $('#tp', body);
+  tastePanel($('#tp', body), { onOk: () => body.close() });
+}
+
+// Panneau des goûts, utilisable dans une feuille ou dans le tuto.
+export function tastePanel(el, { onOk, tabs = ['aliments', 'cuisines', 'allergies'] } = {}) {
+  let tab = tabs[0], mode = 1;
   const draw = () => {
     const p = store.get().profile;
     const t = p.tastes || {};
     const state = (item) => t[item] || 0;
     const mark = (v) => (v > 0 ? '♥' : v < 0 ? '✕' : '');
     el.innerHTML = `
-      <div class="seg">${[['aliments', 'Aliments'], ['cuisines', 'Cuisines'], ['allergies', 'Allergies']].map(([k, l]) => `<button data-tab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+      ${tabs.length > 1 ? `<div class="seg">${[['aliments', 'Aliments'], ['cuisines', 'Cuisines'], ['allergies', 'Allergies']].filter(([k]) => tabs.includes(k)).map(([k, l]) => `<button data-tab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>` : ''}
       ${tab === 'aliments' ? `
-        <p class="tiny muted" style="margin:8px 0">Touche une fois : <b style="color:var(--good)">♥ j’aime</b> · deux fois : <b style="color:var(--bad)">✕ j’évite</b> · trois fois : neutre.</p>
+        ${markMode(mode)}
+        <p class="tiny muted" style="margin:6px 0 8px">Choisis « J’aime » ou « J’évite », puis touche les aliments. Retouche pour annuler.</p>
         ${F.TASTE_CATALOG.map((c) => {
           const vals = c.items.map(state);
-          const allOut = vals.every((v) => v < 0), allIn = vals.every((v) => v > 0);
+          const all = vals.every((v) => v === mode);
           return `<div class="taste-cat">
-            <div class="between"><b>${c.emoji} ${esc(c.cat)}</b>
-              <span class="row" style="gap:6px;flex-wrap:nowrap">
-                <button class="chip sm ${allIn ? 'on' : ''}" data-all="${esc(c.cat)}" data-v="1" aria-label="Tout aimer">♥ tout</button>
-                <button class="chip sm ${allOut ? 'bad' : ''}" data-all="${esc(c.cat)}" data-v="-1" aria-label="Tout éviter">✕ tout</button>
-              </span></div>
+            <div class="between"><b>${c.emoji} ${esc(c.cat)}</b><button class="chip sm ${all ? (mode > 0 ? 'on' : 'bad') : ''}" data-all="${esc(c.cat)}">${mode > 0 ? '♥' : '✕'} tout</button></div>
             <div class="chips" style="flex-wrap:wrap;margin-top:8px">${c.items.map((it) => `<button class="chip taste ${state(it) > 0 ? 'like' : state(it) < 0 ? 'dislike' : ''}" data-item="${esc(it)}">${mark(state(it)) ? `<span>${mark(state(it))}</span>` : ''}${esc(it)}</button>`).join('')}</div>
           </div>`;
         }).join('')}` : ''}
@@ -34,25 +40,24 @@ export function openTastePicker(done) {
         <div class="chips" style="flex-wrap:wrap">${F.CUISINES.map((c) => `<button class="chip ${(p.cuisines || []).includes(c) ? 'on' : ''}" data-cuisine="${c}">${c}</button>`).join('')}</div>` : ''}
       ${tab === 'allergies' ? `<p class="tiny muted" style="margin:8px 0">Les 14 allergènes réglementaires : exclus des menus, signalés au scan des produits.</p>
         <div class="chips" style="flex-wrap:wrap">${F.ALLERGENS.map((a) => `<button class="chip ${allergyList(p).includes(a) ? 'bad' : ''}" data-allergen="${a}">${allergyList(p).includes(a) ? '⚠ ' : ''}${a}</button>`).join('')}</div>` : ''}
-      <button class="btn block" id="ok" style="margin-top:16px">${icon('check', 18)} Terminé</button>`;
+      ${onOk ? `<button class="btn block" id="ok" style="margin-top:16px">${icon('check', 18)} Terminé</button>` : ''}`;
 
     $$('[data-tab]', el).forEach((b) => (b.onclick = () => { tab = b.dataset.tab; draw(); }));
+    $$('[data-mode]', el).forEach((b) => (b.onclick = () => { mode = Number(b.dataset.mode); draw(); }));
     $$('[data-item]', el).forEach((b) => (b.onclick = () => {
       const it = b.dataset.item;
       store.update((s) => {
         const cur = (s.profile.tastes ||= {})[it] || 0;
-        const next = cur === 0 ? 1 : cur === 1 ? -1 : 0;
-        if (next) s.profile.tastes[it] = next; else delete s.profile.tastes[it];
+        if (cur === mode) delete s.profile.tastes[it]; else s.profile.tastes[it] = mode;
       });
       draw();
     }));
     $$('[data-all]', el).forEach((b) => (b.onclick = () => {
       const cat = F.TASTE_CATALOG.find((c) => c.cat === b.dataset.all);
-      const v = Number(b.dataset.v);
       store.update((s) => {
         const t2 = (s.profile.tastes ||= {});
-        const already = cat.items.every((it) => t2[it] === v);
-        cat.items.forEach((it) => { if (already) delete t2[it]; else t2[it] = v; });
+        const already = cat.items.every((it) => t2[it] === mode);
+        cat.items.forEach((it) => { if (already) delete t2[it]; else t2[it] = mode; });
       });
       draw();
     }));
@@ -64,7 +69,7 @@ export function openTastePicker(done) {
       store.update((s) => { const l = new Set(allergyList(s.profile)); l.has(b.dataset.allergen) ? l.delete(b.dataset.allergen) : l.add(b.dataset.allergen); s.profile.allergies = [...l].join(', '); });
       draw();
     }));
-    $('#ok', el).onclick = () => body.close();
+    $('#ok', el)?.addEventListener('click', onOk);
   };
   draw();
 }
