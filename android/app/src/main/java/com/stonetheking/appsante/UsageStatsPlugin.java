@@ -74,6 +74,16 @@ public class UsageStatsPlugin extends Plugin {
         call.resolve();
     }
 
+    /** Fiche « Infos sur l'appli » : menu ⋮ → « Autoriser les paramètres restreints » (Android 13+). */
+    @PluginMethod
+    public void openAppInfo(PluginCall call) {
+        Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+        i.setData(Uri.parse("package:" + getContext().getPackageName()));
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        getContext().startActivity(i);
+        call.resolve();
+    }
+
     @PluginMethod
     public void getDaily(PluginCall call) {
         if (!hasAccess()) {

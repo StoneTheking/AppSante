@@ -55,6 +55,7 @@ const ctx = {
 };
 
 function shell() {
+  document.body.classList.remove('onb-mode');
   app.innerHTML = `
     <header class="top">
       <div class="hello"><span class="date" id="date"></span><h1 id="title"></h1></div>
@@ -145,6 +146,9 @@ async function onForeground() {
     if (r && !r.tooShort) toast(`Nuit enregistrée : ${Math.floor(r.sleepMinutes / 60)} h ${String(r.sleepMinutes % 60).padStart(2, '0')}`);
   }
   await detectMorning();
+  if (N.isNative && (store.get().update?.available || Date.now() - (store.get().update?.checked || 0) > 12 * 3600e3)) {
+    N.checkUpdate().then((u) => { store.update((s) => { s.update = { ...u, checked: Date.now() }; }); if (u.available && tab === 'home') renderView(); }).catch(() => {});
+  }
   const before = store.get().env?.fetched;
   await refreshEnv();
   if (store.get().env?.fetched !== before && tab === 'home') renderView();

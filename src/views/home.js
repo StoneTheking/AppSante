@@ -3,6 +3,7 @@ import * as store from '../store.js';
 import * as C from '../coach.js';
 import { summary, taste } from '../context.js';
 import * as SL from '../sleep.js';
+import * as N from '../native.js';
 import { aqiLabel } from '../env.js';
 import { icon, esc, fmt, srcLinks, rings, DOMAIN, $$ } from '../ui.js';
 import { SLOT_LABEL } from '../planner.js';
@@ -50,7 +51,9 @@ export function render(view, ctx) {
   const water = d.waterMl || 0;
   const visiblePlan = showAllPlan ? plan : plan.slice(Math.max(0, nextIdx - 1), nextIdx + 4);
 
+  const up = st.update?.available ? st.update : null;
   view.innerHTML = `
+    ${up ? `<div class="note" style="margin:4px 0 10px">${icon('download', 18)}<span style="flex:1"><b>Mise à jour ${esc(up.latest)} disponible</b><br><span class="tiny">Télécharge puis ouvre le fichier : elle s’installe par-dessus, tes données sont conservées.</span></span><button class="btn sm" data-update>Installer</button></div>` : ''}
     <section class="hero">
       <div class="hero-kicker"><span>Score santé · 7 jours</span><span>${sm.w.loggedDays}/7 j. renseignés</span></div>
       <div class="hero-grid">
@@ -113,6 +116,7 @@ export function render(view, ctx) {
       render(view, ctx);
     } else ctx.action(b.dataset.act);
   }));
+  view.querySelector('[data-update]')?.addEventListener('click', () => { location.href = N.APK_URL; });
   view.querySelector('[data-sleep]')?.addEventListener('click', () => ctx.action('sleep'));
   view.querySelector('[data-sleep-cancel]')?.addEventListener('click', () => { SL.cancelSleep(); ctx.syncWidget?.(); render(view, ctx); });
   view.querySelector('[data-env-setup]')?.addEventListener('click', () => ctx.go('profile', () => document.getElementById('loc')?.scrollIntoView({ block: 'center' })));

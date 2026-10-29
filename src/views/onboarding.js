@@ -6,6 +6,7 @@ let step = 0;
 const draft = {};
 
 export function render(root, done) {
+  document.body.classList.add('onb-mode');
   const p = { ...store.get().profile, ...draft };
   const steps = [
     () => `<div class="logo">${icon('heart', 42)}</div>

@@ -127,3 +127,33 @@ export const pinSleepWidget = () => (isNative ? SleepWidget.pin().then((r) => r.
 // ---------- Détection du réveil ----------
 export const screenEvents = (from, to = Date.now()) => UsageStats.screenEvents({ from, to }).then((r) => r.events || []);
 export const nextAlarm = () => (isNative ? SleepWidget.nextAlarm().then((r) => r.at || null).catch(() => null) : Promise.resolve(null));
+
+// ---------- Mises à jour (APK installé hors Play Store) ----------
+const RELEASES = 'https://api.github.com/repos/StoneTheking/AppSante/releases/latest';
+export const APK_URL = 'https://github.com/StoneTheking/AppSante/releases/latest/download/AppSante.apk';
+
+export async function appVersion() {
+  if (!isNative) return null;
+  const { App } = await import('@capacitor/app');
+  return (await App.getInfo()).version;
+}
+
+const parse = (v) => (v || '').replace(/^v/, '').split('.').map(Number);
+export const isNewer = (a, b) => {
+  const x = parse(a), y = parse(b);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
+  return false;
+};
+
+// Renvoie { current, latest, available } ; null hors application native.
+export async function checkUpdate() {
+  if (!isNative) return null;
+  const current = await appVersion();
+  const r = await fetch(RELEASES, { headers: { Accept: 'application/vnd.github+json' } });
+  if (!r.ok) throw new Error('Impossible de vérifier les mises à jour');
+  const latest = (await r.json()).tag_name?.replace(/^v/, '');
+  return { current, latest, available: isNewer(latest, current) };
+}
+
+// Ouvre la fiche Android de l'application (pour « Autoriser les paramètres restreints »).
+export const openAppInfo = () => UsageStats.openAppInfo();

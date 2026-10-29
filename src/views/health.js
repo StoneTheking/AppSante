@@ -8,7 +8,7 @@ import { parseCSV, CSV_TEMPLATE } from '../importer.js';
 import { summary } from '../context.js';
 import * as D from '../digestion.js';
 import * as SP from '../sport.js';
-import { icon, esc, fmt, segmented, srcLinks, barChart, lineChart, toast, compressImage, pickImage, $, $$ } from '../ui.js';
+import { icon, esc, fmt, segmented, srcLinks, barChart, lineChart, toast, compressImage, pickImage, sheet, $, $$ } from '../ui.js';
 
 let seg = 'suivi';
 let dayOffset = 0;
@@ -124,7 +124,7 @@ function renderTrack(el, ctx) {
     $('#hc', el).onclick = async () => {
       try { await N.connectHealth(); toast('Health Connect autorisé'); } catch (e) { res.innerHTML = `<div class="note bad">${icon('alert', 18)}<span>${esc(e.message)}</span></div>`; }
     };
-    $('#usage', el).onclick = () => { N.openUsageSettings(); toast('Active « AppSanté » puis reviens ici'); };
+    $('#usage', el).onclick = () => openUsageHelp();
   } else {
     $('#shot', el).onclick = () => readShots(key, el, ctx);
     $('#csv-btn', el).onclick = () => $('#csv', el).click();
@@ -293,4 +293,21 @@ function digestionCard() {
     ${sus.length ? sus.map((x) => `<div class="between small" style="padding:6px 0;border-top:1px solid var(--line)"><span style="text-transform:capitalize">${esc(x.word)}</span><span class="muted">suivi de troubles ${x.bad} fois sur ${x.total}</span></div>`).join('') + '<p class="tiny muted">Corrélation, pas preuve : retire un aliment 2–3 semaines puis réintroduis-le pour vérifier, idéalement avec un professionnel.</p>' : '<p class="small muted" style="margin:0">Aucun aliment suspect pour l’instant (il faut au moins 2 épisodes liés).</p>'}
     ${srcLinks(['halmos2014', 'vandeputte2016'])}
   </div>`;
+}
+
+// Accès « données d'utilisation » : Android 13+ le bloque pour les applis installées hors Play Store
+// tant que les « paramètres restreints » ne sont pas autorisés pour l'appli.
+export function openUsageHelp() {
+  const body = sheet(`
+    <p class="small" style="margin-top:0">Cet accès sert à mesurer ton temps d’écran, tes réseaux sociaux et à <b>détecter ton réveil</b>. Les données restent sur ton téléphone.</p>
+    <div class="note warn">${icon('shield', 18)}<span>Si Android affiche « Contrôlé par les paramètres restreints » ou « L’accès a été refusé à cette appli », c’est normal pour une application installée hors Play Store : il faut d’abord l’autoriser une fois.</span></div>
+    <ol class="small" style="padding-left:20px;line-height:1.7">
+      <li>Touche <b>Ouvrir les infos de l’appli</b> ci-dessous.</li>
+      <li>En haut à droite, touche <b>⋮</b> puis <b>Autoriser les paramètres restreints</b> et confirme (code ou empreinte).</li>
+      <li>Reviens ici et touche <b>Activer l’accès</b>, puis active <b>AppSanté</b>.</li>
+    </ol>
+    <p class="tiny muted">Si l’option n’apparaît pas dans le menu ⋮, ton téléphone est géré par une organisation qui l’interdit : l’import par capture d’écran reste possible.</p>
+    <div class="grid2"><button class="btn ghost" id="info">${icon('settings', 18)} Ouvrir les infos de l’appli</button><button class="btn" id="usage-go">${icon('phone', 18)} Activer l’accès</button></div>`, { title: 'Temps d’écran et réveil' });
+  $('#info', body).onclick = () => N.openAppInfo();
+  $('#usage-go', body).onclick = () => { N.openUsageSettings(); body.close(); };
 }

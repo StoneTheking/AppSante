@@ -23,6 +23,7 @@ export function render(view, ctx) {
   const sw = (attr, on) => `<span class="switch"><input type="checkbox" ${attr} ${on ? 'checked' : ''}><span></span></span>`;
 
   view.innerHTML = `
+    ${N.isNative ? `<div class="card" id="update-card"><div class="between"><div><b>${icon('download', 16)} Application</b><div class="tiny muted" id="ver">Version…</div></div><button class="btn sm soft" id="check-up">Vérifier les mises à jour</button></div></div>` : ''}
     ${!N.isNative ? `<div class="card" style="background:var(--hero);color:#fff;border:0">
       <div class="row" style="flex-wrap:nowrap;gap:14px"><span class="icon-badge" style="background:rgba(255,255,255,.18)">${icon('phone')}</span>
       <div><b>Application Android</b><div class="small" style="opacity:.85">Synchronisation automatique du temps d’écran, des pas, du sommeil et du cœur + rappels fiables.</div></div></div>
@@ -123,6 +124,17 @@ export function render(view, ctx) {
     </div>
     <p class="tiny muted" style="text-align:center">AppSanté n’est pas un dispositif médical et ne remplace pas l’avis d’un professionnel de santé.<br><a href="privacy.html" target="_blank">Confidentialité</a></p>`;
 
+  if (N.isNative) {
+    N.appVersion().then((v) => { const el = $('#ver', view); if (el) el.textContent = `Version ${v}`; });
+    $('#check-up', view).onclick = async () => {
+      try {
+        const u = await N.checkUpdate();
+        store.update((s) => { s.update = { ...u, checked: Date.now() }; });
+        if (u.available) { toast(`Version ${u.latest} disponible : téléchargement…`); location.href = N.APK_URL; }
+        else toast(`Tu as la dernière version (${u.current})`);
+      } catch (e) { toast(e.message); }
+    };
+  }
   $$('[data-p]', view).forEach((el) => el.addEventListener('change', () => {
     const k = el.dataset.p;
     let v = el.value;

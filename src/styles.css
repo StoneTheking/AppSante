@@ -308,7 +308,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .action span { font-size: 0.78rem; color: var(--muted); line-height: 1.35; }
 
 /* ---------- Onboarding ---------- */
-.onb { min-height: 100vh; display: flex; flex-direction: column; padding: calc(24px + env(safe-area-inset-top)) 22px calc(24px + env(safe-area-inset-bottom)); max-width: 560px; margin: 0 auto; }
+body.onb-mode { padding-bottom: 0; min-height: 0; }
+.onb { min-height: 100vh; min-height: 100svh; display: flex; flex-direction: column; padding: calc(24px + env(safe-area-inset-top)) 22px calc(24px + env(safe-area-inset-bottom)); max-width: 560px; margin: 0 auto; }
 .onb .dots { display: flex; gap: 6px; justify-content: center; margin-bottom: 18px; }
 .onb .dots i { width: 8px; height: 8px; border-radius: 99px; background: var(--line); transition: 0.3s; }
 .onb .dots i.on { width: 26px; background: var(--primary); }
@@ -360,3 +361,15 @@ details > summary::-webkit-details-marker { display: none; }
 .history-day b { font-size: 0.95rem; text-transform: capitalize; }
 .bar-mini { height: 6px; border-radius: 3px; background: var(--bg-2); overflow: hidden; margin-top: 6px; }
 .bar-mini > div { height: 100%; border-radius: 3px; }
+/* Accueil du premier lancement : tient sans défilement sur les écrans courts */
+@media (max-height: 760px) {
+  .onb { padding-top: calc(14px + env(safe-area-inset-top)); padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
+  .onb .logo { width: 60px; height: 60px; border-radius: 20px; margin: 8px 0 10px; }
+  .onb .logo svg { width: 30px; height: 30px; }
+  .onb h1 { font-size: 1.45rem; margin: 4px 0; }
+  .onb .lead { font-size: 0.92rem; }
+  .onb .feature { margin: 8px 0; }
+  .onb .dots { margin-bottom: 10px; }
+  .onb .choice button { padding: 10px 12px; }
+  .onb label.lbl { margin: 8px 0 4px; }
+}
