@@ -83,6 +83,15 @@ export const SOURCES = {
   efsa2013energy: { t: 'EFSA 2013 – Valeurs de référence pour l’énergie (enfants et adultes)', u: 'https://doi.org/10.2903/j.efsa.2013.3005' },
   perry2024: { t: 'Perry et al. – Analyse NOVA des tickets de caisse des ménages (Curr Dev Nutr 2024)', u: 'https://doi.org/10.1016/j.cdnut.2024.102850' },
   parker2020: { t: 'Parker et al. – La qualité des achats alimentaires du foyer reflète la qualité de l’alimentation (Br J Nutr 2020)', u: 'https://doi.org/10.1017/S0007114520004833' },
+  ciman2019: { t: 'Ciman & Wac – Le smartphone comme capteur de durée de sommeil, algorithme iSenseSleep validé (JMIR mHealth 2019)', u: 'https://doi.org/10.2196/11930' },
+  tanaka2001: { t: 'Tanaka et al. – Fréquence cardiaque maximale = 208 − 0,7 × âge (J Am Coll Cardiol 2001)', u: 'https://doi.org/10.1016/S0735-1097(00)01054-8' },
+  herrmann2024: { t: 'Herrmann et al. – Compendium 2024 des dépenses énergétiques des activités (J Sport Health Sci 2024)', u: 'https://doi.org/10.1016/j.jshs.2023.10.010' },
+  acsm2009: { t: 'ACSM – Modèles de progression en musculation chez l’adulte (Med Sci Sports Exerc 2009)', u: 'https://doi.org/10.1249/MSS.0b013e3181915670' },
+  schoenfeld2016: { t: 'Schoenfeld et al. – Travailler chaque muscle 2×/semaine favorise l’hypertrophie (Sports Med 2016)', u: 'https://doi.org/10.1007/s40279-016-0543-8' },
+  milanovic2016: { t: 'Milanović et al. – Le fractionné (HIIT) améliore davantage la VO2max que l’endurance continue (Sports Med 2016)', u: 'https://doi.org/10.1007/s40279-015-0365-0' },
+  knaier2021: { t: 'Knaier et al. – Force et endurance maximales en fin d’après-midi et le soir, méta-analyse (Med Sci Sports Exerc 2021)', u: 'https://doi.org/10.1249/MSS.0000000000002773' },
+  bruggisser2023: { t: 'Bruggisser et al. – Pas de meilleur moment universel pour s’entraîner : la régularité prime (Sports Med Open 2023)', u: 'https://doi.org/10.1186/s40798-023-00577-5' },
+  sorensen2020: { t: 'Sørensen et al. – Le « test de la parole » pour régler l’intensité (J Cardiopulm Rehabil Prev 2020)', u: 'https://doi.org/10.1097/HCR.0000000000000506' },
 };
 
 export const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -325,6 +334,11 @@ export const EVIDENCE = [
     ['La condition cardio-respiratoire est le facteur le plus fortement lié à la longévité, devant le tabac et le diabète.', ['mandsager2018']],
     ['FC de repos : chaque +10 bpm ≈ +9 % de mortalité ; l’endurance la fait baisser.', ['zhang2016']],
     ['Marche, footing, yoga et musculation réduisent les symptômes dépressifs autant qu’une psychothérapie.', ['noetel2024']],
+    ['Intensité : FC max ≈ 208 − 0,7 × âge ; modéré ≈ 64–76 % (on peut parler mais pas chanter), intense ≈ 77–95 % (quelques mots seulement).', ['tanaka2001', 'sorensen2020']],
+    ['Le fractionné (HIIT) améliore davantage la capacité cardio-respiratoire (VO2max) que l’endurance continue, en moins de temps.', ['milanovic2016']],
+    ['Musculation : 2–3 séances/semaine, 8–12 répétitions, chaque groupe musculaire 2 fois/semaine, 48 h de récupération entre deux séances du même muscle.', ['acsm2009', 'schoenfeld2016']],
+    ['Force et endurance sont maximales en fin d’après-midi et le soir ; mais le meilleur moment pour progresser est celui où tu peux être régulier.', ['knaier2021', 'bruggisser2023']],
+    ['Calories dépensées ≈ MET × poids (kg) × durée (h), d’après le Compendium des activités.', ['herrmann2024']],
   ] },
   { theme: 'Sommeil', icon: 'moon', color: 'var(--c-sleep)', facts: [
     ['7–9 h par nuit chez l’adulte (7–8 h après 65 ans).', ['watson2015']],
@@ -336,6 +350,7 @@ export const EVIDENCE = [
     ['Lire sur écran le soir retarde la mélatonine et l’horloge interne ; le téléphone au lit dégrade le sommeil.', ['chang2015', 'exelmans2016']],
     ['L’activité physique régulière améliore la qualité du sommeil ; le sport le soir ne gêne pas, sauf intense < 1 h avant le coucher.', ['kredlow2015', 'stutz2019']],
     ['La lumière du jour le matin et l’obscurité le soir sont associées à moins de dépression et d’anxiété.', ['burns2023']],
+    ['L’heure de réveil peut être estimée à partir des déverrouillages du téléphone (méthode validée) ; un réveil nocturne bref avec le téléphone fragmente le sommeil.', ['ciman2019', 'ohayon2017']],
     ['Des horaires irréguliers décalent l’horloge interne (~2 h chez les plus irréguliers), comme un décalage horaire permanent.', ['phillips2017']],
     ['Sommeil de qualité : endormissement en ≤ 30 min, ≤ 1 réveil de plus de 5 min, efficacité (temps endormi / temps au lit) ≥ 85 %.', ['ohayon2017']],
     ['Les nuits chaudes réduisent le sommeil ; une chambre fraîche (≈ 16–19 °C) et aérée aide à mieux dormir.', ['obradovich2017']],

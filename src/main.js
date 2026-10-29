@@ -9,12 +9,13 @@ import * as Home from './views/home.js';
 import * as Nutrition from './views/nutrition.js';
 import * as Health from './views/health.js';
 import * as Coach from './views/coach.js';
+import * as Sport from './views/sport.js';
 import * as Profile from './views/profile.js';
 import * as Onboarding from './views/onboarding.js';
 import * as A from './views/actions.js';
 
-const VIEWS = { home: Home, nutrition: Nutrition, health: Health, coach: Coach, profile: Profile };
-const TITLES = { nutrition: 'Nutrition', health: 'Santé', coach: 'Coach', profile: 'Profil' };
+const VIEWS = { home: Home, nutrition: Nutrition, sport: Sport, health: Health, coach: Coach, profile: Profile };
+const TITLES = { nutrition: 'Nutrition', sport: 'Sport', health: 'Santé', coach: 'Coach', profile: 'Profil' };
 const app = $('#app');
 const launchAction = location.hash === '#sleep' ? 'sleep' : null; // raccourci « Je vais dormir »
 let tab = VIEWS[location.hash.slice(1)] ? location.hash.slice(1) : 'home';
@@ -25,6 +26,20 @@ const ctx = {
   go,
   render: () => renderView(),
   syncWidget: () => { const s = store.get().sleepNow; N.setWidgetState(!!s, s); },
+  // Au coucher : mémorise l'alarme du téléphone et programme un rappel « Bien réveillé ? » juste après.
+  async scheduleMorning() {
+    if (!N.isNative) return;
+    const alarm = await N.nextAlarm();
+    const ok = alarm && alarm - Date.now() < 16 * 3600e3;
+    store.update((s) => { s.sleepAlarm = ok ? alarm : null; });
+    const [h, m] = store.get().profile.wakeTime.split(':').map(Number);
+    const target = new Date(); target.setHours(h, m, 0, 0);
+    if (target < new Date()) target.setDate(target.getDate() + 1);
+    const at = new Date((ok ? alarm : target.getTime()) + 15 * 60000);
+    const { LocalNotifications } = await import('@capacitor/local-notifications');
+    await LocalNotifications.requestPermissions().catch(() => {});
+    await LocalNotifications.schedule({ notifications: [{ id: 900, title: 'Bien réveillé ? ☀︎', body: 'Ouvre AppSanté : ta nuit est enregistrée automatiquement.', schedule: { at, allowWhileIdle: true }, smallIcon: 'ic_stat_appsante' }] }).catch(() => {});
+  },
   action(a) {
     if (a === 'photo') A.openPhoto(ctx);
     else if (a === 'scan') A.openScanner(ctx);
@@ -33,6 +48,7 @@ const ctx = {
     else if (a === 'sleep') A.openSleep(ctx);
     else if (a === 'stool') A.openStool(ctx);
     else if (a === 'receipt') A.openReceipt(ctx);
+    else if (a === 'workout') go('sport', () => Sport.openWorkout(ctx, $('#view'), !store.get().workoutNow));
     else if (a === 'menus') go('nutrition', () => { $('[data-seg="nut"][data-v="menus"]')?.click(); });
     else if (a === 'sync') { Health.openSection('suivi'); go('health'); }
   },
@@ -42,19 +58,20 @@ function shell() {
   app.innerHTML = `
     <header class="top">
       <div class="hello"><span class="date" id="date"></span><h1 id="title"></h1></div>
-      <button class="avatar" id="avatar" aria-label="Profil"></button>
+      <div class="row" style="flex-wrap:nowrap"><button class="avatar" id="coach-btn" aria-label="Coach IA">${icon('chat', 19)}</button><button class="avatar" id="avatar" aria-label="Profil"></button></div>
     </header>
     <main id="view"></main>
     <nav class="nav" aria-label="Navigation principale">
       <button data-tab="home"><span class="pill">${icon('home', 22)}</span>Accueil</button>
       <button data-tab="nutrition"><span class="pill">${icon('utensils', 22)}</span>Nutrition</button>
       <button class="fab" id="fab" aria-label="Ajouter">${icon('plus', 28)}</button>
-      <button data-tab="health"><span class="pill">${icon('activity', 22)}</span>Santé</button>
-      <button data-tab="coach"><span class="pill">${icon('chat', 22)}</span>Coach</button>
+      <button data-tab="sport"><span class="pill">${icon('dumbbell', 22)}</span>Sport</button>
+      <button data-tab="health"><span class="pill">${icon('heart', 22)}</span>Santé</button>
     </nav>`;
   $$('.nav [data-tab]').forEach((b) => (b.onclick = () => go(b.dataset.tab)));
   $('#fab').onclick = () => A.openAddMenu(ctx);
   $('#avatar').onclick = () => go('profile');
+  $('#coach-btn').onclick = () => go('coach');
   $('#view').addEventListener('click', (e) => {
     const t = e.target.closest('[data-tab]');
     if (t) go(t.dataset.tab);
@@ -95,6 +112,30 @@ function start() {
   if (launchAction) setTimeout(() => ctx.action(launchAction), 300);
 }
 
+// Si une nuit est en cours depuis au moins 3 h : détection du réveil (Android) ou question (web).
+let morningAsked = false;
+async function detectMorning() {
+  const st = store.get();
+  if (!st.sleepNow) return;
+  const bed = new Date(st.sleepNow).getTime();
+  const now = Date.now();
+  if (now - bed < 3 * 3600e3) return;
+  if (N.isNative && (await N.usagePermission().catch(() => false))) {
+    try {
+      const events = await N.screenEvents(bed, now);
+      const r = SL.detectWake(bed, events, { alarmMs: st.sleepAlarm, nowMs: now, wakeTarget: st.profile.wakeTime });
+      if (r.wake) {
+        const night = SL.recordNight(new Date(bed), new Date(r.wake), { source: r.source, nightWakes: r.nightWakes });
+        ctx.syncWidget();
+        if (!night.tooShort) { renderView(); A.showMorning(ctx, night); }
+        return;
+      }
+    } catch { /* on retombe sur la question */ }
+  }
+  const h = new Date().getHours();
+  if (!morningAsked && h >= 4 && h < 14) { morningAsked = true; A.askWakeTime(ctx); }
+}
+
 // À chaque retour au premier plan : appuis du widget, air & météo, données de santé.
 async function onForeground() {
   const events = await N.takeWidgetEvents();
@@ -103,6 +144,7 @@ async function onForeground() {
     ctx.syncWidget();
     if (r && !r.tooShort) toast(`Nuit enregistrée : ${Math.floor(r.sleepMinutes / 60)} h ${String(r.sleepMinutes % 60).padStart(2, '0')}`);
   }
+  await detectMorning();
   const before = store.get().env?.fetched;
   await refreshEnv();
   if (store.get().env?.fetched !== before && tab === 'home') renderView();

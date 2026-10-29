@@ -24,7 +24,7 @@ export function wakeUp(at = new Date()) {
   return recordNight(new Date(st.sleepNow), at);
 }
 
-export function recordNight(bed, wake) {
+export function recordNight(bed, wake, extra = {}) {
   const inBedMin = Math.round((wake - bed) / 60000);
   if (inBedMin < 60) {
     // moins d'une heure : on considère que c'était une fausse manip ou une sieste
@@ -36,9 +36,9 @@ export function recordNight(bed, wake) {
   store.update((s) => {
     s.sleepNow = null;
     s.sleepLog = [...s.sleepLog.filter((n) => n.bed !== bed.toISOString()), { bed: bed.toISOString(), wake: wake.toISOString() }].slice(-120);
-    s.days[key] = { ...(s.days[key] || {}), bed: hhmm(bed), wake: hhmm(wake), sleepMinutes, sleepSource: 'bouton' };
+    s.days[key] = { ...(s.days[key] || {}), bed: hhmm(bed), wake: hhmm(wake), sleepMinutes, sleepSource: extra.source || 'bouton', ...(extra.nightWakes != null ? { nightWakes: extra.nightWakes } : {}) };
   });
-  return { key, bed: hhmm(bed), wake: hhmm(wake), inBedMin, sleepMinutes };
+  return { key, bed: hhmm(bed), wake: hhmm(wake), inBedMin, sleepMinutes, ...extra };
 }
 
 // Applique les appuis faits sur le widget Android pendant que l'application était fermée.
@@ -65,4 +65,46 @@ export function minutesToTarget(target, now = new Date()) {
   if (t < 12 * 60) t += 1440;
   if (n < 12 * 60) n += 1440;
   return t - n;
+}
+
+// ---------- Détection automatique du réveil ----------
+// À partir des événements d'écran du téléphone (allumage, déverrouillage) enregistrés par Android,
+// comme l'algorithme validé iSenseSleep (Ciman 2019) :
+// - le réveil = premier déverrouillage suivi d'une utilisation continue (autre activité dans l'heure),
+//   ou proche de l'alarme programmée ;
+// - un déverrouillage isolé en pleine nuit, suivi d'une longue inactivité, compte comme un réveil nocturne.
+const MIN = 60000;
+export function detectWake(bedMs, events, { alarmMs = null, nowMs = Date.now(), wakeTarget = '07:00' } = {}) {
+  const ev = events.filter((e) => e.t > bedMs + 30 * MIN && e.t <= nowMs).sort((a, b) => a.t - b.t);
+  const unlocks = ev.filter((e) => e.type === 'unlock');
+  // les écrans allumés seuls (notifications) ne comptent que s'il n'y a aucune donnée de déverrouillage
+  const primary = unlocks.length ? unlocks : ev.filter((e) => e.type === 'on');
+  const [th, tm] = wakeTarget.split(':').map(Number);
+  const nightWakes = [];
+  // 1) Alarme : premier signal (sonnerie qui allume l'écran ou déverrouillage) suivi d'un déverrouillage dans l'heure
+  if (alarmMs) {
+    const a = ev.find((e) => e.type !== 'off' && e.t >= alarmMs - 5 * MIN && e.t <= alarmMs + 90 * MIN);
+    if (a && primary.some((x) => x.t >= a.t && x.t <= a.t + 60 * MIN)) {
+      const before = primary.filter((x) => x.t < a.t);
+      return { wake: a.t, nightWakes: countNightWakes(before, bedMs), source: 'alarme' };
+    }
+  }
+  // 2) Sans alarme : premier déverrouillage du matin suivi d'une autre utilisation dans l'heure
+  for (const { t } of primary) {
+    const d = new Date(t);
+    const hour = d.getHours() + d.getMinutes() / 60;
+    const sinceBed = (t - bedMs) / 3600e3;
+    const followUp = primary.some((x) => x.t > t + 2 * MIN && x.t <= t + 60 * MIN);
+    const plausibleMorning = sinceBed >= 3 && hour >= Math.min(4.5, th + tm / 60 - 2) && hour < 14;
+    if (plausibleMorning && followUp) return { wake: t, nightWakes: countNightWakes(nightWakes, bedMs), source: 'téléphone' };
+    nightWakes.push({ t });
+  }
+  return { wake: null, nightWakes: countNightWakes(nightWakes, bedMs) };
+}
+
+// Réveils nocturnes : déverrouillages espacés d'au moins 20 min.
+function countNightWakes(list, bedMs) {
+  let n = 0, last = -Infinity;
+  for (const { t } of list) if (t - bedMs >= 30 * MIN && t - last >= 20 * MIN) { n++; last = t; }
+  return n;
 }

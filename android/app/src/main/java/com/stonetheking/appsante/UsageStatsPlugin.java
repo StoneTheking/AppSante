@@ -172,6 +172,41 @@ public class UsageStatsPlugin extends Plugin {
         call.resolve(r);
     }
 
+    /** Événements d'écran entre deux instants : allumage ("on"), extinction ("off"), déverrouillage ("unlock"). */
+    @PluginMethod
+    public void screenEvents(PluginCall call) {
+        if (!hasAccess()) {
+            call.reject("Autorisation « Accès aux données d'utilisation » manquante", "NO_PERMISSION");
+            return;
+        }
+        long from = call.getLong("from", System.currentTimeMillis() - 12 * 3600_000L);
+        long to = call.getLong("to", System.currentTimeMillis());
+        UsageStatsManager usm = (UsageStatsManager) getContext().getSystemService(Context.USAGE_STATS_SERVICE);
+        UsageEvents events = usm.queryEvents(from, to);
+        UsageEvents.Event e = new UsageEvents.Event();
+        JSArray out = new JSArray();
+        while (events.hasNextEvent()) {
+            events.getNextEvent(e);
+            String type = null;
+            int t = e.getEventType();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                if (t == UsageEvents.Event.SCREEN_INTERACTIVE) type = "on";
+                else if (t == UsageEvents.Event.SCREEN_NON_INTERACTIVE) type = "off";
+                else if (t == UsageEvents.Event.KEYGUARD_HIDDEN) type = "unlock";
+            } else if (t == UsageEvents.Event.ACTIVITY_RESUMED && !isLauncherOrSystemUi(e.getPackageName())) {
+                type = "on";
+            }
+            if (type == null) continue;
+            JSObject o = new JSObject();
+            o.put("type", type);
+            o.put("t", e.getTimeStamp());
+            out.put(o);
+        }
+        JSObject r = new JSObject();
+        r.put("events", out);
+        call.resolve(r);
+    }
+
     private boolean isLauncherOrSystemUi(String pkg) {
         return pkg.equals("com.android.systemui") || pkg.contains("launcher") || pkg.equals(getContext().getPackageName());
     }

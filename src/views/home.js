@@ -62,6 +62,7 @@ export function render(view, ctx) {
       <div class="verdict">${icon('sparkles', 18)}<span>${esc(headline(sm))}</span></div>
     </section>
 
+    ${st.workoutNow ? `<div class="card next" data-tab="sport"><span class="icon-badge" style="background:color-mix(in srgb,var(--c-move) 16%,transparent);color:var(--c-move)">${icon('dumbbell')}</span><div><div class="ttl">Séance en cours</div><div class="tiny muted">depuis ${new Date(st.workoutNow.start).toTimeString().slice(0, 5)} · touche pour terminer</div></div>${icon('right')}</div>` : ''}
     ${sleepCard(st)}
     ${envCard(sm.env, st.location)}
 

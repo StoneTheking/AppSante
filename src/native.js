@@ -39,7 +39,10 @@ const hhmm = (iso) => {
 const STRENGTH = /strength|weight|calisthenics|crossTraining|bootCamp|benchPress|deadlift|lunge|plank|pilates|coreTraining/i;
 const VIGOROUS = /running|highIntensity|hiit|swimming|rowing|boxing|kickboxing|martialArts|squash|soccer|basketball|tennis|jumpRope|stairClimbing|crossCountry|cycling/i;
 
-// Lit les N derniers jours depuis Health Connect et renvoie { 'AAAA-MM-JJ': {...} }.
+const WORKOUT_MAP = [[/running|treadmill/i, 'course'], [/walking|wheelchairWalk/i, 'marche'], [/cycling|biking|handCycling/i, 'velo'], [/swimming|waterFitness/i, 'natation'], [STRENGTH, 'renfo'], [/highIntensity|crossTraining|bootCamp|burpee|jumpRope|mixedCardio/i, 'hiit'], [/yoga|pilates|stretching|flexibility|mindAndBody|taiChi|barre/i, 'yoga'], [/hiking|snowshoe/i, 'randonnee'], [/soccer|basketball|handball|rugby|volleyball|hockey|football|cricket|baseball|softball|lacrosse/i, 'collectif'], [/tennis|badminton|squash|padel|pickleball|racquet|tableTennis/i, 'raquette'], [/danc/i, 'danse']];
+const mapWorkout = (t) => WORKOUT_MAP.find(([re]) => re.test(t))?.[1] || 'autre';
+
+// Lit les N derniers jours depuis Health Connect : { days: { 'AAAA-MM-JJ': {...} }, workouts: [...] }.
 export async function syncHealth(days = 7) {
   const H = await health();
   const end = new Date();
@@ -79,13 +82,17 @@ export async function syncHealth(days = 7) {
     Object.assign(day(k), { bed: hhmm(g.start), wake: hhmm(g.end), sleepMinutes: Math.round(g.asleep) });
   }
 
-  for (const w of workouts?.workouts || []) {
-    const k = localKey(new Date(w.startDate));
-    const min = Math.round((w.duration || 0) / 60);
-    const field = STRENGTH.test(w.workoutType) ? 'strengthMin' : VIGOROUS.test(w.workoutType) ? 'vigMin' : 'modMin';
-    day(k)[field] = (day(k)[field] || 0) + min;
-  }
-  return out;
+  // Séances Health Connect → séances AppSanté (les minutes du jour sont recalculées à partir des séances).
+  const sessions = (workouts?.workouts || []).filter((w) => w.duration >= 60).map((w) => ({
+    id: `hc-${w.platformId || w.startDate}`,
+    type: mapWorkout(w.workoutType),
+    intensity: VIGOROUS.test(w.workoutType) ? 'intense' : 'moderee',
+    start: w.startDate,
+    minutes: Math.round(w.duration / 60),
+    kcal: w.totalEnergyBurned ? Math.round(w.totalEnergyBurned) : undefined,
+    source: w.sourceName ? `Health Connect · ${w.sourceName}` : 'Health Connect',
+  }));
+  return { days: out, workouts: sessions };
 }
 
 // ---------- Bien-être numérique (UsageStatsManager) ----------
@@ -116,3 +123,7 @@ const SleepWidget = registerPlugin('SleepWidget');
 export const takeWidgetEvents = () => (isNative ? SleepWidget.takeEvents().then((r) => r.events || []).catch(() => []) : Promise.resolve([]));
 export const setWidgetState = (sleeping, since) => (isNative ? SleepWidget.setState({ sleeping, since: since ? new Date(since).getTime() : Date.now() }).catch(() => {}) : Promise.resolve());
 export const pinSleepWidget = () => (isNative ? SleepWidget.pin().then((r) => r.requested).catch(() => false) : Promise.resolve(false));
+
+// ---------- Détection du réveil ----------
+export const screenEvents = (from, to = Date.now()) => UsageStats.screenEvents({ from, to }).then((r) => r.events || []);
+export const nextAlarm = () => (isNative ? SleepWidget.nextAlarm().then((r) => r.at || null).catch(() => null) : Promise.resolve(null));

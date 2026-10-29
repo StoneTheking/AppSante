@@ -1,5 +1,6 @@
 package com.stonetheking.appsante;
 
+import android.app.AlarmManager;
 import android.appwidget.AppWidgetManager;
 import android.content.ComponentName;
 import android.content.Context;
@@ -39,6 +40,16 @@ public class SleepWidgetPlugin extends Plugin {
         long since = call.getLong("since", System.currentTimeMillis());
         SleepWidgetProvider.setState(getContext(), sleeping, since);
         call.resolve();
+    }
+
+    /** Heure de la prochaine alarme programmée dans l'application Horloge (ou null). */
+    @PluginMethod
+    public void nextAlarm(PluginCall call) {
+        JSObject r = new JSObject();
+        AlarmManager am = (AlarmManager) getContext().getSystemService(Context.ALARM_SERVICE);
+        AlarmManager.AlarmClockInfo info = am != null ? am.getNextAlarmClock() : null;
+        if (info != null) r.put("at", info.getTriggerTime());
+        call.resolve(r);
     }
 
     /** Propose d'ajouter le widget à l'écran d'accueil (Android 8+ si le lanceur le permet). */

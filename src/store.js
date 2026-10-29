@@ -30,6 +30,9 @@ const DEFAULT = {
   pantry: [], // garde-manger issu des tickets : { id, name, qty, unit, category, nova, added }
   receipts: [], // { id, date, store, total, stats }
   stools: [], // { id, at, bristol, pain, bloating, urgency, note }
+  sleepAlarm: null, // heure de l'alarme du téléphone au coucher (ms)
+  workouts: [], // séances : { id, type, intensity, start, date, minutes, kcal, source, note }
+  workoutNow: null, // séance en cours (chronomètre) : { type, intensity, start }
   settings: {
     apiKey: '',
     model: 'claude-opus-5-5',

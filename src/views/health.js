@@ -7,6 +7,7 @@ import * as N from '../native.js';
 import { parseCSV, CSV_TEMPLATE } from '../importer.js';
 import { summary } from '../context.js';
 import * as D from '../digestion.js';
+import * as SP from '../sport.js';
 import { icon, esc, fmt, segmented, srcLinks, barChart, lineChart, toast, compressImage, pickImage, $, $$ } from '../ui.js';
 
 let seg = 'suivi';
@@ -27,8 +28,9 @@ export async function syncAll({ silent = false } = {}) {
   if (!N.isNative) return results;
   try {
     const h = await N.syncHealth(7);
-    merge(h);
-    results.push(`${Object.keys(h).length} j. Health Connect`);
+    merge(h.days);
+    h.workouts.forEach((w) => SP.addWorkout(w));
+    results.push(`${Object.keys(h.days).length} j. Health Connect${h.workouts.length ? `, ${h.workouts.length} séance(s)` : ''}`);
   } catch (e) { if (!silent) results.push('Health Connect : ' + (e.message || e)); }
   try {
     if (await N.usagePermission()) {

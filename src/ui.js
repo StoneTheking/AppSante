@@ -142,12 +142,12 @@ export function rings(scores, global) {
     <text x="50%" y="63%" text-anchor="middle" class="ring-sub">score santé</text></svg>`;
 }
 
-export function donut(value, max, { size = 120, color = 'var(--c-food)', label = '', sub = '' } = {}) {
+export function donut(value, max, { size = 120, color = 'var(--c-food)', label = '', sub = '', overColor = 'var(--bad)' } = {}) {
   const sw = 12, r = size / 2 - sw / 2, c = 2 * Math.PI * r;
   const p = Math.min(1, max ? value / max : 0);
   return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" role="img" aria-label="${esc(label)} ${esc(sub)}">
     <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--line)" stroke-width="${sw}"/>
-    <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${value > max ? 'var(--bad)' : color}" stroke-width="${sw}" stroke-linecap="round" stroke-dasharray="${c * p} ${c}" transform="rotate(-90 ${size / 2} ${size / 2})"/>
+    <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${value > max ? overColor : color}" stroke-width="${sw}" stroke-linecap="round" stroke-dasharray="${c * p} ${c}" transform="rotate(-90 ${size / 2} ${size / 2})"/>
     <text x="50%" y="48%" text-anchor="middle" class="donut-num">${esc(label)}</text>
     <text x="50%" y="64%" text-anchor="middle" class="ring-sub">${esc(sub)}</text></svg>`;
 }

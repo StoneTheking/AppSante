@@ -6,6 +6,7 @@ import * as BC from '../barcode.js';
 import { summary, personContext } from '../context.js';
 import { icon, esc, fmt, sheet, toast, compressImage, pickImage, srcLinks, $, $$ } from '../ui.js';
 import * as SL from '../sleep.js';
+import * as N from '../native.js';
 import * as D from '../digestion.js';
 import * as PT from '../pantry.js';
 
@@ -28,6 +29,7 @@ export function openAddMenu(ctx) {
         ['manual', 'pencil', 'var(--c-sleep)', 'Repas manuel', 'Saisie rapide'],
         ['receipt', 'receipt', 'var(--c-food)', 'Ticket de caisse', 'Remplir le garde-manger'],
         ['stool', 'activity', 'var(--c-move)', 'Passage aux toilettes', 'Transit & tolérance'],
+        ['workout', 'dumbbell', 'var(--c-move)', 'Séance de sport', 'Chrono ou saisie'],
         ['sleep', 'moon', 'var(--c-sleep)', store.get().sleepNow ? 'Je suis réveillé' : 'Je vais dormir', 'Noter le coucher / réveil'],
         ['menus', 'calendar', 'var(--primary)', 'Menus de la semaine', 'Et liste de courses'],
       ].map(([a, ic, col, t, s]) => `<button class="action" data-a="${a}"><span class="icon-badge" style="background:color-mix(in srgb,${col} 16%,transparent);color:${col}">${icon(ic)}</span><b>${t}</b><span>${s}</span></button>`).join('')}
@@ -217,6 +219,13 @@ export function openSleep(ctx) {
     const r = SL.wakeUp();
     ctx.syncWidget?.();
     if (!r || r.tooShort) { toast('Moins d’une heure : nuit non enregistrée'); return ctx.render(); }
+    return showMorning(ctx, r);
+  }
+  goodNight(ctx);
+}
+
+// Résumé du matin (bouton, widget ou détection automatique).
+export function showMorning(ctx, r) {
     const h = r.sleepMinutes / 60;
     const t = store.get().profile;
     const verdict = h >= 7 && h <= 9 ? ['good', 'Durée idéale (7–9 h).'] : h < 7 ? ['warn', 'Nuit courte : évite les efforts intenses, pas de café après 15 h, sieste ≤ 20 min avant 15 h si besoin.'] : ['warn', 'Nuit longue : si tu te sens fatigué malgré tout, parles-en à un médecin.'];
@@ -225,6 +234,7 @@ export function openSleep(ctx) {
         <div class="tiny muted" style="font-weight:700;letter-spacing:.08em;text-transform:uppercase">Ta nuit</div>
         <div class="big">${Math.floor(h)} h ${String(r.sleepMinutes % 60).padStart(2, '0')}</div>
         <div class="small muted">${r.bed} → ${r.wake} · ${Math.round(r.inBedMin / 6) / 10} h au lit, ~${SL.LATENCY_MIN} min d’endormissement estimées</div>
+        ${r.source && r.source !== 'bouton' ? `<div class="small" style="margin-top:6px;color:#a5b4fc">${icon('sparkles', 14)} Réveil détecté automatiquement (${r.source === 'alarme' ? 'sonnerie de ton alarme' : r.source === 'téléphone' ? 'premier déverrouillage du matin' : esc(r.source)})${r.nightWakes ? ` · ${r.nightWakes} réveil(s) nocturne(s) avec le téléphone` : ''}</div>` : ''}
       </div>
       <div class="note ${verdict[0]}">${icon('info', 18)}<span>${verdict[1]} Ouvre les volets et prends la lumière du jour dans l’heure qui suit ton réveil.</span></div>
       ${srcLinks(['watson2015', 'ohayon2017', 'burns2023'])}
@@ -238,10 +248,35 @@ export function openSleep(ctx) {
       $$('button', sc).forEach((x) => x.classList.toggle('on', x === b));
     }));
     $('[data-done]', body).onclick = () => body.close();
-    return;
-  }
+}
+
+// Le matin, sans détection automatique possible : on demande l'heure de réveil (préremplie).
+export function askWakeTime(ctx) {
+  const st = store.get();
+  const now = new Date();
+  const [wh, wm] = st.profile.wakeTime.split(':').map(Number);
+  const target = new Date(now); target.setHours(wh, wm, 0, 0);
+  const guess = target < now && now - target < 3 * 3600e3 ? target : now;
+  const body = sheet(`
+    <p class="small muted" style="margin-top:0">Ta nuit est en cours depuis ${new Date(st.sleepNow).toTimeString().slice(0, 5)}. À quelle heure t’es-tu réveillé ?</p>
+    <input type="time" id="wk" value="${guess.toTimeString().slice(0, 5)}">
+    <button class="btn block" id="ok" style="margin-top:14px">${icon('sun', 18)} Valider</button>
+    <p class="tiny muted">Dans l’application Android, avec l’accès « données d’utilisation », le réveil est détecté automatiquement (sonnerie de l’alarme ou premier déverrouillage).</p>`, { title: 'Bonjour' });
+  $('#ok', body).onclick = () => {
+    const [h, m] = $('#wk', body).value.split(':').map(Number);
+    const w = new Date(); w.setHours(h, m, 0, 0);
+    if (w > new Date()) w.setDate(w.getDate() - 1);
+    const r = SL.recordNight(new Date(st.sleepNow), w, { source: 'saisie' });
+    ctx.syncWidget?.();
+    body.close();
+    if (!r.tooShort) setTimeout(() => showMorning(ctx, r), 250);
+  };
+}
+
+async function goodNight(ctx) {
   SL.goToBed();
   ctx.syncWidget?.();
+  ctx.scheduleMorning?.();
   const env = store.get().env;
   const tips = [
     ['phone', 'Téléphone hors de la chambre (ou en mode avion, face cachée).', ['exelmans2016', 'chang2015']],
@@ -250,7 +285,7 @@ export function openSleep(ctx) {
     ['clock', `Réveil visé : ${store.get().profile.wakeTime}. Même heure demain, week-end compris.`, ['windred2024', 'phillips2017']],
   ];
   const body = sheet(`
-    <div class="sleep-card" style="margin-top:0"><div class="tiny muted" style="font-weight:700;letter-spacing:.08em;text-transform:uppercase">Coucher noté</div><div class="big">${new Date().toTimeString().slice(0, 5)}</div><div class="small muted">Appuie sur « Je suis réveillé » demain matin.</div></div>
+    <div class="sleep-card" style="margin-top:0"><div class="tiny muted" style="font-weight:700;letter-spacing:.08em;text-transform:uppercase">Coucher noté</div><div class="big">${new Date().toTimeString().slice(0, 5)}</div><div class="small muted">${N.isNative ? 'Ton réveil sera détecté automatiquement (sonnerie de l’alarme ou premier déverrouillage). Sinon, appuie sur « Je suis réveillé ».' : 'Appuie sur « Je suis réveillé » demain matin.'}</div></div>
     ${tips.map(([ic, t, src]) => `<div class="list-item" style="grid-template-columns:auto 1fr"><span class="icon-badge" style="background:color-mix(in srgb,var(--c-sleep) 15%,transparent);color:var(--c-sleep)">${icon(ic, 18)}</span><div><div class="small">${esc(t)}</div>${srcLinks(src)}</div></div>`).join('')}
     <button class="btn block" style="margin-top:12px" data-done>Bonne nuit</button>`, { title: 'Bonne nuit', onClose: () => ctx.render() });
   $('[data-done]', body).onclick = () => body.close();
