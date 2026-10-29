@@ -157,7 +157,7 @@ export function recommendActivity(sm, profile) {
 // ---------- Plan horaire de la journée ----------
 // Le plan se recale sur ce qui a déjà été fait : repas enregistrés (heure et calories), grignotages, séance du jour.
 const SLOT_NAME = { 'petit-dej': 'Petit-déjeuner', dejeuner: 'Déjeuner', collation: 'Collation', diner: 'Dîner' };
-export function dailyPlan(sm, profile) {
+export function dailyPlan(sm, profile, date = new Date()) {
   const wake = toMin(profile.wakeTime || '07:00');
   let bed = toMin(profile.bedTime || '23:00');
   if (bed <= wake) bed += 1440;
@@ -270,20 +270,22 @@ export function dailyPlan(sm, profile) {
   add(bed - 30, '🧘', 'Routine de détente', ctx.highStress || ctx.lowMood
     ? '5 min de « soupir cyclique » : deux inspirations par le nez, une longue expiration par la bouche. Améliore l’humeur et apaise (essai randomisé).'
     : 'Lumière tamisée, lecture, respiration lente ou étirements.', ctx.highStress || ctx.lowMood ? ['balban2023'] : []);
-  const dow = new Date().getDay();
+  const dow = date.getDay();
   if (dow === 0 || dow === 6 || ctx.lowMood) add(Math.max(wake + 3 * 60, 10 * 60 + 30), '🌳', 'Temps dans la nature', 'Parc, forêt, bord de l’eau : viser 120 min sur la semaine est associé à une meilleure santé et un meilleur moral.', ['white2019']);
   add(bed, '🌙', 'Coucher', `Même heure chaque soir (±30 min) : la régularité du sommeil prédit la mortalité mieux que sa durée. Vise ${t.sleepMin}–${t.sleepMax} h.`, ['windred2024', 'watson2015']);
 
-  fitAroundWork(items, profile, { wake, bed, add });
+  fitAroundWork(items, profile, { wake, bed, add, dow });
   for (const i of items) i.time = hm(i.min);
   return items.sort((a, b) => a.min - b.min);
 }
 
 // Journée de travail : on ajoute le bloc « Travail » et on déplace ce qui ne peut pas se faire au bureau.
-function fitAroundWork(items, profile, { wake, bed, add }) {
+function fitAroundWork(items, profile, { wake, bed, add, dow }) {
   const w = profile.work;
-  if (!w?.enabled || !(w.days || []).includes(new Date().getDay())) return;
-  const start = toMin(w.start), end = toMin(w.end), commute = w.commute || 0;
+  if (!w?.enabled || !(w.days || []).includes(dow)) return;
+  const start = toMin(w.start), commute = w.commute || 0;
+  let end = toMin(w.end);
+  if (end <= start) end += 1440; // travail de nuit
   const leave = start - commute, back = end + commute;
   const at = (it) => !it.done && it.min >= leave && it.min < back;
   const one = (k) => items.find((i) => i.key === k);

@@ -1,7 +1,7 @@
 // Accueil : score, prochaine étape, actions rapides, plan de la journée, nutrition, analyses.
 import * as store from '../store.js';
 import * as C from '../coach.js';
-import { summary, taste } from '../context.js';
+import { summary, taste, refreshReminders } from '../context.js';
 import * as SL from '../sleep.js';
 import * as N from '../native.js';
 import { questsCard, bindQuests } from './progress.js';
@@ -265,7 +265,7 @@ function openStep(p, done) {
   paint();
   $$('[data-f]', body).forEach((b) => (b.onclick = () => { freq = b.dataset.f; paint(); }));
   $$('[data-d]', body).forEach((b) => (b.onclick = () => { const d = Number(b.dataset.d); days.has(d) ? days.delete(d) : days.add(d); paint(); }));
-  const edit = (f) => { store.update((s) => f(ensureEdits(s))); body.close(); };
+  const edit = (f) => { store.update((s) => f(ensureEdits(s))); body.close(); refreshReminders().catch(() => {}); };
   const today = store.today();
   $('#ok', body).onclick = () => {
     const title = $('#t', body).value.trim(), time = $('#h', body).value || step.time, note = $('#x', body).value.trim();

@@ -31,12 +31,15 @@ test('menus hors-ligne : régime respecté, liste de courses agrégée', () => {
 });
 
 test('rappels : seulement les types activés et dans le futur', () => {
-  const plan = [{ min: 8 * 60, title: 'Dernier café', text: 'Après cette heure. Bla.' }, { min: 22 * 60, title: 'Écrans off — téléphone hors de la chambre', text: 'x.' }, { min: 12 * 60, title: 'Déjeuner — repas principal', text: 'y.' }];
+  const plan = [{ key: '☕', min: 8 * 60, title: 'Dernier café', text: 'Après cette heure. Bla.' }, { key: '📵', min: 22 * 60, title: 'Écrans off — téléphone hors de la chambre', text: 'x.' }, { key: '🥗', min: 12 * 60, title: 'Déjeuner — repas principal', text: 'y.' }];
   const now = new Date(); now.setHours(10, 0, 0, 0);
   const r = buildReminders([plan], { kinds: { coffee: true, screens: true, meal: false } }, now);
   assert.equal(r.length, 1);
   assert.equal(r[0].kind, 'screens');
   assert.equal(r[0].at.getHours() * 60 + r[0].at.getMinutes(), 22 * 60 - 10);
+  // étape renommée (suivie par sa clé) et étape ajoutée par l'utilisateur
+  const r2 = buildReminders([[{ key: '☕', min: 15 * 60, title: 'Dernier thé', text: '', note: 'vert' }, { key: 'c:1', custom: true, min: 18 * 60, title: 'Vitamines', text: '' }]], { kinds: { coffee: true } }, now);
+  assert.deepEqual(r2.map((x) => [x.kind, x.title, x.body]), [['coffee', 'Dernier thé', 'vert'], ['custom', 'Vitamines', 'C’est l’heure.']]);
 });
 
 test('base scientifique : toutes les références citées existent', () => {

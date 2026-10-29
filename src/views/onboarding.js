@@ -114,6 +114,8 @@ export function render(root, done, dir) {
     const t = e.changedTouches[0], dx = t.clientX - x0, dy = t.clientY - y0;
     x0 = null;
     if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5 || e.target.closest('input, select, textarea')) return;
+    // une rangée qui défile horizontalement (onglets, aliments) garde son geste
+    for (let n = e.target; n && n !== onb; n = n.parentElement) if (n.scrollWidth > n.clientWidth + 4 && /auto|scroll/.test(getComputedStyle(n).overflowX)) return;
     if (dx < 0) next(); else back();
   }, { passive: true });
 }

@@ -3,20 +3,22 @@
 // Navigateur : notifications tant que l'application est ouverte ou en arrière-plan récent (limite du web).
 import { isNative } from './native.js';
 
+// keys : clés des étapes du plan (voir coach.dailyPlan) ; on suit la clé et non le titre, que l'utilisateur peut renommer.
 export const KINDS = {
-  light: { label: 'Lumière du matin', match: /Lumière/ },
-  meal: { label: 'Repas', match: /Petit-déjeuner|Déjeuner|Dîner|Collation/ },
-  coffee: { label: 'Dernier café', match: /café/ },
-  walk: { label: 'Marche après le repas', match: /Marche digestive/ },
-  sport: { label: 'Séance de sport', match: /min\)$/ },
-  screens: { label: 'Coupure des écrans', match: /Écrans off/ },
-  bed: { label: 'Heure du coucher', match: /^Coucher|Routine/ },
-  water: { label: 'Boire de l’eau (toutes les 2 h)', match: null },
-  streak: { label: 'Série en jeu (19 h 30)', match: null },
-  weigh: { label: 'Pesée toutes les 2 semaines', match: null },
+  light: { label: 'Lumière du matin', keys: ['☀️'] },
+  meal: { label: 'Repas', keys: ['🍳', '🥗', '🍎', '🍽️'] },
+  coffee: { label: 'Dernier café', keys: ['☕'] },
+  walk: { label: 'Marche après le repas', keys: ['🚶'] },
+  sport: { label: 'Séance de sport', keys: ['🏃'] },
+  screens: { label: 'Coupure des écrans', keys: ['📵'] },
+  bed: { label: 'Heure du coucher', keys: ['🌙', '🧘'] },
+  custom: { label: 'Mes étapes ajoutées', keys: [] },
+  water: { label: 'Boire de l’eau (toutes les 2 h)', keys: null },
+  streak: { label: 'Série en jeu (19 h 30)', keys: null },
+  weigh: { label: 'Pesée toutes les 2 semaines', keys: null },
 };
 
-export const defaultReminders = () => ({ enabled: false, kinds: { light: true, meal: false, coffee: true, walk: true, sport: true, screens: true, bed: true, water: false, streak: true, weigh: true } });
+export const defaultReminders = () => ({ enabled: false, kinds: { light: true, meal: false, coffee: true, walk: true, sport: true, screens: true, bed: true, custom: true, water: false, streak: true, weigh: true } });
 
 // Construit la liste des rappels (aujourd'hui et demain) à partir des plans.
 export function buildReminders(plans, settings, now = new Date()) {
@@ -26,10 +28,11 @@ export function buildReminders(plans, settings, now = new Date()) {
     base.setHours(0, 0, 0, 0);
     base.setDate(base.getDate() + dayOffset);
     for (const item of plan) {
-      const kind = Object.entries(KINDS).find(([, k]) => k.match?.test(item.title))?.[0];
-      if (!kind || !settings.kinds[kind]) continue;
+      if (item.done) continue;
+      const kind = item.custom ? 'custom' : Object.entries(KINDS).find(([, k]) => k.keys?.includes(item.key))?.[0];
+      if (!kind || settings.kinds[kind] === false || (kind !== 'custom' && !settings.kinds[kind])) continue;
       const at = new Date(base.getTime() + item.min * 60000 - (kind === 'sport' || kind === 'screens' ? 10 * 60000 : 0));
-      if (at > now) out.push({ at, title: item.title, body: item.text.split('. ')[0] + '.', kind });
+      if (at > now) out.push({ at, title: item.title, body: item.note || (item.text ? item.text.split('. ')[0] + '.' : 'C’est l’heure.'), kind });
     }
     if (settings.kinds.water) {
       const wake = plan[0]?.min ?? 420, bed = plan.at(-1)?.min ?? 1380;

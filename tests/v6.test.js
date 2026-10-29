@@ -80,3 +80,11 @@ test('séance : exercices retirés remplacés', () => {
   assert.ok(!s2.blocks.flatMap((b) => b.items).some((i) => i.label === first));
   assert.equal(s2.blocks[1].items.length, s.blocks[1].items.length);
 });
+
+test('plan du jour : travail de nuit sans plantage', () => {
+  const dow = new Date().getDay();
+  const p = { ...me, wakeTime: '14:00', bedTime: '07:00', work: { enabled: true, days: [dow], start: '22:00', end: '06:00', commute: 20 } };
+  const plan = C.dailyPlan(C.summarize({ profile: p, days: {}, meals: [], weights: [], workouts: [] }, keys(14)), p);
+  assert.ok(plan.some((i) => i.key === '💼' && i.title === 'Travail 22:00–06:00'));
+  for (const i of plan) assert.match(i.time, /^\d\d:\d\d$/);
+});

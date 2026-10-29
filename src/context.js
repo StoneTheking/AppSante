@@ -64,8 +64,10 @@ export async function refreshReminders() {
   const rs = st.settings.reminders;
   if (!rs.enabled) return R.schedule([]);
   const sm = summary();
-  const today = C.dailyPlan(sm, st.profile);
-  const tomorrow = C.dailyPlan({ ...sm, today: {}, lastNight: null, ctx: { ...sm.ctx, workout: false } }, st.profile);
+  // mêmes retouches que sur l'accueil : étapes masquées, déplacées, renommées ou ajoutées
+  const t1 = new Date(); t1.setDate(t1.getDate() + 1);
+  const today = C.applyPlanEdits(C.dailyPlan(sm, st.profile), st.planEdits, store.today());
+  const tomorrow = C.applyPlanEdits(C.dailyPlan({ ...sm, today: {}, mealsToday: [], workoutsToday: [], lastNight: null, ctx: { ...sm.ctx, workout: false } }, st.profile, t1), st.planEdits, store.today(t1));
   const list = R.buildReminders([today, tomorrow], rs);
   // rappel du soir si la série est en jeu (recalculé à chaque ouverture)
   const sr = rs.kinds.streak && G.streakReminder(st);
