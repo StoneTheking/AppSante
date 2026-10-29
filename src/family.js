@@ -46,6 +46,7 @@ export function tasteProfile(profile, meals = []) {
   const likes = new Map(), dislikes = new Map();
   const bump = (map, w, v) => map.set(w, (map.get(w) || 0) + v);
   tokens(profile.likes).forEach((w) => bump(likes, w, 3));
+  for (const [item, v] of Object.entries(profile.tastes || {})) tokens(item).forEach((w) => bump(v > 0 ? likes : dislikes, w, v > 0 ? 3 : 5));
   tokens((profile.cuisines || []).join(' ')).forEach((w) => bump(likes, w, 2));
   tokens(profile.dislikes).forEach((w) => bump(dislikes, w, 5));
   for (const m of meals.filter((x) => x.rating)) {
@@ -72,4 +73,26 @@ export function tasteScore(text, taste) {
 export function topTastes(taste, n = 8) {
   const top = (m) => [...m].sort((a, b) => b[1] - a[1]).slice(0, n).map(([w]) => w);
   return { likes: top(taste.likes), dislikes: top(taste.dislikes) };
+}
+
+// ---------- Catalogue de goûts (sélection par catégories) ----------
+export const TASTE_CATALOG = [
+  { cat: 'Viandes', emoji: '🥩', items: ['bœuf', 'porc', 'poulet', 'dinde', 'agneau', 'veau', 'charcuterie', 'abats'] },
+  { cat: 'Poissons & fruits de mer', emoji: '🐟', items: ['saumon', 'thon', 'cabillaud', 'sardine', 'maquereau', 'crevettes', 'moules'] },
+  { cat: 'Œufs & laitages', emoji: '🥚', items: ['œufs', 'lait', 'yaourt', 'fromage', 'fromage blanc', 'crème'] },
+  { cat: 'Légumes', emoji: '🥦', items: ['brocolis', 'épinards', 'carottes', 'courgette', 'tomates', 'poivron', 'chou-fleur', 'haricots verts', 'champignons', 'aubergine', 'avocat', 'salade', 'concombre', 'betterave', 'oignon'] },
+  { cat: 'Fruits', emoji: '🍎', items: ['pomme', 'banane', 'orange', 'kiwi', 'fruits rouges', 'poire', 'raisin', 'mangue', 'ananas'] },
+  { cat: 'Féculents', emoji: '🍝', items: ['pâtes', 'riz', 'pommes de terre', 'patate douce', 'quinoa', 'boulgour', 'pain', 'semoule'] },
+  { cat: 'Légumineuses & soja', emoji: '🫘', items: ['lentilles', 'pois chiches', 'haricots rouges', 'tofu', 'edamame'] },
+  { cat: 'Oléagineux & graines', emoji: '🥜', items: ['amandes', 'noix', 'noisettes', 'cacahuètes', 'graines de chia'] },
+  { cat: 'Saveurs', emoji: '🌶️', items: ['épicé', 'coriandre', 'ail', 'curry', 'sucré-salé', 'lait de coco'] },
+];
+export const CUISINES = ['Méditerranéenne', 'Française', 'Italienne', 'Asiatique', 'Indienne', 'Mexicaine', 'Libanaise', 'Africaine', 'Japonaise', 'Végétale'];
+// Les 14 allergènes à déclaration obligatoire (règlement UE 1169/2011).
+export const ALLERGENS = ['gluten', 'crustacés', 'œufs', 'poisson', 'arachide', 'soja', 'lait', 'fruits à coque', 'céleri', 'moutarde', 'sésame', 'sulfites', 'lupin', 'mollusques'];
+
+// Résumé lisible des goûts sélectionnés (pour le coach et l'affichage).
+export function tasteLists(profile) {
+  const t = profile.tastes || {};
+  return { likes: Object.keys(t).filter((k) => t[k] > 0), dislikes: Object.keys(t).filter((k) => t[k] < 0) };
 }

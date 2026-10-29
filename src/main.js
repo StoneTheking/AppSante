@@ -13,6 +13,8 @@ import * as Sport from './views/sport.js';
 import * as Profile from './views/profile.js';
 import * as Onboarding from './views/onboarding.js';
 import * as A from './views/actions.js';
+import * as P from './views/progress.js';
+import * as G from './gamify.js';
 
 const VIEWS = { home: Home, nutrition: Nutrition, sport: Sport, health: Health, coach: Coach, profile: Profile };
 const TITLES = { nutrition: 'Nutrition', sport: 'Sport', health: 'Santé', coach: 'Coach', profile: 'Profil' };
@@ -60,7 +62,7 @@ function shell() {
   app.innerHTML = `
     <header class="top">
       <div class="hello"><span class="date" id="date"></span><h1 id="title"></h1></div>
-      <div class="row" style="flex-wrap:nowrap"><button class="avatar" id="coach-btn" aria-label="Coach IA">${icon('chat', 19)}</button><button class="avatar" id="avatar" aria-label="Profil"></button></div>
+      <div class="row" style="flex-wrap:nowrap"><button class="streak-btn" id="streak-btn" aria-label="Ma progression"></button><button class="avatar" id="coach-btn" aria-label="Coach IA">${icon('chat', 19)}</button><button class="avatar" id="avatar" aria-label="Profil"></button></div>
     </header>
     <main id="view"></main>
     <nav class="nav" aria-label="Navigation principale">
@@ -74,6 +76,7 @@ function shell() {
   $('#fab').onclick = () => A.openAddMenu(ctx);
   $('#avatar').onclick = () => go('profile');
   $('#coach-btn').onclick = () => go('coach');
+  $('#streak-btn').onclick = () => P.openProgress();
   $('#view').addEventListener('click', (e) => {
     const t = e.target.closest('[data-tab]');
     if (t) go(t.dataset.tab);
@@ -92,6 +95,11 @@ function renderView(after) {
   view.className = 'view-enter';
   void view.offsetWidth;
   VIEWS[tab].render(view, ctx);
+  const s = G.streak(store.get());
+  const sb = $('#streak-btn');
+  sb.innerHTML = `🔥 ${s.current}`;
+  sb.className = `streak-btn ${s.atRisk ? 'risk' : s.current ? '' : 'cold'}`;
+  P.celebrate();
   after?.();
 }
 
@@ -147,6 +155,7 @@ async function onForeground() {
     if (r && !r.tooShort) toast(`Nuit enregistrée : ${Math.floor(r.sleepMinutes / 60)} h ${String(r.sleepMinutes % 60).padStart(2, '0')}`);
   }
   await detectMorning();
+  await Sport.refreshCalendar?.().catch(() => {});
   if (N.isNative && (store.get().update?.available || Date.now() - (store.get().update?.checked || 0) > 12 * 3600e3)) {
     N.checkUpdate().then((u) => { store.update((s) => { s.update = { ...u, checked: Date.now() }; }); if (u.available && tab === 'home') renderView(); }).catch(() => {});
   }

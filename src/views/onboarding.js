@@ -1,6 +1,7 @@
 // Premier lancement : présentation et profil en 4 étapes.
 import * as store from '../store.js';
 import { icon, esc, toast, $, $$ } from '../ui.js';
+import { ALLERGENS } from '../family.js';
 
 let step = 0;
 const draft = {};
@@ -33,7 +34,7 @@ export function render(root, done) {
       <label class="lbl">Régime</label><select data-d="diet">${Object.entries({ omnivore: 'Omnivore', pescetarien: 'Pescétarien', vegetarien: 'Végétarien', vegan: 'Végan' }).map(([v, l]) => `<option value="${v}" ${p.diet === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`,
     () => `<h1>Ton rythme</h1><p class="lead">Ton plan du jour et tes rappels s’organisent autour de ces horaires.</p>
       <div class="grid2"><div><label class="lbl">Réveil</label><input data-d="wakeTime" type="time" value="${esc(p.wakeTime)}"></div><div><label class="lbl">Coucher visé</label><input data-d="bedTime" type="time" value="${esc(p.bedTime)}"></div></div>
-      <label class="lbl">Allergies ou aliments à éviter</label><input data-d="allergies" value="${esc(p.allergies)}" placeholder="ex. arachide, lactose">
+      <label class="lbl">Allergies</label><div class="chips" style="flex-wrap:wrap">${ALLERGENS.map((a) => `<button class="chip ${(p.allergies || '').split(', ').includes(a) ? 'bad' : ''}" data-allergy="${a}">${a}</button>`).join('')}</div>
       <label class="lbl">Sport préféré</label><input data-d="preferredSport" value="${esc(p.preferredSport)}" placeholder="ex. course, natation">
       <div class="note" style="margin-top:18px">${icon('shield', 18)}<span>Tes données restent sur ton téléphone. Rien n’est envoyé sauf aux fonctions IA que tu utilises.</span></div>`,
   ];
@@ -49,6 +50,12 @@ export function render(root, done) {
     draft[el.dataset.d] = el.type === 'number' ? (el.value === '' ? null : Number(el.value)) : el.value;
   }));
   $$('[data-pick]', root).forEach((b) => (b.onclick = () => { draft[b.dataset.pick] = b.dataset.v; render(root, done); }));
+  $$('[data-allergy]', root).forEach((b) => (b.onclick = () => {
+    const l = new Set((p.allergies || '').split(', ').filter(Boolean));
+    l.has(b.dataset.allergy) ? l.delete(b.dataset.allergy) : l.add(b.dataset.allergy);
+    draft.allergies = [...l].join(', ');
+    render(root, done);
+  }));
   $('#back', root)?.addEventListener('click', () => { step--; render(root, done); });
   $('#demo', root)?.addEventListener('click', () => { loadDemo(); finish(done); });
   $('#next', root).onclick = () => {

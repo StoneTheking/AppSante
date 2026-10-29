@@ -157,3 +157,11 @@ export async function checkUpdate() {
 
 // Ouvre la fiche Android de l'application (pour « Autoriser les paramètres restreints »).
 export const openAppInfo = () => UsageStats.openAppInfo();
+
+// ---------- Agenda du téléphone (Google Agenda synchronisé) ----------
+const Calendar = registerPlugin('Calendar');
+export const calendarAccess = () => Calendar.requestAccess().then((r) => r.granted);
+export const calendarHasAccess = () => (isNative ? Calendar.hasAccess().then((r) => r.granted).catch(() => false) : Promise.resolve(false));
+export const calendarList = () => Calendar.calendars().then((r) => r.calendars || []);
+export const calendarEvents = (from, to) => Calendar.events({ from, to }).then((r) => r.events || []);
+export const calendarInsert = (calendarId, events) => Calendar.insert({ calendarId, events }).then((r) => r.inserted);

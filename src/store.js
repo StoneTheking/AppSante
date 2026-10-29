@@ -21,6 +21,9 @@ const DEFAULT = {
     likes: '', // aliments et plats aimés
     dislikes: '', // aliments détestés
     cuisines: [], // cuisines préférées
+    tastes: {}, // goûts choisis : { aliment: 1 (aime) | -1 (évite) }
+    work: { days: [1, 2, 3, 4, 5], start: '09:00', end: '17:30', commute: 30, enabled: false },
+    sportPref: 'auto', // moment préféré pour le sport : auto | matin | midi | soir
   },
   household: [], // autres membres du foyer : { id, name, age, sex, weight, height, goal, allergies, diet }
   location: null, // { name, lat, lon }
@@ -32,11 +35,12 @@ const DEFAULT = {
   stools: [], // { id, at, bristol, pain, bloating, urgency, note }
   sleepAlarm: null, // heure de l'alarme du téléphone au coucher (ms)
   workouts: [], // séances : { id, type, intensity, start, date, minutes, kcal, source, note }
+  calEvents: [], // événements de l'agenda du téléphone (7 jours) pour éviter les conflits
   workoutNow: null, // séance en cours (chronomètre) : { type, intensity, start }
   settings: {
     apiKey: '',
     model: 'claude-opus-5-5',
-    reminders: { enabled: false, kinds: { light: true, meal: false, coffee: true, walk: true, sport: true, screens: true, bed: true, water: false } },
+    reminders: { enabled: false, kinds: { light: true, meal: false, coffee: true, walk: true, sport: true, screens: true, bed: true, water: false, streak: true } },
     autoSync: true,
     webSearch: true, // le coach peut consulter PubMed, OMS, Lancet…
     theme: 'dark', // 'dark' | 'light' | 'auto'
@@ -58,7 +62,7 @@ function load() {
   try {
     const raw = localStorage.getItem(KEY);
     const s = raw ? JSON.parse(raw) : {};
-    return { ...structuredClone(DEFAULT), ...s, profile: { ...DEFAULT.profile, ...s.profile }, settings: { ...DEFAULT.settings, ...s.settings, reminders: { ...DEFAULT.settings.reminders, ...s.settings?.reminders } } };
+    return { ...structuredClone(DEFAULT), ...s, profile: { ...DEFAULT.profile, ...s.profile }, settings: { ...DEFAULT.settings, ...s.settings, reminders: { ...DEFAULT.settings.reminders, ...s.settings?.reminders, kinds: { ...DEFAULT.settings.reminders.kinds, ...s.settings?.reminders?.kinds } } } };
   } catch {
     return structuredClone(DEFAULT);
   }

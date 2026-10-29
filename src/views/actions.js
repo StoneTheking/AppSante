@@ -15,7 +15,7 @@ const VERDICT = { bon: 'Bon pour toi', moyen: 'Moyen', a_limiter: 'À limiter' }
 
 export function addMeal(m) {
   const now = new Date();
-  store.update((s) => s.meals.push({ id: crypto.randomUUID(), date: store.today(), time: now.toTimeString().slice(0, 5), slot: C.currentSlot(now), ...m }));
+  store.update((s) => s.meals.push({ id: crypto.randomUUID(), date: store.today(), time: now.toTimeString().slice(0, 5), ...m, slot: m.slot || C.currentSlot(now) }));
   toast(m.snack ? `${m.title} : ajouté` : 'Repas enregistré ✅', 1200);
 }
 
@@ -68,7 +68,9 @@ export function openCheckin(ctx) {
 }
 
 // ---------- Photo d'assiette ----------
-export async function openPhoto(ctx, fromGallery = false) {
+const MEAL_TYPES = [['petit-dej', 'Petit-déj'], ['dejeuner', 'Déjeuner'], ['collation', 'Collation'], ['diner', 'Dîner'], ['grignotage', 'Grignotage']];
+
+export async function openPhoto(ctx, fromGallery = false, slot = null) {
   const st = store.get();
   const [file] = await pickImage({ camera: !fromGallery });
   if (!file) return;
@@ -87,7 +89,7 @@ export async function openPhoto(ctx, fromGallery = false) {
       const r = await AI.analyzePlate(st.settings, dataUrl, personContext(sm), note);
       if (!r.is_food) throw new Error('Je ne vois pas de nourriture sur cette photo.');
       const thumb = await compressImage(await (await fetch(dataUrl)).blob(), 160, 0.7);
-      showResult(res, { ...r, thumb, factor: 1 }, body);
+      showResult(res, { ...r, thumb, factor: 1, slot: slot || C.currentSlot() }, body);
     } catch (e) {
       res.innerHTML = `<div class="note bad">${icon('alert', 18)}<span>${esc(AI.friendlyError(e))}</span></div>`;
     }
@@ -114,16 +116,19 @@ function showResult(res, p, body) {
     <p class="tiny muted">Sucres ${fmt(n.sugar)} g · graisses saturées ${fmt(n.satFat)} g · sodium ${fmt(n.sodium)} mg · NOVA ${p.nova} · confiance ${esc(p.confidence)}</p>
     <label class="lbl">Portion réellement mangée : <b>${Math.round(p.factor * 100)} %</b></label>
     <input type="range" id="factor" min="0.25" max="2" step="0.05" value="${p.factor}">
-    <button class="btn block" id="save" style="margin-top:14px">${icon('check', 18)} Enregistrer ce repas</button>`;
+    <label class="lbl">C’était</label>
+    <div class="chips" style="flex-wrap:wrap">${MEAL_TYPES.map(([k, l]) => `<button class="chip ${p.slot === k ? 'on' : ''}" data-slot="${k}">${l}</button>`).join('')}</div>
+    <button class="btn block" id="save" style="margin-top:14px">${icon('check', 18)} Enregistrer</button>`;
+  $$('[data-slot]', res).forEach((b) => (b.onclick = () => { p.slot = b.dataset.slot; $$('[data-slot]', res).forEach((x) => x.classList.toggle('on', x === b)); }));
   $('#factor', res).onchange = (e) => showResult(res, { ...p, factor: Number(e.target.value) }, body);
   $('#save', res).onclick = () => {
-    addMeal({ title: p.title, nutrients: n, items: p.items, nova: p.nova, quality: p.quality, verdict: p.verdict, comment: p.comment, advice: p.advice, thumb: p.thumb });
+    addMeal({ title: p.title, nutrients: n, items: p.items, nova: p.nova, quality: p.quality, verdict: p.verdict, comment: p.comment, advice: p.advice, thumb: p.thumb, slot: p.slot === 'grignotage' ? 'collation' : p.slot, snack: p.slot === 'grignotage' });
     body.close();
   };
 }
 
 // ---------- Scanner code-barres ----------
-export function openScanner(ctx) {
+export function openScanner(ctx, slot = null) {
   let stop = () => {};
   const body = sheet(`
     <div class="scanner"><video muted playsinline></video><div class="frame"></div><div class="laser"></div></div>
@@ -138,7 +143,7 @@ export function openScanner(ctx) {
     try {
       const prod = await BC.lookup(code);
       if (!prod) { out.innerHTML = `<div class="note warn">${icon('info', 18)}<span>Produit ${esc(code)} introuvable dans Open Food Facts. Tu peux le photographier pour une analyse IA.</span></div>`; return; }
-      productCard(out, prod, prod.serving || 100, body);
+      productCard(out, prod, prod.serving || 100, body, slot || C.currentSlot());
     } catch (e) {
       out.innerHTML = `<div class="note bad">${icon('alert', 18)}<span>${esc(e.message)}</span></div>`;
     }
@@ -155,7 +160,7 @@ function nutriBadge(g) {
 const NOVA_COLORS = { 1: '#038141', 2: '#fecb02', 3: '#ee8100', 4: '#e63e11' };
 const NOVA_LABEL = { 1: 'Brut / peu transformé', 2: 'Ingrédient culinaire', 3: 'Transformé', 4: 'Ultra-transformé' };
 
-function productCard(out, prod, grams, body) {
+function productCard(out, prod, grams, body, slot) {
   const sm = summary();
   const v = BC.verdict(prod, grams, { targets: sm.t, totToday: sm.totToday, profile: store.get().profile });
   const n = v.n;
@@ -185,13 +190,16 @@ function productCard(out, prod, grams, body) {
     ${prod.additives.length ? `<h3 style="font-size:.95rem;margin:16px 0 6px">Additifs (${prod.additives.length})</h3>
       ${prod.additives.map((a) => `<div class="small" style="margin:6px 0"><span class="badge ${a.level === 'eleve' ? 'a_limiter' : a.level === 'moyen' ? 'moyen' : 'neutral'}">${esc(a.id)}</span> ${esc(a.name)} <span class="muted">${esc(a.note)}</span></div>`).join('')}` : '<p class="small" style="color:var(--good)">✓ Aucun additif</p>'}
     ${prod.allergens.length ? `<p class="small muted">Allergènes : ${esc(prod.allergens.join(', '))}</p>` : ''}
-    <button class="btn block" id="add" style="margin-top:14px">${icon('plus', 18)} Ajouter à mes repas</button>
+    <label class="lbl">C’était</label>
+    <div class="chips" style="flex-wrap:wrap">${MEAL_TYPES.map(([k, l]) => `<button class="chip ${slot === k ? 'on' : ''}" data-slot="${k}">${l}</button>`).join('')}</div>
+    <button class="btn block" id="add" style="margin-top:14px">${icon('plus', 18)} Ajouter</button>
     <p class="tiny muted" style="text-align:center">Données : Open Food Facts (ODbL)</p>`;
   const g = () => Math.max(1, Number($('#grams', out).value) || 0);
-  $('#grams', out).onchange = () => productCard(out, prod, g(), body);
-  $$('[data-d]', out).forEach((b) => (b.onclick = () => productCard(out, prod, Math.max(5, g() + Number(b.dataset.d)), body)));
+  $$('[data-slot]', out).forEach((b) => (b.onclick = () => { slot = b.dataset.slot; $$('[data-slot]', out).forEach((x) => x.classList.toggle('on', x === b)); }));
+  $('#grams', out).onchange = () => productCard(out, prod, g(), body, slot);
+  $$('[data-d]', out).forEach((b) => (b.onclick = () => productCard(out, prod, Math.max(5, g() + Number(b.dataset.d)), body, slot)));
   $('#add', out).onclick = () => {
-    addMeal({ title: `${prod.name}${prod.brand ? ' – ' + prod.brand.split(',')[0] : ''} (${g()} g)`, nutrients: n, nova: prod.nova || 3, quality: v.score, verdict: v.verdict, nutriscore: prod.nutriscore, barcode: prod.code, thumb: prod.image, comment: [...v.pros, ...v.cons].join(' · ') });
+    addMeal({ title: `${prod.name}${prod.brand ? ' – ' + prod.brand.split(',')[0] : ''} (${g()} g)`, nutrients: n, nova: prod.nova || 3, quality: v.score, verdict: v.verdict, nutriscore: prod.nutriscore, barcode: prod.code, thumb: prod.image, comment: [...v.pros, ...v.cons].join(' · '), slot: slot === 'grignotage' ? 'collation' : slot, snack: slot === 'grignotage' });
     body.close();
   };
 }
@@ -387,7 +395,7 @@ export function openSnack(ctx) {
       <div class="chips">${SN.REASONS.map(([k, l]) => `<button class="chip ${reason === k ? 'on' : ''}" data-r="${k}">${l}</button>`).join('')}</div>
       <div class="snack-grid">${SN.SNACKS.map((s) => `<button data-s="${s.id}" class="${s.ok ? 'ok' : ''}"><span class="em">${s.emoji}</span><b>${esc(s.label)}</b><span>${Math.round(s.n.kcal * qty)} kcal</span></button>`).join('')}</div>
       ${today.length ? `<div class="list" style="margin-top:10px">${today.map((m) => `<div class="between small" style="padding:8px 0;border-top:1px solid var(--line)"><span>${esc(m.time)} · ${esc(m.title)}</span><button class="icon-btn" data-del="${m.id}" aria-label="Retirer">${icon('x', 14)}</button></div>`).join('')}</div>` : ''}
-      <button class="btn ghost block" id="other" style="margin-top:10px">${icon('barcode', 18)} Autre : scanner ou photo</button>`;
+      <div class="grid2" style="margin-top:10px"><button class="btn soft" id="snap">${icon('camera', 18)} Photo</button><button class="btn ghost" id="other">${icon('barcode', 18)} Scanner</button></div>`;
     $$('[data-q]', el).forEach((b) => (b.onclick = () => { qty = Math.max(1, Math.min(5, qty + Number(b.dataset.q))); draw(); }));
     $$('[data-r]', el).forEach((b) => (b.onclick = () => { reason = reason === b.dataset.r ? null : b.dataset.r; draw(); }));
     $$('[data-s]', el).forEach((b) => (b.onclick = () => {
@@ -400,7 +408,8 @@ export function openSnack(ctx) {
       draw();
     }));
     $$('[data-del]', el).forEach((b) => (b.onclick = () => { store.update((x) => (x.meals = x.meals.filter((m) => m.id !== b.dataset.del))); draw(); }));
-    $('#other', el).onclick = () => { body.close(); setTimeout(() => openScanner(ctx), 250); };
+    $('#other', el).onclick = () => { body.close(); setTimeout(() => openScanner(ctx, 'grignotage'), 250); };
+    $('#snap', el).onclick = () => { body.close(); setTimeout(() => openPhoto(ctx, false, 'grignotage'), 250); };
   };
   draw();
 }

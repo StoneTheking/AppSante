@@ -2,6 +2,7 @@
 import * as S from './science.js';
 import { suggestMeals } from './meals.js';
 import { bestOutdoorHour, envInsights, aqiLabel } from './env.js';
+import { busyBlocks, suggestSlot, usualHour, DEFAULT_WORK } from './schedule.js';
 
 const avg = (xs) => {
   const v = xs.filter((x) => x != null && !Number.isNaN(x));
@@ -18,7 +19,7 @@ const toMin = (hhmm) => {
 };
 
 // keys : liste de dates (anciennes → récentes), days : objet date → check-in, meals : tous les repas
-export function summarize({ profile, days, meals, weights, env, household = [], stools = [] }, keys) {
+export function summarize({ profile, days, meals, weights, env, household = [], stools = [], workouts = [], calEvents = [] }, keys) {
   const t = S.targets(profile);
   const todayKey = keys[keys.length - 1];
   const week = keys.slice(-7);
@@ -95,7 +96,8 @@ export function summarize({ profile, days, meals, weights, env, household = [], 
   const lateMeals = week.flatMap(mealsOf).filter((m) => (m.time || '') >= '21:00').length;
   // les données air/météo de plus de 6 h sont ignorées
   const envFresh = env && Date.now() - new Date(env.fetched) < 6 * 3600e3 ? env : null;
-  return { env: envFresh, household, stools, lateMeals, t, p, body, today, todayKey, lastNight, totToday, w, scores, dietAvg, kcalAvg, dietDaysCount: dietDays.length, ctx };
+  const busy = busyBlocks(new Date(), profile.work || DEFAULT_WORK, calEvents);
+  return { busy, usualHour: usualHour(workouts), env: envFresh, household, stools, lateMeals, t, p, body, today, todayKey, lastNight, totToday, w, scores, dietAvg, kcalAvg, dietDaysCount: dietDays.length, ctx };
 }
 
 // ---------- Activité physique recommandée ----------
@@ -166,6 +168,10 @@ export function dailyPlan(sm, profile) {
   let actStart = Math.min(Math.max(wake + 9 * 60, 17 * 60 + 30), bed - 2 * 60 - act.duration);
   if (ctx.lowMood) actStart = Math.min(actStart, 16 * 60 + 30); // profiter de la lumière du jour
   const env = sm.env;
+  // créneau libre selon travail, agenda, préférence, habitude, air et heure du coucher
+  const slot = suggestSlot({ duration: act.duration, intensity: act.intensity === 'soutenue' ? 'intense' : 'moderee', wake: profile.wakeTime, bed: profile.bedTime, busy: sm.busy || [], pref: profile.sportPref || 'auto', usualHour: sm.usualHour, env });
+  const slotChosen = !!slot && ((sm.busy || []).length > 0 || (profile.sportPref && profile.sportPref !== 'auto') || sm.usualHour != null);
+  if (slotChosen) actStart = slot.start;
   let actText = act.why.join(' ');
   const actSrc = [...act.src];
   if (env) {
@@ -174,7 +180,7 @@ export function dailyPlan(sm, profile) {
       actSrc.push(env.aqi > 60 ? 'sinharay2018' : 'ebi2021');
     } else {
       const best = bestOutdoorHour(env, Math.max(wake + 60, 7 * 60), bed - 150 - act.duration);
-      if (best && Math.abs(best.hour * 60 - actStart) > 60 && (best.aqi ?? 0) + 15 < (env.hours.find((h) => h.hour === Math.floor(actStart / 60))?.aqi ?? 0)) {
+      if (!slotChosen && best && Math.abs(best.hour * 60 - actStart) > 60 && (best.aqi ?? 0) + 15 < (env.hours.find((h) => h.hour === Math.floor(actStart / 60))?.aqi ?? 0)) {
         actStart = best.hour * 60;
         actText += ` Créneau choisi pour la meilleure qualité de l’air (indice ${Math.round(best.aqi)}).`;
         actSrc.push('who2021air');
@@ -182,6 +188,7 @@ export function dailyPlan(sm, profile) {
       actSrc.push('andersen2015');
     }
   }
+  if (slotChosen && slot.why.length) { actText = `Créneau choisi ${slot.why.join(', ')}. ` + actText; actSrc.push('belanger2011', 'knaier2021', 'bruggisser2023'); }
   add(actStart, '🏃', `${act.title} (${act.duration} min)`, actText, actSrc);
 
   if (ctx.workout || profile.goal === 'prendre' || actStart < 18 * 60) add(Math.max(lunch + 3.5 * 60, actStart - 75), '🍎', 'Collation', 'Fruit + source de protéines (yaourt, amandes) pour arriver en forme à la séance et éviter les fringales.', []);

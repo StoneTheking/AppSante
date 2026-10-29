@@ -4,6 +4,7 @@ import * as C from '../coach.js';
 import { summary, taste } from '../context.js';
 import * as SL from '../sleep.js';
 import * as N from '../native.js';
+import { questsCard, bindQuests } from './progress.js';
 import { aqiLabel } from '../env.js';
 import { icon, esc, fmt, srcLinks, rings, DOMAIN, $$ } from '../ui.js';
 
@@ -61,6 +62,8 @@ export function render(view, ctx) {
       <div class="verdict">${icon('sparkles', 18)}<span>${esc(headline(sm))}</span></div>
     </section>
 
+    ${questsCard(st)}
+
     ${st.workoutNow ? `<div class="card next" data-tab="sport"><span class="icon-badge" style="background:color-mix(in srgb,var(--c-move) 16%,transparent);color:var(--c-move)">${icon('dumbbell')}</span><div><div class="ttl">Séance en cours</div><div class="tiny muted">depuis ${new Date(st.workoutNow.start).toTimeString().slice(0, 5)} · touche pour terminer</div></div>${icon('right')}</div>` : ''}
     ${sleepCard(st)}
     ${envCard(sm.env, st.location)}
@@ -98,9 +101,10 @@ export function render(view, ctx) {
     if (b.dataset.act === 'water') {
       store.setDay(store.today(), { waterMl: water + 250 });
       ctx.toast('+250 mL 💧');
-      render(view, ctx);
+      ctx.render();
     } else ctx.action(b.dataset.act);
   }));
+  bindQuests(view, ctx);
   view.querySelector('[data-update]')?.addEventListener('click', () => { location.href = N.APK_URL; });
   view.querySelector('[data-sleep]')?.addEventListener('click', () => ctx.action('sleep'));
   view.querySelector('[data-sleep-cancel]')?.addEventListener('click', () => { SL.cancelSleep(); ctx.syncWidget?.(); render(view, ctx); });

@@ -382,3 +382,50 @@ details > summary::-webkit-details-marker { display: none; }
 .snack-grid button .em { font-size: 1.5rem; }
 .snack-grid button.ok { border-color: color-mix(in srgb, var(--good) 40%, transparent); }
 .snack-grid button:active { transform: scale(0.96); background: var(--primary-soft); }
+/* Écrans étroits : aucun débordement horizontal */
+html, body { overflow-x: hidden; }
+.grid2 > *, .grid3 > *, .row > *, input, select, textarea { min-width: 0; }
+.grid3 .btn { padding: 12px 6px; font-size: 0.85rem; gap: 5px; }
+.hero-grid > svg { width: min(168px, 40vw); height: auto; }
+.hero-grid { gap: 14px; }
+.legend-row { font-size: clamp(0.78rem, 3.4vw, 0.86rem); }
+
+.taste-cat { padding: 12px 0; border-top: 1px solid var(--line); }
+.chip.sm { padding: 4px 10px; font-size: 0.74rem; }
+.chip.bad { background: var(--bad-soft); color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, transparent); }
+.chip.taste.like { background: var(--good-soft); color: var(--good); border-color: color-mix(in srgb, var(--good) 45%, transparent); }
+.chip.taste.dislike { background: var(--bad-soft); color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, transparent); text-decoration: line-through; }
+.chip.taste span { font-weight: 800; }
+
+/* ---------- Motivation ---------- */
+.quests .quest-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin: 12px 0 6px; }
+.quest { position: relative; border: 0; background: none; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 0; color: var(--text-2); }
+.quest svg circle { transition: stroke-dasharray 0.8s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.quest .qi { position: absolute; top: 12px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; }
+.quest small { font-size: 0.64rem; font-weight: 600; text-align: center; line-height: 1.15; }
+.quest.done small { color: var(--text); }
+.quest:active { transform: scale(0.94); }
+.quest-msg { text-align: center; font-size: 0.84rem; font-weight: 600; color: var(--text-2); padding: 8px; border-radius: 12px; background: var(--card-2); }
+.quest-msg.risk { color: #fb923c; background: rgba(251, 146, 60, 0.12); }
+.xp-pill { border: 1px solid rgba(251, 191, 36, 0.35); background: rgba(251, 191, 36, 0.12); color: #fbbf24; font-weight: 700; font-size: 0.74rem; border-radius: 99px; padding: 5px 10px; }
+.streak-btn { height: 40px; padding: 0 12px; border-radius: 99px; border: 1px solid var(--line-2); background: var(--card-2); color: var(--text); font-weight: 800; display: inline-flex; gap: 4px; align-items: center; }
+.streak-btn.risk { border-color: rgba(251, 146, 60, 0.6); color: #fb923c; animation: pulse 1.6s ease-in-out infinite; }
+.streak-btn.cold { opacity: 0.6; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(251, 146, 60, 0.15); } }
+.streak-hero { display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center; padding: 16px; border-radius: 20px; background: radial-gradient(120% 160% at 0% 0%, rgba(251, 146, 60, 0.3), rgba(251, 146, 60, 0) 60%), var(--card); border: 1px solid rgba(251, 146, 60, 0.3); }
+.streak-hero .flame { font-size: 2.6rem; }
+.streak-hero .big { font-size: 2.4rem; font-weight: 800; line-height: 1; }
+.streak-hero .freeze { text-align: center; font-weight: 800; color: #60a5fa; display: flex; flex-direction: column; }
+.streak-hero .freeze small { font-size: 0.66rem; color: var(--muted); font-weight: 600; }
+.cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin-top: 10px; }
+.cal .dow { font-size: 0.66rem; color: var(--muted); text-align: center; font-weight: 700; }
+.cal .cell { aspect-ratio: 1; border-radius: 6px; display: grid; place-items: center; font-size: 0.7rem; }
+.cal .cell.today { outline: 2px solid var(--text-2); outline-offset: 1px; }
+.badge-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+.badge-item { border-radius: 14px; padding: 12px 6px; text-align: center; background: var(--bg-2); color: var(--muted); opacity: 0.55; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.badge-item small { font-size: 0.68rem; font-weight: 600; line-height: 1.2; }
+.badge-item.on { opacity: 1; color: #fbbf24; background: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.3); }
+.badge-item.on small { color: var(--text); }
+.confetti { position: fixed; inset: 0; pointer-events: none; z-index: 300; overflow: hidden; }
+.confetti i { position: absolute; top: -12px; width: 8px; height: 12px; border-radius: 2px; animation: fall 1.5s cubic-bezier(0.2, 0.6, 0.4, 1) forwards; }
+@keyframes fall { to { transform: translate(var(--dx), 105vh) rotate(var(--r)); opacity: 0.9; } }

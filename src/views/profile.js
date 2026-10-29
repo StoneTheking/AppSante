@@ -8,10 +8,11 @@ import { refreshReminders, refreshEnv, taste } from '../context.js';
 import * as E from '../env.js';
 import * as F from '../family.js';
 import { applyTheme } from '../theme.js';
+import { openTastePicker, tasteSummary } from './tastes.js';
+import { connectCalendar } from './sport.js';
 import { icon, esc, toast, sheet, srcLinks, $, $$ } from '../ui.js';
 import { loadDemo } from './onboarding.js';
 
-const CUISINES = ['Méditerranéenne', 'Française', 'Italienne', 'Asiatique', 'Indienne', 'Mexicaine', 'Libanaise', 'Africaine', 'Japonaise', 'Végétale'];
 const APK_URL = 'https://github.com/StoneTheking/AppSante/releases/latest/download/AppSante.apk';
 
 export function render(view, ctx) {
@@ -50,7 +51,6 @@ export function render(view, ctx) {
       <label class="lbl">Objectif</label>${sel('goal', { perdre: 'Perdre du poids', maintenir: 'Rester en forme', prendre: 'Prendre du muscle' })}
       <label class="lbl">Niveau d'activité habituel</label>${sel('activityLevel', { sedentaire: 'Sédentaire', leger: 'Légèrement actif', modere: 'Modérément actif (3-5 séances/sem)', actif: 'Actif (sport quotidien)', tres_actif: 'Très actif' })}
       <label class="lbl">Régime</label>${sel('diet', { omnivore: 'Omnivore', pescetarien: 'Pescétarien', vegetarien: 'Végétarien', vegan: 'Végan' })}
-      <label class="lbl">Allergies / aliments à éviter</label>${inp('allergies', 'text', 'placeholder="ex. arachide, lactose"')}
       <label class="lbl">Sport préféré</label>${inp('preferredSport', 'text', 'placeholder="ex. course, natation, padel"')}
       <div class="grid2">
         <div><label class="lbl">Réveil</label>${inp('wakeTime', 'time')}</div>
@@ -58,13 +58,10 @@ export function render(view, ctx) {
       </div>
     </div>
 
-    <div class="section-title">Goûts</div>
+    <div class="section-title">Goûts & allergies</div>
     <div class="card">
-      <label class="lbl">J’aime (aliments, plats)</label>${inp('likes', 'text', 'placeholder="ex. saumon, curry, pâtes, avocat"')}
-      <label class="lbl">Je n’aime pas</label>${inp('dislikes', 'text', 'placeholder="ex. brocolis, coriandre, abats"')}
-      <label class="lbl">Cuisines préférées</label>
-      <div class="chips" style="flex-wrap:wrap">${CUISINES.map((c) => `<button class="chip ${(p.cuisines || []).includes(c) ? 'on' : ''}" data-cuisine="${c}">${c}</button>`).join('')}</div>
-      ${(() => { const t = F.topTastes(taste(), 6); return t.likes.length || t.dislikes.length ? `<p class="tiny muted">Appris de tes notes : 👍 ${esc(t.likes.join(', ') || '—')} · 👎 ${esc(t.dislikes.join(', ') || '—')}</p>` : ''; })()}
+      ${tasteSummary(p)}
+      <button class="btn soft block" id="tastes" style="margin-top:10px">${icon('chef', 18)} Choisir mes goûts</button>
       ${srcLinks(['dansinger2005'])}
     </div>
 
@@ -73,6 +70,23 @@ export function render(view, ctx) {
       ${st.household.map((m) => `<div class="member"><span class="avatar">${esc((m.name || '?')[0].toUpperCase())}</span><div><b>${esc(m.name || 'Membre')}</b><div class="tiny muted">${m.age} ans · ~${F.memberKcal(m)} kcal/j${m.allergies ? ` · allergies : ${esc(m.allergies)}` : ''}${m.diet && m.diet !== 'omnivore' ? ` · ${esc(m.diet)}` : ''}</div></div><button class="icon-btn" data-member-del="${m.id}" aria-label="Retirer">${icon('trash', 14)}</button></div>`).join('')}
       <button class="btn soft block" id="add-member" style="margin-top:10px">${icon('users', 18)} Ajouter un membre</button>
       ${srcLinks(['hammons2011', 'efsa2013energy'])}
+    </div>
+
+    <div class="section-title">Travail & agenda</div>
+    <div class="card" id="work">
+      <label class="between" style="flex-wrap:nowrap"><b class="small">J’ai des horaires de travail</b>${sw('id="work-on"', (p.work || {}).enabled)}</label>
+      <div style="${(p.work || {}).enabled ? '' : 'opacity:.45;pointer-events:none'}">
+        <div class="chips" style="margin-top:10px">${[[1, 'L'], [2, 'M'], [3, 'M'], [4, 'J'], [5, 'V'], [6, 'S'], [0, 'D']].map(([d, l]) => `<button class="chip ${(p.work?.days || []).includes(d) ? 'on' : ''}" data-wday="${d}" style="min-width:40px;justify-content:center">${l}</button>`).join('')}</div>
+        <div class="grid3">
+          <div><label class="lbl">Début</label><input type="time" data-work="start" value="${esc(p.work?.start || '09:00')}"></div>
+          <div><label class="lbl">Fin</label><input type="time" data-work="end" value="${esc(p.work?.end || '17:30')}"></div>
+          <div><label class="lbl">Trajet</label><select data-work="commute">${[0, 15, 30, 45, 60, 90].map((m) => `<option value="${m}" ${Number(p.work?.commute ?? 30) === m ? 'selected' : ''}>${m} min</option>`).join('')}</select></div>
+        </div>
+      </div>
+      <label class="lbl">Moment préféré pour le sport</label>
+      <div class="seg">${[['auto', 'Auto'], ['matin', 'Matin'], ['midi', 'Midi'], ['soir', 'Soir']].map(([v, l]) => `<button data-spref="${v}" class="${(p.sportPref || 'auto') === v ? 'on' : ''}">${l}</button>`).join('')}</div>
+      ${N.isNative ? `<button class="btn ghost block" id="cal-connect" style="margin-top:10px">${icon('calendar', 18)} ${st.settings.calendarId ? 'Agenda connecté ✓' : 'Connecter mon agenda (Google Agenda)'}</button>` : '<p class="tiny muted" style="margin:10px 0 0">Les séances s’ajoutent à Google Agenda depuis l’onglet Sport.</p>'}
+      ${srcLinks(['belanger2011'])}
     </div>
 
     <div class="section-title">Lieu de vie</div>
@@ -154,10 +168,15 @@ export function render(view, ctx) {
     store.update((s) => { s.settings.reminders.kinds[c.dataset.kind] = c.checked; });
     await refreshReminders();
   }));
-  $$('[data-cuisine]', view).forEach((b) => (b.onclick = () => {
-    store.update((s) => { const c = new Set(s.profile.cuisines || []); c.has(b.dataset.cuisine) ? c.delete(b.dataset.cuisine) : c.add(b.dataset.cuisine); s.profile.cuisines = [...c]; });
+  $('#work-on', view).onchange = (e) => { store.update((s) => { s.profile.work = { ...(s.profile.work || {}), enabled: e.target.checked }; }); render(view, ctx); };
+  $$('[data-wday]', view).forEach((b) => (b.onclick = () => {
+    store.update((s) => { const d = new Set(s.profile.work.days); const n = Number(b.dataset.wday); d.has(n) ? d.delete(n) : d.add(n); s.profile.work.days = [...d]; });
     b.classList.toggle('on');
   }));
+  $$('[data-work]', view).forEach((el) => (el.onchange = () => { store.update((s) => { s.profile.work[el.dataset.work] = el.dataset.work === 'commute' ? Number(el.value) : el.value; }); toast('Horaires enregistrés', 1000); }));
+  $$('[data-spref]', view).forEach((b) => (b.onclick = () => { store.update((s) => { s.profile.sportPref = b.dataset.spref; }); render(view, ctx); }));
+  $('#cal-connect', view)?.addEventListener('click', async () => { if (await connectCalendar()) render(view, ctx); });
+  $('#tastes', view).onclick = () => openTastePicker(() => render(view, ctx));
   $$('[data-member-del]', view).forEach((b) => (b.onclick = () => { store.update((s) => (s.household = s.household.filter((m) => m.id !== b.dataset.memberDel))); render(view, ctx); }));
   $('#add-member', view).onclick = () => openMember(() => render(view, ctx));
   $$('[data-theme-pick]', view).forEach((b) => (b.onclick = () => { store.update((s) => (s.settings.theme = b.dataset.themePick)); applyTheme(); render(view, ctx); }));
@@ -208,13 +227,14 @@ function openMember(done) {
       <div><label class="lbl">Taille cm (adulte)</label><input id="m-height" type="number" inputmode="decimal"></div>
     </div>
     <label class="lbl">Régime</label><select id="m-diet"><option value="omnivore">Omnivore</option><option value="pescetarien">Pescétarien</option><option value="vegetarien">Végétarien</option><option value="vegan">Végan</option></select>
-    <label class="lbl">Allergies</label><input id="m-allergies" placeholder="ex. arachide">
-    <label class="lbl">N’aime pas</label><input id="m-dislikes" placeholder="ex. épinards">
+    <label class="lbl">Allergies</label><div class="chips" style="flex-wrap:wrap">${F.ALLERGENS.map((a) => `<button class="chip" data-mal="${a}">${a}</button>`).join('')}</div>
+    <label class="lbl">N’aime pas</label><div class="chips" style="flex-wrap:wrap;max-height:180px;overflow-y:auto">${F.TASTE_CATALOG.flatMap((c) => c.items).map((it) => `<button class="chip" data-mdis="${esc(it)}">${esc(it)}</button>`).join('')}</div>
     <button class="btn block" id="m-save" style="margin-top:16px">Ajouter</button>`, { title: 'Membre du foyer' });
+  $$('[data-mal], [data-mdis]', body).forEach((b) => (b.onclick = () => b.classList.toggle(b.dataset.mal ? 'bad' : 'on')));
   $('#m-save', body).onclick = () => {
     const v = (id) => $('#m-' + id, body).value.trim();
     if (!v('age')) return toast('Indique au moins l’âge');
-    store.update((s) => s.household.push({ id: crypto.randomUUID(), name: v('name'), age: Number(v('age')), sex: v('sex'), weight: Number(v('weight')) || null, height: Number(v('height')) || null, diet: v('diet'), allergies: v('allergies'), dislikes: v('dislikes') }));
+    store.update((s) => s.household.push({ id: crypto.randomUUID(), name: v('name'), age: Number(v('age')), sex: v('sex'), weight: Number(v('weight')) || null, height: Number(v('height')) || null, diet: v('diet'), allergies: $$('[data-mal].bad', body).map((b) => b.dataset.mal).join(', '), dislikes: $$('[data-mdis].on', body).map((b) => b.dataset.mdis).join(', ') }));
     body.close();
     done();
   };

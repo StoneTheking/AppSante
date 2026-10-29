@@ -3,6 +3,8 @@ import * as store from '../store.js';
 import * as C from '../coach.js';
 import * as SP from '../sport.js';
 import * as W from '../workouts.js';
+import * as SC from '../schedule.js';
+import * as N from '../native.js';
 import { summary } from '../context.js';
 import { icon, esc, fmt, donut, sheet, toast, srcLinks, $, $$ } from '../ui.js';
 
@@ -84,7 +86,8 @@ export function render(view, ctx) {
         <div><div class="small" style="font-weight:600">${d.type ? esc(SP.activity(d.type).label) : 'Repos'}</div><div class="tiny muted">${d.type ? `${d.minutes} min · ${SP.INTENSITY[d.intensity].label.toLowerCase()}` : 'récupération'}${d.done.length ? ` · fait : ${d.done.map((w) => `${esc(SP.activity(w.type).label.split(' ')[0].toLowerCase())} ${w.minutes} min`).join(', ')}` : ''}</div></div>
         ${d.matches ? `<span style="color:var(--good)">${icon('ok', 20)}</span>` : d.past && d.type ? '<span class="tiny muted">manqué</span>' : d.type ? `<span class="muted">${icon('right', 16)}</span>` : ''}
       </div>`).join('')}
-      ${srcLinks(['who2020', 'acsm2009', 'schoenfeld2016', 'milanovic2016'])}
+      <button class="btn soft block" id="plan-week" style="margin-top:10px">${icon('calendar', 18)} Planifier ma semaine dans l’agenda</button>
+      ${srcLinks(['who2020', 'acsm2009', 'schoenfeld2016', 'milanovic2016', 'belanger2011'])}
     </div>
 
     <div class="card">
@@ -117,6 +120,7 @@ export function render(view, ctx) {
     $('#other', view).onclick = () => openWorkout(ctx, view, true);
   }
   $('#add', view).onclick = () => openWorkout(ctx, view, false);
+  $('#plan-week', view).onclick = () => planWeekInCalendar(adv.plan);
   $('#guided', view)?.addEventListener('click', () => openSession(ctx, view, { activity: adv.type, minutes: adv.minutes, intensity: adv.intensity, dayIndex: adv.plan.findIndex((d) => d.today) }));
   $$('[data-day]', view).forEach((r) => (r.onclick = () => {
     const d = adv.plan[Number(r.dataset.day)];
@@ -242,4 +246,77 @@ function guided(ctx, view, session, activity, intensity) {
     if (left <= 0) { beep(); go(i + 1); }
   }, 1000);
   go(0);
+}
+
+// ---------- Agenda ----------
+// Android : agenda du téléphone (dont Google Agenda) ; web : fichier .ics ou lien Google Agenda.
+export async function connectCalendar() {
+  try {
+    if (!(await N.calendarAccess())) { toast('Accès à l’agenda refusé'); return false; }
+    const cals = await N.calendarList();
+    if (!cals.length) { toast('Aucun agenda modifiable trouvé'); return false; }
+    const pick = cals.find((c) => c.google && c.primary) || cals.find((c) => c.google) || cals[0];
+    store.update((s) => { s.settings.calendarId = pick.id; s.settings.calendarName = `${pick.name}${pick.account && pick.account !== pick.name ? ` (${pick.account})` : ''}`; });
+    await refreshCalendar();
+    toast(`Agenda connecté : ${pick.name}`);
+    return true;
+  } catch (e) { toast(e.message || 'Agenda indisponible'); return false; }
+}
+
+// Événements des 8 prochains jours, pour éviter les conflits.
+export async function refreshCalendar() {
+  if (!N.isNative || !store.get().settings.calendarId || !(await N.calendarHasAccess())) return;
+  const from = new Date(); from.setHours(0, 0, 0, 0);
+  const evts = await N.calendarEvents(from.getTime(), from.getTime() + 8 * 86400e3).catch(() => []);
+  store.update((s) => { s.calEvents = evts.filter((e) => !(e.title || '').includes('AppSanté')); });
+}
+
+function sessionEvents(plan) {
+  const st = store.get();
+  const p = st.profile;
+  const out = [];
+  for (const d of plan) {
+    if (!d.type || d.matches || (d.past && !d.today)) continue;
+    const date = new Date(d.date + 'T12:00');
+    const dayEvents = st.calEvents.filter((e) => new Date(e.start).toDateString() === date.toDateString());
+    const slot = SC.suggestSlot({ date, duration: d.minutes + 10, intensity: d.intensity, wake: p.wakeTime, bed: p.bedTime, busy: SC.busyBlocks(date, p.work, dayEvents), pref: p.sportPref || 'auto', usualHour: SC.usualHour(st.workouts) });
+    if (!slot) continue;
+    const start = new Date(d.date + 'T00:00'); start.setMinutes(slot.start);
+    if (start < new Date()) continue;
+    const session = W.buildSession({ activity: d.type, minutes: d.minutes, intensity: d.intensity, level: level(st), equipment: equip(st), goal: p.goal, dayIndex: plan.indexOf(d), zones: SP.hrZones(p.birthYear) });
+    const end = new Date(start.getTime() + session.minutes * 60000);
+    const details = session.blocks.map((b) => `${b.title} : ${b.items.map((i) => i.label).join(', ')}`).join('\n') + '\n\nOuvre AppSanté pour le mode guidé.';
+    out.push({ title: `${SP.activity(d.type).label} (${session.minutes} min) · AppSanté`, start, end, details, day: d.day, why: slot.why });
+  }
+  return out;
+}
+
+async function planWeekInCalendar(plan) {
+  const events = sessionEvents(plan);
+  if (!events.length) { toast('Rien à planifier : semaine faite ou pas de créneau libre'); return; }
+  const list = events.map((e) => `<div class="list-item" style="grid-template-columns:auto 1fr"><span class="badge neutral">${e.day.slice(0, 3)} ${SC.hm(e.start.getHours() * 60 + e.start.getMinutes())}</span><div><div class="small" style="font-weight:600">${esc(e.title.split(' · ')[0])}</div>${e.why.length ? `<div class="tiny muted">${esc(e.why.join(', '))}</div>` : ''}</div></div>`).join('');
+  const st = store.get();
+  const body = sheet(`
+    <p class="small muted" style="margin-top:0">Créneaux choisis selon ${st.profile.work?.enabled ? 'tes horaires de travail, ' : ''}${st.calEvents.length ? 'ton agenda, ' : ''}ton heure de coucher et ton heure habituelle. Planifier quand faire son sport augmente nettement les chances de le faire.</p>
+    ${list}
+    ${N.isNative
+      ? `<button class="btn block" id="cal-go" style="margin-top:12px">${icon('calendar', 18)} Ajouter à ${esc(st.settings.calendarName || 'mon agenda')}</button>`
+      : `<button class="btn block" id="ics" style="margin-top:12px">${icon('download', 18)} Télécharger pour Google Agenda (.ics)</button>
+         <button class="btn ghost block" id="gcal" style="margin-top:8px">${icon('calendar', 18)} Ajouter la prochaine séance à Google Agenda</button>
+         <p class="tiny muted">Le fichier .ics s’importe dans Google Agenda (Paramètres → Importer) ou s’ouvre directement sur le téléphone.</p>`}
+    ${srcLinks(['belanger2011'])}`, { title: 'Planifier la semaine' });
+  $('#cal-go', body)?.addEventListener('click', async () => {
+    if (!st.settings.calendarId && !(await connectCalendar())) return;
+    const n = await N.calendarInsert(store.get().settings.calendarId, events.map((e) => ({ title: e.title, details: e.details, start: e.start.getTime(), end: e.end.getTime() }))).catch((err) => { toast(err.message); return 0; });
+    if (n) { toast(`${n} séance(s) ajoutée(s) à ton agenda 📅`); body.close(); }
+  });
+  $('#ics', body)?.addEventListener('click', () => {
+    const blob = new Blob([SC.toIcs(events)], { type: 'text/calendar' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'seances-appsante.ics';
+    a.click();
+    toast('Fichier prêt : ouvre-le pour l’ajouter à ton agenda');
+  });
+  $('#gcal', body)?.addEventListener('click', () => window.open(SC.googleCalendarUrl(events[0]), '_blank'));
 }

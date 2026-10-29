@@ -75,3 +75,25 @@ test('grignotages : bilan de la semaine et conseils sourcés', () => {
   assert.ok(s.advice.some((a) => a.src.includes('bellisle2014')));
   for (const a of s.advice) for (const id of a.src) assert.ok(S.SOURCES[id], id);
 });
+
+import * as G from '../src/gamify.js';
+test('motivation : quêtes, série avec gel, XP et niveaux', () => {
+  const st = { profile: { sex: 'h', birthYear: 1990, height: 180, weight: 80, activityLevel: 'leger', goal: 'maintenir' }, days: {}, meals: [], workouts: [], sleepLog: [], receipts: [] };
+  const good = { modMin: 35, mood: 4, waterMl: 2500, bed: '23:00', wake: '07:00' };
+  for (let i = 1; i <= 9; i++) st.days[G.dayKeyOffset(-i)] = { ...good };
+  delete st.days[G.dayKeyOffset(-4)]; // un jour raté, protégé par le gel gagné après 7 jours ? non : seulement 5 jours avant
+  let s = G.streak(st);
+  assert.equal(s.current, 3); // jours -1..-3
+  assert.equal(s.atRisk, true);
+  st.days[G.dayKeyOffset(0)] = { ...good };
+  s = G.streak(st);
+  assert.equal(s.current, 4);
+  assert.equal(s.todayOk, true);
+  // 14 jours validés puis un trou : le gel protège la série
+  const st2 = { ...st, days: {} };
+  for (let i = 1; i <= 16; i++) if (i !== 3) st2.days[G.dayKeyOffset(-i)] = { ...good };
+  assert.equal(G.streak(st2).current, 15);
+  const p = G.progress(st2);
+  assert.ok(p.xp >= 15 * 40 && p.level >= 3, `xp ${p.xp} niveau ${p.level}`);
+  assert.equal(G.dayGoals(st2, G.dayKeyOffset(-1)).filter((g) => g.done).length, 4);
+});

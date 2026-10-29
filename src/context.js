@@ -9,6 +9,7 @@ import * as D from './digestion.js';
 import * as E from './env.js';
 import { pantryText } from './pantry.js';
 import * as SP from './sport.js';
+import * as G from './gamify.js';
 
 export const taste = () => F.tasteProfile(store.get().profile, store.get().meals);
 
@@ -46,7 +47,7 @@ export function personContext(sm = summary()) {
     `Consommé aujourd'hui : ${Math.round(sm.totToday.kcal)} kcal, protéines ${Math.round(sm.totToday.protein)} g, fibres ${Math.round(sm.totToday.fiber)} g, sucres ${Math.round(sm.totToday.sugar)} g, sodium ${Math.round(sm.totToday.sodium)} mg, fruits & légumes ${Math.round(sm.totToday.fruitVeg)} g.`,
     `Repas du jour : ${meals.join(' ; ') || 'aucun'}`,
     `Foyer : ${F.describeHousehold(profile, st.household)}`,
-    (() => { const t = F.topTastes(taste()); return `Goûts : aime ${[profile.likes, ...t.likes].filter(Boolean).join(', ') || 'non renseigné'} ; n'aime pas ${[profile.dislikes, ...t.dislikes].filter(Boolean).join(', ') || 'non renseigné'} ; cuisines préférées : ${(profile.cuisines || []).join(', ') || 'non renseignées'}.`; })(),
+    (() => { const t = F.topTastes(taste()); const sel = F.tasteLists(profile); return `Goûts : aime ${[...sel.likes, profile.likes, ...t.likes].filter(Boolean).join(', ') || 'non renseigné'} ; évite ${[...sel.dislikes, profile.dislikes, ...t.dislikes].filter(Boolean).join(', ') || 'non renseigné'} ; cuisines préférées : ${(profile.cuisines || []).join(', ') || 'non renseignées'}.`; })(),
     st.pantry.length ? `Garde-manger (d'après les tickets de caisse) : ${pantryText(st.pantry)}` : 'Garde-manger : inconnu',
     sm.env ? `Environnement (${sm.env.place}) : air ${E.aqiLabel(sm.env.aqi).label} (indice européen ${Math.round(sm.env.aqi)}, PM2,5 ${Math.round(sm.env.pm25)} µg/m³), ${Math.round(sm.env.temp)} °C (max ${Math.round(sm.env.tMax)}, nuit ${Math.round(sm.env.tMin)}), UV max ${Math.round(sm.env.uvMax)}, lever ${sm.env.sunrise}, coucher ${sm.env.sunset}${sm.env.pollen[0] ? `, pollen dominant ${sm.env.pollen[0].name} (${Math.round(sm.env.pollen[0].value)} grains/m³)` : ''}.` : 'Environnement : lieu non renseigné',
     (() => { const d = D.digestionSummary(st.stools); if (!d) return 'Transit : non suivi'; const sus = D.suspects(st.stools, st.meals); return `Transit (14 j) : ${d.perWeek} selles/semaine, types Bristol lents ${d.zones.lent}, normaux ${d.zones.ok}, rapides ${d.zones.rapide}${sus.length ? ` ; aliments suspects : ${sus.map((x) => `${x.word} (${x.bad}/${x.total})`).join(', ')}` : ''}.`; })(),
@@ -64,5 +65,10 @@ export async function refreshReminders() {
   const sm = summary();
   const today = C.dailyPlan(sm, st.profile);
   const tomorrow = C.dailyPlan({ ...sm, today: {}, lastNight: null, ctx: { ...sm.ctx, workout: false } }, st.profile);
-  return R.schedule(R.buildReminders([today, tomorrow], rs));
+  const list = R.buildReminders([today, tomorrow], rs);
+  // rappel du soir si la série est en jeu (recalculé à chaque ouverture)
+  const sr = rs.kinds.streak && G.streakReminder(st);
+  const at = new Date(); at.setHours(19, 30, 0, 0);
+  if (sr && at > new Date()) list.push({ at, title: sr.title, body: sr.body, kind: 'streak' });
+  return R.schedule(list.sort((a, b) => a.at - b.at));
 }

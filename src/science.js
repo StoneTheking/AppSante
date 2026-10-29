@@ -100,6 +100,12 @@ export const SOURCES = {
   cramer2013: { t: 'Cramer et al. – Yoga et symptômes dépressifs, méta-analyse (Depress Anxiety 2013)', u: 'https://doi.org/10.1002/da.22166' },
   robinson2013: { t: 'Robinson et al. – Manger distrait (écran) fait manger plus, pendant et après le repas, méta-analyse (Am J Clin Nutr 2013)', u: 'https://doi.org/10.3945/ajcn.112.045245' },
   bellisle2014: { t: 'Bellisle – Grignotage, qualité de l’alimentation et bilan énergétique : c’est la nature du grignotage qui compte (Physiol Behav 2014)', u: 'https://doi.org/10.1016/j.physbeh.2014.03.010' },
+  lally2010: { t: 'Lally et al. – Une habitude met en moyenne 66 jours à devenir automatique (Eur J Soc Psychol 2010)', u: 'https://doi.org/10.1002/ejsp.674' },
+  mazeas2022: { t: 'Mazeas et al. – La gamification augmente l’activité physique, méta-analyse d’essais randomisés (J Med Internet Res 2022)', u: 'https://doi.org/10.2196/26779' },
+  patel2019: { t: 'Patel et al. – Gamification avec engagement et incitations sociales : plus de pas, essai STEP UP (JAMA Intern Med 2019)', u: 'https://doi.org/10.1001/jamainternmed.2019.3505' },
+  harkin2016: { t: 'Harkin et al. – Suivre ses progrès augmente l’atteinte des objectifs, méta-analyse (Psychol Bull 2016)', u: 'https://doi.org/10.1037/bul0000025' },
+  michie2009: { t: 'Michie et al. – L’auto-surveillance est la technique la plus efficace pour l’alimentation et l’activité (Health Psychol 2009)', u: 'https://doi.org/10.1037/a0016136' },
+  belanger2011: { t: 'Bélanger-Gravel et al. – Planifier quand et où faire son sport (« si… alors ») augmente l’activité, méta-analyse (Health Psychol Rev 2013)', u: 'https://doi.org/10.1080/17437199.2011.560095' },
 };
 
 export const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -411,6 +417,12 @@ export const EVIDENCE = [
     ['Pour perdre du poids, l’adhésion compte plus que le type de régime : un plan adapté à tes goûts est un plan que tu suis.', ['dansinger2005']],
     ['La qualité des achats du foyer reflète la qualité de l’alimentation : le chariot est un levier.', ['parker2020', 'perry2024']],
     ['Besoins énergétiques des enfants : de ~1000 kcal (1–3 ans) à ~2000–2700 kcal (15–17 ans).', ['efsa2013energy']],
+  ] },
+  { theme: 'Habitudes & motivation', icon: 'zap', color: 'var(--warn)', facts: [
+    ['Une nouvelle habitude devient automatique en 66 jours en moyenne (18 à 254 selon les personnes) ; rater un jour ne casse pas le processus.', ['lally2010']],
+    ['Suivre ses progrès augmente nettement les chances d’atteindre ses objectifs, surtout quand les progrès sont visibles.', ['harkin2016', 'michie2009']],
+    ['Les mécaniques de jeu (points, séries, niveaux, défis) augmentent l’activité physique, surtout combinées à un engagement et à un soutien social.', ['mazeas2022', 'patel2019']],
+    ['Planifier précisément quand et où tu feras ton sport (« si c’est mardi 18 h, alors je cours ») augmente l’activité réalisée.', ['belanger2011']],
   ] },
   { theme: 'Écrans & santé mentale', icon: 'phone', color: 'var(--c-screen)', facts: [
     ['Limiter les réseaux sociaux à 30 min/jour pendant 3 semaines réduit solitude et symptômes dépressifs (essai contrôlé).', ['hunt2018']],
