@@ -17,7 +17,7 @@ Application Android native **et** application web installable, qui croise **somm
 - noter tes **grignotages en un geste** (18 en-cas courants, raison : faim, ennui, stress, écran…) avec bilan et conseils ;
 - garder un **historique des repas** (recherche, moyennes, plats fréquents) ;
 - suivre ton **transit** (échelle de Bristol) et repérer les aliments à tester ;
-- un **score d'hygiène de vie** expliqué pilier par pilier (sommeil, activité, alimentation, humeur, écrans), avec le poids de chacun et l'action prioritaire ;
+- un **score d'hygiène de vie** expliqué pilier par pilier (sommeil, activité, alimentation, écrans ; l'humeur est suivie à part), avec le poids de chacun et l'action prioritaire ;
 - un **plan du jour qui se recale** sur ce que tu as vraiment mangé (heure, calories restantes, grignotages) et sur ta séance prévue (horaires de travail, agenda) ;
 - des **quêtes quotidiennes, une série et des badges** (façon Duolingo) et de petites animations de récompense ;
 - une **caméra intégrée** qui s'ouvre instantanément pour photographier un repas (choix du type de repas, alcool détecté automatiquement) ;
@@ -30,7 +30,11 @@ Application Android native **et** application web installable, qui croise **somm
 - **ce qui joue sur ton sommeil et ton humeur**, d'après tes propres jours (ex. « tu dors 40 min de plus les nuits qui suivent un jour à plus de 8 000 pas ») ;
 - un plan du jour **modifiable** (détail de chaque étape, étapes masquées ou ajoutées) avec l'heure du **lever et du coucher du soleil** ;
 - des **sources touchables** : ce que l'étude a montré et pourquoi elle appuie le conseil ;
-- des **menus pour une journée** ou pour la semaine, une **semaine type de sport modifiable**, des exercices pour chaque sport avec **tutos vidéo**.
+- des **menus pour une journée** ou pour la semaine, une **semaine type de sport modifiable**, des exercices pour chaque sport avec **tutos vidéo** (ta propre vidéo au choix, exercices retirables) ;
+- une semaine de sport calée sur **ton temps dispo** et ton format préféré (séances courtes et fréquentes ou quelques grosses séances) ;
+- un plan du jour **organisé autour de tes horaires de travail**, dont chaque étape se modifie (nom, heure, note, jours) et dont les rappels suivent tes changements ;
+- des **niveaux** qui montent avec les journées validées et redescendent avec les journées ratées ;
+- une appli **utilisable sans clé API** : menus composés sur le téléphone, ajout rapide des repas ; la clé (payante à l'usage, distincte de l'abonnement Claude Pro) active l'analyse photo, les recettes et le coach IA.
 
 Tout repose sur une **bibliothèque de 115 publications** (OMS, Lancet, BMJ, JAMA, NEJM, Nature…) consultable dans l'appli (Santé → Science) et dans `src/science.js`. Chaque DOI a été vérifié auprès de Crossref.
 
