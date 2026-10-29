@@ -72,13 +72,13 @@ function renderTrack(el, ctx) {
     <div class="card">
       <div class="card-head"><h2>${icon('refresh', 18)} Données automatiques</h2>${st.lastSync ? `<span class="tiny muted">sync. ${new Date(st.lastSync).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>` : ''}</div>
       ${native ? `
-        <p class="small muted" style="margin-top:-6px">Pas, sommeil, fréquence cardiaque, poids et séances via <b>Health Connect</b> ; temps d’écran, réseaux sociaux et déverrouillages via <b>Bien-être numérique</b>.</p>
+        <p class="small muted" style="margin-top:-6px">Health Connect et temps d’écran, synchronisés à chaque ouverture.</p>
         <button class="btn block" id="sync">${icon('refresh', 18)} Synchroniser maintenant</button>
         <div class="grid2" style="margin-top:8px">
           <button class="btn ghost sm" id="hc">${icon('heart', 16)} Autoriser Health Connect</button>
           <button class="btn ghost sm" id="usage">${icon('phone', 16)} Autoriser le temps d’écran</button>
         </div>` : `
-        <p class="small muted" style="margin-top:-6px">Dans le navigateur, Android ne donne pas accès à Bien-être numérique ni à Health Connect. <b>Installe l’application Android</b> (Profil → Application Android) pour une synchronisation automatique, ou :</p>
+        <p class="small muted" style="margin-top:-6px">Importe une capture d’écran (Bien-être numérique, Google Fit…) ou un fichier CSV.</p>
         <div class="grid2">
           <button class="btn soft" id="shot">${icon('image', 18)} Capture d’écran</button>
           <button class="btn ghost" id="csv-btn">${icon('upload', 18)} Import CSV</button>
@@ -222,7 +222,7 @@ function renderFuture(el) {
 
     <div class="card">
       <div class="card-head"><h2>${icon('heart', 18)} Ton risque santé</h2></div>
-      <p class="small muted" style="margin-top:-6px">Risque relatif de mortalité toutes causes comparé à un profil de référence, d’après de grandes méta-analyses.</p>
+      <p class="small muted" style="margin-top:-6px">Risque relatif comparé à un profil de référence.</p>
       <table><tr><th></th>${cur.map((c) => `<th class="num">${c.years === 0 ? 'Auj.' : c.years + ' an' + (c.years > 1 ? 's' : '')}</th>`).join('')}</tr>
         <tr><td><span style="color:var(--series-2)">●</span> Habitudes actuelles</td>${cur.map((c) => `<td class="num">${rrTxt(c.rr)}</td>`).join('')}</tr>
         <tr><td><span style="color:var(--series-1)">●</span> Avec les conseils</td>${imp.map((c) => `<td class="num"><b>${rrTxt(c.rr)}</b></td>`).join('')}</tr></table>
@@ -257,7 +257,7 @@ function renderScience(el) {
   el.innerHTML = `
     <div class="card">
       <div class="card-head"><h2>${icon('book', 18)} Bibliothèque scientifique</h2></div>
-      <p class="small muted" style="margin-top:-6px">${total} résultats clés tirés de ${Object.keys(S.SOURCES).length} publications (OMS, ANSES, Lancet, BMJ, JAMA, Nature…). Ce sont eux qui pilotent tes scores, ton plan du jour, tes projections et le coach.</p>
+      <p class="small muted" style="margin-top:-6px">${total} résultats clés · ${Object.keys(S.SOURCES).length} publications</p>
       <input id="sci-q" type="search" placeholder="Rechercher : sommeil, protéines, café, écrans…" value="${esc(query)}">
     </div>
     <div id="sci-list"></div>

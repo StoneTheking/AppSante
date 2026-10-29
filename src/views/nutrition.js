@@ -42,8 +42,8 @@ function renderDay(el, ctx) {
           ${meter('Fruits & légumes', tot.fruitVeg, t.fruitVeg, 'g', 'var(--primary)')}
         </div>
       </div>
-      ${meter('Sucres libres', tot.sugar, t.sugarMax, 'g max', 'var(--c-mood)', true)}
-      ${meter('Sodium', tot.sodium, t.sodiumMax, 'mg max', 'var(--c-screen)', true)}
+      ${tot.sugar > t.sugarMax * 0.8 ? meter('Sucres libres', tot.sugar, t.sugarMax, 'g max', 'var(--c-mood)', true) : ''}
+      ${tot.sodium > t.sodiumMax * 0.8 ? meter('Sodium', tot.sodium, t.sodiumMax, 'mg max', 'var(--c-screen)', true) : ''}
       ${srcLinks(['who2015sugar', 'who2012sodium', 'reynolds2019', 'aune2017'])}
     </div>
 
@@ -75,7 +75,6 @@ function renderDay(el, ctx) {
       <div class="chips">${Object.entries(P.SLOT_LABEL).map(([k, l]) => `<button class="chip ${k === s ? 'on' : ''}" data-slot="${k}">${l}</button>`).join('')}</div>
       ${sugg.map((m) => `<div class="suggest"><div><div class="ttl">${esc(m.name)}</div><div class="tiny muted">${m.kcal} kcal · ${m.protein} g prot · ${m.fiber} g fibres · ${m.prep} min</div>${m.why.length ? `<div class="why">${esc(m.why.join(' · '))}</div>` : ''}</div>
         <button class="btn sm soft" data-eat="${esc(m.name)}" aria-label="J'ai mangé ça">${icon('plus', 16)}</button></div>`).join('')}
-      <p class="tiny muted">Calculé selon ce qu’il te reste à couvrir aujourd’hui, ton sommeil, ton humeur et ton activité.</p>
     </div>`;
 
   $$('[data-a]', el).forEach((b) => (b.onclick = () => ctx.action(b.dataset.a)));
@@ -101,7 +100,7 @@ function renderMenus(el, ctx, view) {
   el.innerHTML = `
     <div class="card">
       <div class="card-head"><h2>${icon('calendar', 18)} Menus de la semaine</h2></div>
-      <p class="small muted" style="margin-top:-6px">Équilibrés selon tes besoins (${summary().t.kcal} kcal/j), ton régime et tes allergies, avec la liste de courses générée automatiquement.</p>
+      <p class="small muted" style="margin-top:-6px">${summary().t.kcal} kcal/j, adaptés à ton foyer, tes goûts et ton garde-manger.</p>
       <button class="btn block" id="gen-ai">${icon('sparkles', 18)} Créer avec le coach IA</button>
       <button class="btn ghost block" id="gen-local" style="margin-top:8px">${icon('refresh', 18)} Générer rapidement (hors-ligne)</button>
     </div>
@@ -279,7 +278,7 @@ function pantryCard(st) {
   const last = st.receipts.at(-1);
   return `<div class="card">
     <div class="card-head"><h2>${icon('list', 18)} Garde-manger</h2><button class="btn sm soft" id="scan-receipt">${icon('camera', 16)} Ticket</button></div>
-    <p class="small muted" style="margin-top:-6px">Photographie ton ticket de caisse : les articles alimentent tes menus (on cuisine d’abord ce que tu as) et la liste de courses retire ce que tu possèdes déjà.</p>
+    <p class="small muted" style="margin-top:-6px">Photographie ton ticket : tes menus utilisent ce que tu as.</p>
     ${last ? `<div class="note ${last.stats.score >= 65 ? 'good' : last.stats.score >= 45 ? 'warn' : 'bad'}">${icon('cart', 16)}<span>Dernier panier (${esc(last.store || '')} ${esc(last.date)}) : qualité <b>${last.stats.score}/100</b> · ${Math.round(last.stats.fruitVeg * 100)} % fruits & légumes · ${Math.round(last.stats.upf * 100)} % ultra-transformés</span></div>` : ''}
     ${st.pantry.length ? `<div class="chips" style="flex-wrap:wrap;margin-top:10px">${st.pantry.map((p) => `<span class="chip">${esc(p.name)} <span class="muted tiny">${fmt(p.qty)} ${esc(p.unit)}</span><button class="icon-btn" style="width:20px;height:20px;background:none" data-pantry-del="${p.id}" aria-label="Retirer">${icon('x', 12)}</button></span>`).join('')}</div>` : ''}
   </div>`;

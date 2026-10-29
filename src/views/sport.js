@@ -52,8 +52,6 @@ export function render(view, ctx) {
           <div class="stat"><div class="k">${icon('flame', 14)} Dépense des séances</div><div class="v">${fmt(wk.kcal)}<small>kcal</small></div></div>
         </div>
       </div>
-      <p class="tiny muted" style="margin:10px 0 0">Minutes « équivalent modéré » : 1 min intense = 2 min modérées. Repère OMS : 150 à 300 min + 2 séances de renforcement par semaine.</p>
-      ${srcLinks(['who2020'])}
     </div>
 
     <div class="card">
@@ -73,7 +71,7 @@ export function render(view, ctx) {
         <div class="stat"><div class="k">Test de la parole</div><div class="v" style="font-size:.85rem;font-weight:650">${SP.INTENSITY[adv.intensity].talk}</div></div>
         <div class="stat"><div class="k">FC max estimée</div><div class="v" style="font-size:1rem">${zones.max}<small>bpm</small></div></div>
       </div>
-      ${adv.why.slice(0, 3).map((w) => `<div class="small" style="margin:6px 0;color:var(--text-2)">• ${esc(w)}</div>`).join('')}
+      ${adv.why.slice(0, 1).map((w) => `<div class="small" style="margin:6px 0;color:var(--text-2)">• ${esc(w)}</div>`).join('')}
       ${srcLinks([...adv.src, 'tanaka2001', 'sorensen2020', 'knaier2021', 'bruggisser2023'])}
       ${cur ? '' : `<button class="btn block" id="guided" style="margin-top:12px">${icon('list', 18)} Voir la séance et ses exercices</button>
       <div class="grid2" style="margin-top:8px"><button class="btn ghost" id="go">${icon('zap', 18)} Chrono seul</button><button class="btn ghost" id="other">${icon('plus', 18)} Autre séance</button></div>`}
@@ -86,7 +84,6 @@ export function render(view, ctx) {
         <div><div class="small" style="font-weight:600">${d.type ? esc(SP.activity(d.type).label) : 'Repos'}</div><div class="tiny muted">${d.type ? `${d.minutes} min · ${SP.INTENSITY[d.intensity].label.toLowerCase()}` : 'récupération'}${d.done.length ? ` · fait : ${d.done.map((w) => `${esc(SP.activity(w.type).label.split(' ')[0].toLowerCase())} ${w.minutes} min`).join(', ')}` : ''}</div></div>
         ${d.matches ? `<span style="color:var(--good)">${icon('ok', 20)}</span>` : d.past && d.type ? '<span class="tiny muted">manqué</span>' : d.type ? `<span class="muted">${icon('right', 16)}</span>` : ''}
       </div>`).join('')}
-      <p class="tiny muted">Construite pour couvrir les repères OMS, avec 48 h entre deux séances de musculation et du fractionné pour la capacité cardio. ${SP.preferredActivity(st.profile) ? `Ton sport préféré (${esc(st.profile.preferredSport)}) remplace le cardio.` : 'Indique ton sport préféré dans Profil pour l’intégrer.'}</p>
       ${srcLinks(['who2020', 'acsm2009', 'schoenfeld2016', 'milanovic2016'])}
     </div>
 

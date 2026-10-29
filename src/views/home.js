@@ -6,7 +6,6 @@ import * as SL from '../sleep.js';
 import * as N from '../native.js';
 import { aqiLabel } from '../env.js';
 import { icon, esc, fmt, srcLinks, rings, DOMAIN, $$ } from '../ui.js';
-import { SLOT_LABEL } from '../planner.js';
 
 const PLAN_ICONS = { '⚡': 'zap', '🌳': 'leaf', '☀️': 'sunrise', '🍳': 'coffee', '☕': 'coffee', '🥗': 'salad', '🚶': 'steps', '😴': 'bed', '🏃': 'dumbbell', '🍎': 'apple', '🍽️': 'utensils', '📵': 'phone', '🧘': 'brain', '🌙': 'moon' };
 const LEVEL_ICON = { bon: 'ok', attention: 'alert', alerte: 'alert' };
@@ -42,11 +41,8 @@ export function render(view, ctx) {
   const plan = C.dailyPlan(sm, profile);
   let nextIdx = plan.findIndex((p) => (p.min % 1440) >= nowMin);
   if (nextIdx === -1) nextIdx = plan.length;
-  const next = plan[nextIdx];
-  const slot = C.currentSlot(now);
-  const sugg = C.mealSuggestions(sm, profile, slot, taste()).slice(0, 2);
   const order = { alerte: 0, attention: 1, bon: 2 };
-  const ins = C.insights(sm).sort((a, b) => order[a.level] - order[b.level]);
+  const ins = C.insights(sm).sort((a, b) => order[a.level] - order[b.level]).slice(0, 3);
   const t = sm.t, tot = sm.totToday, d = sm.today;
   const water = d.waterMl || 0;
   const visiblePlan = showAllPlan ? plan : plan.slice(Math.max(0, nextIdx - 1), nextIdx + 4);
@@ -55,7 +51,7 @@ export function render(view, ctx) {
   view.innerHTML = `
     ${up ? `<div class="note" style="margin:4px 0 10px">${icon('download', 18)}<span style="flex:1"><b>Mise à jour ${esc(up.latest)} disponible</b><br><span class="tiny">Télécharge puis ouvre le fichier : elle s’installe par-dessus, tes données sont conservées.</span></span><button class="btn sm" data-update>Installer</button></div>` : ''}
     <section class="hero">
-      <div class="hero-kicker"><span>Score santé · 7 jours</span><span>${sm.w.loggedDays}/7 j. renseignés</span></div>
+      <div class="hero-kicker"><span>Score santé · 7 jours</span></div>
       <div class="hero-grid">
         ${rings(sm.scores, sm.scores.global)}
         <div class="legend-rows">
@@ -76,18 +72,13 @@ export function render(view, ctx) {
       <button class="tile" data-act="water"><span class="icon-badge" style="background:color-mix(in srgb,var(--c-water) 16%,transparent);color:var(--c-water)">${icon('water')}</span>${fmt(water / 1000, 1)} L</button>
     </div>
 
-    ${next ? `<div class="card next">
-      <span class="icon-badge" style="background:var(--primary-soft);color:var(--primary)">${icon(PLAN_ICONS[next.icon] || 'clock')}</span>
-      <div><div class="when">À ${next.time} · prochaine étape</div><div class="ttl">${esc(next.title)}</div></div>
-      <button class="icon-btn" data-go="#plan" aria-label="Voir le plan">${icon('right')}</button>
-    </div>` : ''}
 
     <div class="card" id="plan">
       <div class="card-head"><h2>${icon('calendar', 18)} Plan du jour</h2><button class="link" data-toggle-plan>${showAllPlan ? 'Réduire' : 'Tout voir'}</button></div>
       <ul class="timeline">${visiblePlan.map((p) => {
         const i = plan.indexOf(p);
         return `<li class="${i === nextIdx ? 'now' : i < nextIdx ? 'done' : ''}"><span class="t">${p.time}</span><span class="dot">${icon(PLAN_ICONS[p.icon] || 'clock', 16)}</span>
-          <div><div class="ttl">${esc(p.title)}</div>${i >= nextIdx || showAllPlan ? `<div class="txt">${esc(p.text)}</div>${srcLinks(p.src)}` : ''}</div></li>`;
+          <details><summary class="ttl">${esc(p.title)}</summary><div class="txt">${esc(p.text)}</div>${srcLinks(p.src)}</details></li>`;
       }).join('')}</ul>
     </div>
 
@@ -95,19 +86,13 @@ export function render(view, ctx) {
       <div class="card-head"><h2>${icon('salad', 18)} Nutrition du jour</h2><button class="link" data-tab="nutrition">Détails</button></div>
       ${meter('Calories', tot.kcal, t.kcal, 'kcal', 'var(--c-move)', true)}
       ${meter('Protéines', tot.protein, t.protein, 'g', 'var(--c-sleep)')}
-      ${meter('Fibres', tot.fiber, t.fiber, 'g', 'var(--c-food)')}
-      ${meter('Fruits & légumes', tot.fruitVeg, t.fruitVeg, 'g', 'var(--primary)')}
     </div>
 
-    ${sugg.length ? `<div class="card">
-      <div class="card-head"><h2>${icon('chef', 18)} Idées pour le ${SLOT_LABEL[slot].toLowerCase()}</h2></div>
-      ${sugg.map((m) => `<div class="suggest"><div><div class="ttl">${esc(m.name)}</div><div class="tiny muted">${m.kcal} kcal · ${m.protein} g prot · ${m.fiber} g fibres</div>${m.why.length ? `<div class="why">${esc(m.why.slice(0, 2).join(' · '))}</div>` : ''}</div></div>`).join('')}
-    </div>` : ''}
 
     ${ins.length ? `<div class="section-title">Ce que disent tes données</div>
-    <div class="insights">${ins.map((i) => `<article class="insight ${i.level}"><h3><span style="color:var(--${i.level === 'bon' ? 'good' : i.level === 'alerte' ? 'bad' : 'warn'})">${icon(LEVEL_ICON[i.level], 18)}</span>${esc(i.title)}</h3><p>${esc(i.text)}</p>${srcLinks(i.src)}</article>`).join('')}</div>` : ''}
+    <div class="insights">${ins.map((i) => `<article class="insight ${i.level}"><h3><span style="color:var(--${i.level === 'bon' ? 'good' : i.level === 'alerte' ? 'bad' : 'warn'})">${icon(LEVEL_ICON[i.level], 18)}</span>${esc(i.title)}</h3><p>${esc(i.text.split(/(?<=\.)\s/)[0])}</p>${srcLinks(i.src)}</article>`).join('')}</div>` : ''}
 
-    <p class="tiny muted" style="text-align:center;margin-top:18px">Outil d'accompagnement, pas un dispositif médical.</p>`;
+`;
 
   $$('[data-act]', view).forEach((b) => (b.onclick = () => {
     if (b.dataset.act === 'water') {
@@ -121,7 +106,6 @@ export function render(view, ctx) {
   view.querySelector('[data-sleep-cancel]')?.addEventListener('click', () => { SL.cancelSleep(); ctx.syncWidget?.(); render(view, ctx); });
   view.querySelector('[data-env-setup]')?.addEventListener('click', () => ctx.go('profile', () => document.getElementById('loc')?.scrollIntoView({ block: 'center' })));
   view.querySelector('[data-toggle-plan]').onclick = () => { showAllPlan = !showAllPlan; render(view, ctx); };
-  view.querySelector('[data-go="#plan"]')?.addEventListener('click', () => document.getElementById('plan').scrollIntoView({ behavior: 'smooth', block: 'start' }));
 }
 
 // Carte « Je vais dormir » : un appui au coucher, un appui au réveil.
@@ -139,21 +123,20 @@ function sleepCard(st) {
   }
   const h = new Date().getHours();
   // en journée : simple raccourci, la carte complète apparaît le soir
-  if (h >= 6 && h < 19) return `<div class="card next"><span class="icon-badge" style="background:color-mix(in srgb,var(--c-sleep) 16%,transparent);color:var(--c-sleep)">${icon('moon')}</span><div><div class="ttl">Je vais dormir</div><div class="tiny muted">Coucher visé ${esc(p.bedTime)} · un appui au coucher, un au réveil</div></div><button class="btn sm" style="background:var(--c-sleep);color:#0b0f24" data-sleep>${icon('moon', 16)}</button></div>`;
+  if (h >= 6 && h < 19) return `<div class="card next"><span class="icon-badge" style="background:color-mix(in srgb,var(--c-sleep) 16%,transparent);color:var(--c-sleep)">${icon('moon')}</span><div><div class="ttl">Je vais dormir</div><div class="tiny muted">Coucher visé ${esc(p.bedTime)}</div></div><button class="btn sm" style="background:var(--c-sleep);color:#0b0f24" data-sleep>${icon('moon', 16)}</button></div>`;
   const toTarget = SL.minutesToTarget(p.bedTime);
   const reg = SL.regularity();
   const status = toTarget > 30 ? `Coucher visé à ${esc(p.bedTime)}, dans ${Math.floor(toTarget / 60) ? Math.floor(toTarget / 60) + ' h ' : ''}${toTarget % 60} min.` : toTarget >= -30 ? `C’est l’heure visée (${esc(p.bedTime)}) : parfait pour la régularité.` : `${Math.abs(toTarget)} min après ton heure visée (${esc(p.bedTime)}).`;
   return `<section class="sleep-card">
     <div class="between"><span class="tiny muted" style="font-weight:700;letter-spacing:.08em;text-transform:uppercase">Sommeil</span>${reg != null ? `<span class="tiny muted">régularité ±${Math.round(reg)} min</span>` : ''}</div>
     <div style="font-size:1.15rem;font-weight:700;margin:6px 0 2px">${status}</div>
-    <div class="small muted">Un horaire régulier compte plus que la durée pour la santé.</div>
     <button class="btn block" style="margin-top:14px" data-sleep>${icon('moon', 18)} Je vais dormir</button>
     ${srcLinks(['windred2024', 'phillips2017'])}
   </section>`;
 }
 
 function envCard(env, location) {
-  if (!location) return `<div class="card next"><span class="icon-badge" style="background:var(--primary-soft);color:var(--primary)">${icon('leaf')}</span><div><div class="ttl">Air & météo de ton lieu de vie</div><div class="tiny muted">Pollution, pollens, UV et chaleur adaptent ton plan</div></div><button class="icon-btn" data-env-setup aria-label="Configurer">${icon('right')}</button></div>`;
+  if (!location) return `<div class="card next"><span class="icon-badge" style="background:var(--primary-soft);color:var(--primary)">${icon('leaf')}</span><div><div class="ttl">Air & météo</div><div class="tiny muted">Choisis ta ville</div></div><button class="icon-btn" data-env-setup aria-label="Configurer">${icon('right')}</button></div>`;
   if (!env) return '';
   const aq = aqiLabel(env.aqi);
   const col = aq.level === 'bon' ? 'var(--good)' : aq.level === 'moyen' ? 'var(--warn)' : 'var(--bad)';
@@ -165,7 +148,5 @@ function envCard(env, location) {
       <div class="stat"><div class="k" style="justify-content:center">UV max</div><div class="v">${Math.round(env.uvMax)}</div><div class="tiny muted">${env.uvMax >= 6 ? 'élevé' : env.uvMax >= 3 ? 'modéré' : 'faible'}</div></div>
       <div class="stat"><div class="k" style="justify-content:center">Pollen</div><div class="v">${env.pollen[0] ? Math.round(env.pollen[0].value) : 0}</div><div class="tiny muted">${env.pollen[0] ? esc(env.pollen[0].name) : 'faible'}</div></div>
     </div>
-    <div class="tiny muted" style="margin-top:8px">PM2,5 ${fmt(env.pm25, 1)} µg/m³ (repère OMS 24 h : 15) · lever ${env.sunrise} · coucher ${env.sunset}</div>
-    ${srcLinks(['who2021air'])}
   </div>`;
 }

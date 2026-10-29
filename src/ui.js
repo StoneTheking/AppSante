@@ -42,7 +42,7 @@ export function toast(msg, ms = 2600) {
 
 export function srcLinks(ids = []) {
   const links = ids.map((id) => S.SOURCES[id] && `<a href="${S.SOURCES[id].u}" target="_blank" rel="noopener">${esc(S.SOURCES[id].t.split(' – ')[0])}</a>`).filter(Boolean);
-  return links.length ? `<div class="src">${icon('book', 12)} ${links.join(' · ')}</div>` : '';
+  return links.length ? `<details class="src"><summary>${icon('book', 12)} ${links.length} source${links.length > 1 ? 's' : ''}</summary><div>${links.join(' · ')}</div></details>` : '';
 }
 
 // Feuille modale montant du bas de l'écran. Renvoie l'élément de contenu ; close() la ferme.

@@ -217,6 +217,8 @@ input[type='range'] { padding: 0; accent-color: var(--primary); background: none
 .note.bad { background: var(--bad-soft); }
 .note.good { background: var(--good-soft); }
 .src { font-size: 0.72rem; color: var(--muted); margin-top: 6px; }
+.src summary { display: inline-flex; gap: 4px; align-items: center; cursor: pointer; opacity: 0.8; }
+.src[open] summary { margin-bottom: 4px; }
 .src a { color: inherit; }
 
 /* ---------- Listes ---------- */

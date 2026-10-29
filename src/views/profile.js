@@ -60,7 +60,6 @@ export function render(view, ctx) {
 
     <div class="section-title">Goûts</div>
     <div class="card">
-      <p class="small muted" style="margin-top:0">Un plan qui te plaît est un plan que tu suis : l’adhésion compte plus que le type de régime. Les étoiles données à tes repas affinent aussi tes goûts.</p>
       <label class="lbl">J’aime (aliments, plats)</label>${inp('likes', 'text', 'placeholder="ex. saumon, curry, pâtes, avocat"')}
       <label class="lbl">Je n’aime pas</label>${inp('dislikes', 'text', 'placeholder="ex. brocolis, coriandre, abats"')}
       <label class="lbl">Cuisines préférées</label>
@@ -71,7 +70,6 @@ export function render(view, ctx) {
 
     <div class="section-title">Foyer & repas en famille</div>
     <div class="card">
-      <p class="small muted" style="margin-top:0">Les menus, quantités et la liste de courses s’adaptent à tout le foyer (besoins des enfants selon l’EFSA, allergies et régimes de chacun).</p>
       ${st.household.map((m) => `<div class="member"><span class="avatar">${esc((m.name || '?')[0].toUpperCase())}</span><div><b>${esc(m.name || 'Membre')}</b><div class="tiny muted">${m.age} ans · ~${F.memberKcal(m)} kcal/j${m.allergies ? ` · allergies : ${esc(m.allergies)}` : ''}${m.diet && m.diet !== 'omnivore' ? ` · ${esc(m.diet)}` : ''}</div></div><button class="icon-btn" data-member-del="${m.id}" aria-label="Retirer">${icon('trash', 14)}</button></div>`).join('')}
       <button class="btn soft block" id="add-member" style="margin-top:10px">${icon('users', 18)} Ajouter un membre</button>
       ${srcLinks(['hammons2011', 'efsa2013energy'])}
@@ -79,7 +77,6 @@ export function render(view, ctx) {
 
     <div class="section-title">Lieu de vie</div>
     <div class="card" id="loc">
-      <p class="small muted" style="margin-top:0">Qualité de l’air, pollens, UV, chaleur et heures de soleil adaptent ton plan (sport dehors ou dedans, meilleur créneau, conseils sommeil).</p>
       ${st.location ? `<div class="between"><b>${icon('pin', 16)} ${esc(st.location.name)}</b><button class="btn sm ghost" id="loc-clear">Changer</button></div>` : `
       <div class="row" style="flex-wrap:nowrap"><input id="city" placeholder="Ta ville…"><button class="btn" id="city-go">${icon('arrow', 18)}</button></div>
       <button class="btn ghost block" id="geo" style="margin-top:8px">${icon('pin', 18)} Utiliser ma position</button>
@@ -103,7 +100,7 @@ export function render(view, ctx) {
 
     <div class="section-title">Intelligence artificielle</div>
     <div class="card">
-      <p class="small muted" style="margin-top:0">Analyse photo, lecture de captures, menus et coach utilisent Claude (Anthropic). Crée une clé sur <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> ; elle reste sur ce téléphone.</p>
+      <p class="small muted" style="margin-top:0">Clé à créer sur <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> (stockée sur ce téléphone).</p>
       <label class="lbl">Clé API</label><input id="key" type="password" autocomplete="off" placeholder="sk-ant-…" value="${esc(st.settings.apiKey)}">
       <label class="between" style="flex-wrap:nowrap;margin-top:14px"><span><b class="small">Recherche scientifique en ligne</b><div class="tiny muted">Le coach peut consulter PubMed, Cochrane, OMS, ANSES, Lancet, BMJ… (coût API légèrement supérieur)</div></span><span class="switch"><input type="checkbox" id="web" ${st.settings.webSearch ? 'checked' : ''}><span></span></span></label>
       <label class="lbl">Modèle</label><select id="model">${AI.MODELS.map((m) => `<option value="${m.id}" ${st.settings.model === m.id ? 'selected' : ''}>${m.label}</option>`).join('')}</select>
@@ -111,7 +108,6 @@ export function render(view, ctx) {
 
     <div class="section-title">Mes données</div>
     <div class="card">
-      <p class="small muted" style="margin-top:0">Tout est stocké localement sur ton téléphone.</p>
       <div class="grid2"><button class="btn ghost" id="exp">${icon('download', 18)} Exporter</button><button class="btn ghost" id="imp">${icon('upload', 18)} Restaurer</button></div>
       <div class="grid2" style="margin-top:10px"><button class="btn ghost" id="demo">${icon('sparkles', 18)} Démo</button><button class="btn danger" id="reset">${icon('trash', 18)} Tout effacer</button></div>
       <input id="imp-file" type="file" accept=".json,application/json" hidden>
