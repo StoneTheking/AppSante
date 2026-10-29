@@ -14,6 +14,7 @@ Application Android native **et** application web installable, qui croise **somm
 - remplir ton **garde-manger en photographiant ton ticket de caisse** (qualité du panier, menus qui utilisent ce que tu as, liste de courses qui l'en déduit) ;
 - cuisiner **pour toute la famille** (besoins des enfants, allergies et régimes de chacun) ;
 - s'adapter **à tes goûts** (aimés, détestés, cuisines, et notes ★ données à tes repas) ;
+- noter tes **grignotages en un geste** (18 en-cas courants, raison : faim, ennui, stress, écran…) avec bilan et conseils ;
 - garder un **historique des repas** (recherche, moyennes, plats fréquents) ;
 - suivre ton **transit** (échelle de Bristol) et repérer les aliments mal tolérés.
 

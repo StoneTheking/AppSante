@@ -58,3 +58,20 @@ test('environnement : alertes pollution et chaleur sourcées', () => {
   assert.equal(E.bestOutdoorHour(env, 7 * 60, 20 * 60).hour, 8);
   for (const i of ins) for (const id of i.src) assert.ok(S.SOURCES[id], id);
 });
+
+import * as SN from '../src/snacks.js';
+test('grignotages : bilan de la semaine et conseils sourcés', () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const meals = [
+    { date: today, time: '16:00', title: 'Biscuits', snack: true, snackId: 'biscuits', reason: 'ecran', nutrients: { kcal: 115 } },
+    { date: today, time: '22:00', title: 'Chips', snack: true, snackId: 'chips', reason: 'ecran', nutrients: { kcal: 160 } },
+    { date: today, time: '12:30', title: 'Déjeuner', nutrients: { kcal: 700 } },
+  ];
+  const s = SN.snackSummary(meals);
+  assert.equal(s.count, 2);
+  assert.equal(s.kcal, 275);
+  assert.equal(s.topReason[0], 'ecran');
+  assert.ok(s.advice.some((a) => a.src.includes('robinson2013')));
+  assert.ok(s.advice.some((a) => a.src.includes('bellisle2014')));
+  for (const a of s.advice) for (const id of a.src) assert.ok(S.SOURCES[id], id);
+});

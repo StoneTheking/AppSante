@@ -9,13 +9,14 @@ import * as SL from '../sleep.js';
 import * as N from '../native.js';
 import * as D from '../digestion.js';
 import * as PT from '../pantry.js';
+import * as SN from '../snacks.js';
 
 const VERDICT = { bon: 'Bon pour toi', moyen: 'Moyen', a_limiter: 'À limiter' };
 
 export function addMeal(m) {
   const now = new Date();
   store.update((s) => s.meals.push({ id: crypto.randomUUID(), date: store.today(), time: now.toTimeString().slice(0, 5), slot: C.currentSlot(now), ...m }));
-  toast('Repas enregistré ✅');
+  toast(m.snack ? `${m.title} : ajouté` : 'Repas enregistré ✅', 1200);
 }
 
 export function openAddMenu(ctx) {
@@ -23,6 +24,7 @@ export function openAddMenu(ctx) {
     <div class="action-grid">
       ${[
         ['photo', 'camera', 'var(--c-food)', 'Photo de l’assiette', 'L’IA estime calories et nutriments'],
+        ['snack', 'apple', 'var(--c-mood)', 'Grignotage', 'En un geste'],
         ['scan', 'barcode', 'var(--c-move)', 'Scanner un produit', 'Nutri-Score, additifs, NOVA'],
         ['checkin', 'smile', 'var(--c-mood)', 'Check-in', 'Humeur, énergie, sommeil'],
         ['sync', 'refresh', 'var(--c-screen)', 'Synchroniser', 'Pas, sommeil, temps d’écran'],
@@ -369,4 +371,36 @@ export async function openReceipt(ctx) {
   } catch (e) {
     el.innerHTML = `<div class="note bad">${icon('alert', 18)}<span>${esc(AI.friendlyError(e))}</span></div>`;
   }
+}
+
+// ---------- Grignotages : ajout en un geste ----------
+export function openSnack(ctx) {
+  let qty = 1, reason = null;
+  const body = sheet(`<div id="sn"></div>`, { title: 'Grignotage', onClose: () => ctx.render() });
+  const el = $('#sn', body);
+  const draw = () => {
+    const today = store.mealsOn().filter((m) => m.snack);
+    const kcal = today.reduce((a, m) => a + (m.nutrients?.kcal || 0), 0);
+    el.innerHTML = `
+      <div class="between small muted" style="margin-bottom:8px"><span>Aujourd’hui : <b style="color:var(--text)">${today.length}</b> grignotage(s) · ${fmt(kcal)} kcal</span>
+        <div class="stepper" style="width:118px"><button data-q="-1" aria-label="Moins">−</button><input value="×${qty}" readonly aria-label="Quantité"><button data-q="1" aria-label="Plus">+</button></div></div>
+      <div class="chips">${SN.REASONS.map(([k, l]) => `<button class="chip ${reason === k ? 'on' : ''}" data-r="${k}">${l}</button>`).join('')}</div>
+      <div class="snack-grid">${SN.SNACKS.map((s) => `<button data-s="${s.id}" class="${s.ok ? 'ok' : ''}"><span class="em">${s.emoji}</span><b>${esc(s.label)}</b><span>${Math.round(s.n.kcal * qty)} kcal</span></button>`).join('')}</div>
+      ${today.length ? `<div class="list" style="margin-top:10px">${today.map((m) => `<div class="between small" style="padding:8px 0;border-top:1px solid var(--line)"><span>${esc(m.time)} · ${esc(m.title)}</span><button class="icon-btn" data-del="${m.id}" aria-label="Retirer">${icon('x', 14)}</button></div>`).join('')}</div>` : ''}
+      <button class="btn ghost block" id="other" style="margin-top:10px">${icon('barcode', 18)} Autre : scanner ou photo</button>`;
+    $$('[data-q]', el).forEach((b) => (b.onclick = () => { qty = Math.max(1, Math.min(5, qty + Number(b.dataset.q))); draw(); }));
+    $$('[data-r]', el).forEach((b) => (b.onclick = () => { reason = reason === b.dataset.r ? null : b.dataset.r; draw(); }));
+    $$('[data-s]', el).forEach((b) => (b.onclick = () => {
+      const s = SN.snackById(b.dataset.s);
+      const nutrients = Object.fromEntries(Object.entries(s.n).map(([k, v]) => [k, Math.round(v * qty * 10) / 10]));
+      addMeal({ title: `${s.label}${qty > 1 ? ` ×${qty}` : ''}`, nutrients, nova: s.nova, snack: true, snackId: s.id, reason, verdict: s.ok ? 'bon' : s.nova >= 4 ? 'a_limiter' : 'moyen', quality: s.ok ? 80 : s.nova >= 4 ? 30 : 50 });
+      if (s.alcohol) store.setDay(store.today(), { alcohol: (store.getDay().alcohol || 0) + qty });
+      navigator.vibrate?.(15);
+      qty = 1;
+      draw();
+    }));
+    $$('[data-del]', el).forEach((b) => (b.onclick = () => { store.update((x) => (x.meals = x.meals.filter((m) => m.id !== b.dataset.del))); draw(); }));
+    $('#other', el).onclick = () => { body.close(); setTimeout(() => openScanner(ctx), 250); };
+  };
+  draw();
 }

@@ -7,6 +7,7 @@ import { summary, personContext, taste } from '../context.js';
 import * as S from '../science.js';
 import * as D from '../digestion.js';
 import { tokens } from '../family.js';
+import * as SN from '../snacks.js';
 import { icon, esc, fmt, segmented, donut, toast, sheet, srcLinks, $, $$ } from '../ui.js';
 import { meter } from './home.js';
 import { addMeal } from './actions.js';
@@ -53,13 +54,15 @@ function renderDay(el, ctx) {
       <button class="btn soft" data-a="manual">${icon('pencil', 18)} Manuel</button>
     </div>
 
+    ${snackCard(st)}
+
     <div class="card">
       <div class="card-head"><h2>${icon('utensils', 18)} Journal du jour</h2><span class="muted small">${meals.length} repas</span></div>
       ${meals.length ? `<div class="list">${meals.map((m) => `
         <div class="list-item">
           ${m.thumb ? `<img class="thumb" src="${esc(m.thumb)}" alt="">` : `<span class="thumb">${icon('utensils')}</span>`}
           <div><div class="ttl">${esc(m.title)}</div><div class="tiny muted">${esc(m.time)} · ${fmt(m.nutrients?.kcal)} kcal · P ${fmt(m.nutrients?.protein)} g · fibres ${fmt(m.nutrients?.fiber)} g</div>
-            ${m.verdict ? `<span class="badge ${m.verdict}" style="margin-top:4px">${VERDICT[m.verdict]}${m.nutriscore ? ' · Nutri-Score ' + m.nutriscore.toUpperCase() : ''}</span>` : ''}</div>
+            ${m.snack ? '<span class="badge neutral" style="margin-top:4px;margin-right:4px">grignotage</span>' : ''}${m.verdict ? `<span class="badge ${m.verdict}" style="margin-top:4px">${VERDICT[m.verdict]}${m.nutriscore ? ' · Nutri-Score ' + m.nutriscore.toUpperCase() : ''}</span>` : ''}</div>
           <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">${stars(m)}<button class="icon-btn" data-del="${m.id}" aria-label="Supprimer">${icon('trash', 16)}</button></div>
         </div>`).join('')}</div>` : `<div class="empty">${icon('camera', 28)}<p>Aucun repas aujourd'hui.<br>Photographie ton assiette ou scanne un produit.</p></div>`}
     </div>
@@ -78,6 +81,7 @@ function renderDay(el, ctx) {
     </div>`;
 
   $$('[data-a]', el).forEach((b) => (b.onclick = () => ctx.action(b.dataset.a)));
+  $('#add-snack', el).onclick = () => ctx.action('snack');
   $$('[data-slot]', el).forEach((b) => (b.onclick = () => { slot = b.dataset.slot; renderDay(el, ctx); }));
   bindStars(el, () => renderDay(el, ctx));
   $$('[data-del]', el).forEach((b) => (b.onclick = () => { store.update((x) => (x.meals = x.meals.filter((m) => m.id !== b.dataset.del))); renderDay(el, ctx); }));
@@ -281,5 +285,20 @@ function pantryCard(st) {
     <p class="small muted" style="margin-top:-6px">Photographie ton ticket : tes menus utilisent ce que tu as.</p>
     ${last ? `<div class="note ${last.stats.score >= 65 ? 'good' : last.stats.score >= 45 ? 'warn' : 'bad'}">${icon('cart', 16)}<span>Dernier panier (${esc(last.store || '')} ${esc(last.date)}) : qualité <b>${last.stats.score}/100</b> · ${Math.round(last.stats.fruitVeg * 100)} % fruits & légumes · ${Math.round(last.stats.upf * 100)} % ultra-transformés</span></div>` : ''}
     ${st.pantry.length ? `<div class="chips" style="flex-wrap:wrap;margin-top:10px">${st.pantry.map((p) => `<span class="chip">${esc(p.name)} <span class="muted tiny">${fmt(p.qty)} ${esc(p.unit)}</span><button class="icon-btn" style="width:20px;height:20px;background:none" data-pantry-del="${p.id}" aria-label="Retirer">${icon('x', 12)}</button></span>`).join('')}</div>` : ''}
+  </div>`;
+}
+
+// ---------- Grignotages ----------
+function snackCard(st) {
+  const sum = SN.snackSummary(st.meals);
+  const reasonLabel = Object.fromEntries(SN.REASONS);
+  return `<div class="card">
+    <div class="card-head"><h2>${icon('apple', 18)} Grignotages</h2><button class="btn sm soft" id="add-snack">${icon('plus', 16)} Ajouter</button></div>
+    <div class="kpi-row">
+      <div class="stat"><div class="k">7 jours</div><div class="v">${sum.count}</div></div>
+      <div class="stat"><div class="k">Calories</div><div class="v">${fmt(sum.kcal)}<small>${sum.share ? ` · ${Math.round(sum.share * 100)} %` : ''}</small></div></div>
+      <div class="stat"><div class="k">Raison n°1</div><div class="v" style="font-size:.95rem">${sum.topReason ? esc(reasonLabel[sum.topReason[0]]) : '—'}</div></div>
+    </div>
+    ${sum.advice.slice(0, 2).map((a) => `<div class="small" style="margin-top:8px;color:var(--text-2)">• ${esc(a.text)}</div>${srcLinks(a.src)}`).join('')}
   </div>`;
 }

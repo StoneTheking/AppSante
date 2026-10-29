@@ -48,6 +48,7 @@ const ctx = {
     else if (a === 'sleep') A.openSleep(ctx);
     else if (a === 'stool') A.openStool(ctx);
     else if (a === 'receipt') A.openReceipt(ctx);
+    else if (a === 'snack') A.openSnack(ctx);
     else if (a === 'workout') go('sport', () => Sport.openWorkout(ctx, $('#view'), !store.get().workoutNow));
     else if (a === 'menus') go('nutrition', () => { $('[data-seg="nut"][data-v="menus"]')?.click(); });
     else if (a === 'sync') { Health.openSection('suivi'); go('health'); }

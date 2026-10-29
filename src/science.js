@@ -98,6 +98,8 @@ export const SOURCES = {
   lauersen2014: { t: 'Lauersen et al. – Le renforcement musculaire divise par 3 le risque de blessure sportive ; l’étirement seul n’en protège pas (Br J Sports Med 2014)', u: 'https://doi.org/10.1136/bjsports-2013-092538' },
   schoenfeld2017: { t: 'Schoenfeld et al. – ≥ 10 séries par muscle et par semaine pour maximiser le gain musculaire (J Sports Sci 2017)', u: 'https://doi.org/10.1080/02640414.2016.1210197' },
   cramer2013: { t: 'Cramer et al. – Yoga et symptômes dépressifs, méta-analyse (Depress Anxiety 2013)', u: 'https://doi.org/10.1002/da.22166' },
+  robinson2013: { t: 'Robinson et al. – Manger distrait (écran) fait manger plus, pendant et après le repas, méta-analyse (Am J Clin Nutr 2013)', u: 'https://doi.org/10.3945/ajcn.112.045245' },
+  bellisle2014: { t: 'Bellisle – Grignotage, qualité de l’alimentation et bilan énergétique : c’est la nature du grignotage qui compte (Physiol Behav 2014)', u: 'https://doi.org/10.1016/j.physbeh.2014.03.010' },
 };
 
 export const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -384,6 +386,8 @@ export const EVIDENCE = [
     ['Manger plus tôt dans la journée améliore la sensibilité à l’insuline et la tension, même sans perte de poids.', ['sutton2018']],
     ['Déjeuner tardif (après 15 h) : perte de poids moins efficace à apports égaux.', ['garaulet2013']],
     ['Manger tard augmente la faim, réduit la dépense énergétique et favorise le stockage des graisses.', ['vujovic2022']],
+    ['Grignoter n’est pas un problème en soi : ce sont les en-cas gras, sucrés ou salés qui s’ajoutent aux repas sans réduire la faim ensuite ; fruits, yaourt nature et oléagineux rassasient mieux.', ['bellisle2014']],
+    ['Manger devant un écran ou distrait fait manger davantage, sur le moment et au repas suivant.', ['robinson2013']],
     ['Le jeûne intermittent 16:8 n’a pas fait mieux qu’une répartition classique pour perdre du poids.', ['lowe2020']],
     ['Une marche de 10–15 min après le repas réduit nettement le pic de glycémie.', ['buffey2022']],
   ] },
