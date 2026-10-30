@@ -194,7 +194,11 @@ export async function syncHealth(days = 7) {
   const range = { startDate: start.toISOString(), endDate: end.toISOString() };
   const out = {};
   const day = (k) => (out[k] ||= {});
-  const safe = (p) => p.catch(() => null);
+  // Chaque lecture qui échoue est notée (rapport affiché dans l'appli) au lieu d'être ignorée en silence.
+  const errors = {};
+  let qi = 0;
+  const NAMES = ['pas', 'cœur repos', 'variabilité', 'poids', 'sommeil', 'séances', 'distance', 'calories', 'cœur', 'relevés de pas', 'dépense totale', 'étages', 'oxygène', 'respiration', 'VO2max', 'masse grasse'];
+  const safe = (p) => { const name = NAMES[qi++]; return timeout(p, 15000, 'pas de réponse').catch((e) => { errors[name] = e.message || String(e); return null; }); };
 
   const [steps, rhr, hrv, weight, sleep, workouts, dist, active, hr, stepRecs, total, floors, spo2, resp, vo2, fat] = await Promise.all([
     safe(H.queryAggregated({ dataType: 'steps', ...range, bucket: 'day', aggregation: 'sum' })),
@@ -223,6 +227,8 @@ export async function syncHealth(days = 7) {
   for (const s of active?.samples || []) if (s.value) day(localKey(new Date(s.startDate))).activeKcalHC = Math.round(s.value);
   for (const s of hr?.samples || []) if (s.value) Object.assign(day(localKey(new Date(s.startDate))), { hrAvg: Math.round(s.values?.average ?? s.value), hrMin: s.values?.min != null ? Math.round(s.values.min) : undefined, hrMax: s.values?.max != null ? Math.round(s.values.max) : undefined });
   for (const [k, v] of Object.entries(perDay(stepRecs?.samples, walkMinutes))) if (v) day(k).walkMin = v;
+  // Repli : si le total agrégé manque (ou est plus faible), on additionne les relevés de pas de la source la plus complète.
+  for (const [k, v] of Object.entries(perDay(stepRecs?.samples, bestSourceSum))) if (v && !(out[k]?.steps >= v)) Object.assign(day(k), { steps: Math.round(v), stepsSource: 'Health Connect' });
   for (const [k, v] of Object.entries(perDay(total?.samples, bestSourceSum))) if (v) day(k).totalKcalHC = Math.round(v);
   for (const [k, v] of Object.entries(perDay(floors?.samples, bestSourceSum))) if (v) day(k).floors = Math.round(v);
   const last = (arr, f) => { for (const s of arr || []) f(day(localKey(new Date(s.startDate))), s.value); };
@@ -255,7 +261,11 @@ export async function syncHealth(days = 7) {
     kcal: w.totalEnergyBurned ? Math.round(w.totalEnergyBurned) : undefined,
     source: w.sourceName ? `Health Connect · ${w.sourceName}` : 'Health Connect',
   }));
-  return { days: out, workouts: sessions };
+  const tk = localKey(new Date());
+  const srcToday = [...new Set((stepRecs?.samples || []).filter((x) => localKey(new Date(x.startDate)) === tk).map((x) => x.sourceName || x.sourceId).filter(Boolean))];
+  const lastRec = (stepRecs?.samples || []).reduce((a, x) => (x.endDate > a ? x.endDate : a), '');
+  const report = { at: Date.now(), todaySteps: out[tk]?.steps ?? 0, records: stepRecs?.samples?.length ?? null, sources: srcToday, lastStep: lastRec || null, errors };
+  return { days: out, workouts: sessions, report };
 }
 
 // ---------- Bien-être numérique (UsageStatsManager) ----------

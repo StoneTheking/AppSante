@@ -45,6 +45,7 @@ export async function syncAll({ silent = false } = {}) {
       merge(h.days);
       h.workouts.forEach((w) => SP.addWorkout(w));
       hcSteps = Object.values(h.days).some((d) => d.steps);
+      store.update((s) => { s.hcReport = h.report; });
       results.push(`Health Connect : ${Object.keys(h.days).length} jour(s)${h.workouts.length ? `, ${h.workouts.length} séance(s)` : ''}`);
     }
   } catch (e) { if (!silent) results.push('Health Connect : ' + (e.message || e)); }
@@ -112,6 +113,19 @@ function watchStats(d) {
   return items.length ? `${section('heart', 'Cœur et forme', 'var(--bad)', '<span class="tiny muted">montre · Samsung Health</span>')}<div class="ro-grid">${items.join('')}</div>` : '';
 }
 
+// Ce que Health Connect a réellement renvoyé à la dernière synchro (pour comprendre des pas qui ne bougent pas).
+function hcReportLine(r) {
+  const hm = (t) => new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const btn = `<button class="btn sm ghost" id="hc-sync">${icon('refresh', 14)} Synchroniser</button>`;
+  if (!r) return `<div class="between" style="margin:-2px 0 6px"><span class="tiny muted">Pas encore synchronisé.</span>${btn}</div>`;
+  const errs = Object.entries(r.errors || {});
+  const txt = r.todaySteps
+    ? `Aujourd’hui : <b>${fmt(r.todaySteps)} pas</b> reçus${r.sources?.length ? ` de ${esc(r.sources.join(', '))}` : ''}${r.lastStep ? ` (dernier relevé ${hm(r.lastStep)})` : ''}.`
+    : `<span style="color:var(--warn)">Aucun pas reçu de Health Connect aujourd’hui.</span> Dans Samsung Health → Paramètres → Health Connect, autorise l’<b>écriture</b> des pas ; Samsung Health les envoie ensuite toutes les quelques minutes à quelques heures.`;
+  return `<div style="margin:-2px 0 6px"><div class="between" style="gap:8px;align-items:flex-start"><span class="tiny muted">${txt} Synchro ${hm(r.at)}.</span>${btn}</div>
+    ${errs.length ? `<details class="tiny muted"><summary>${errs.length} lecture(s) en erreur</summary>${errs.map(([k, v]) => `${esc(k)} : ${esc(v)}`).join('<br>')}</details>` : ''}</div>`;
+}
+
 // Le compteur du téléphone ne connaît pas les pas faits avant le premier relevé : on l'indique.
 function stepsSince(st) {
   const ss = st.stepSamples || [], d0 = new Date().setHours(0, 0, 0, 0);
@@ -134,7 +148,7 @@ function sourcesCard(st) {
     <div class="card-head"><h2>${icon('refresh', 18)} Données du téléphone</h2>${st.lastSync ? `<span class="tiny muted">à jour ${new Date(st.lastSync).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>` : ''}</div>
     <p class="tiny muted" style="margin-top:-6px">Synchronisées automatiquement à chaque ouverture de l’application.</p>
     ${line('heart', 'Health Connect', hc, d?.ok ? (d.missing?.length ? `<button class="btn sm soft" id="hc">+ de données</button>` : '') : `<button class="btn sm soft" id="hc">${d?.reason === 'unavailable' || d?.reason === 'update' ? 'Pourquoi ?' : 'Autoriser'}</button>`)}
-    ${d?.ok ? `<p class="tiny muted" style="margin:-4px 0 6px">Samsung Health, Google Fit ou ta montre envoient leurs données via Health Connect : pas, marche, distance, calories, cœur, sommeil, séances.</p>` : ''}
+    ${d?.ok ? hcReportLine(st.hcReport) : ''}
     ${st.hcSteps ? line('steps', 'Pas', ['ok', 'fournis par Health Connect (Samsung Health, montre…)']) : line('steps', 'Podomètre du téléphone', st.stepsAccess ? ['ok', stepsSince(st)] : ['muted', d?.ok ? 'inutile (Health Connect)' : 'non activé'], st.stepsAccess || d?.ok ? '' : `<button class="btn sm soft" id="steps-on">Activer</button>`)}
     ${line('phone', 'Temps d’écran', st.usageOk ? ['ok', 'autorisé'] : ['warn', 'non autorisé'], st.usageOk ? '' : `<button class="btn sm soft" id="usage">Autoriser</button>`)}
     <div id="sync-res" class="small" style="margin-top:8px"></div>
@@ -236,6 +250,14 @@ function renderTrack(el, ctx) {
       if (!store.get().healthDiag?.ok) return openHealthHelp(store.get().healthDiag, re);
       toast('Health Connect synchronisé ✅');
       re();
+    });
+    $('#hc-sync', el)?.addEventListener('click', async (e) => {
+      e.target.closest('button').disabled = true;
+      $('#sync-res', el).innerHTML = '<span class="spinner"></span> Synchronisation…';
+      await syncAll();
+      if (el.isConnected) re();
+      const r = store.get().hcReport;
+      toast(r?.todaySteps ? `${fmt(r.todaySteps)} pas aujourd’hui ✅` : 'Synchronisé, mais aucun pas reçu aujourd’hui');
     });
     $('#steps-on', el)?.addEventListener('click', async () => {
       const ok = await N.stepsAccess();

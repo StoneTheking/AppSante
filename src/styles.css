@@ -665,6 +665,6 @@ span.qcam-side { background: none; }
 .streak-btn.cold svg { color: var(--muted); fill: none; }
 .swipe-l { animation: swipeL .32s cubic-bezier(.2, .8, .2, 1); }
 .swipe-r { animation: swipeR .32s cubic-bezier(.2, .8, .2, 1); }
-@keyframes swipeL { from { transform: translateX(28px); opacity: .4; } }
-@keyframes swipeR { from { transform: translateX(-28px); opacity: .4; } }
+@keyframes swipeL { from { transform: translateX(36px); } }
+@keyframes swipeR { from { transform: translateX(-36px); } }
 @media (prefers-reduced-motion: reduce) { .swipe-l, .swipe-r { animation: none; } }

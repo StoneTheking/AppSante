@@ -64,7 +64,7 @@ function shell() {
   document.body.classList.remove('onb-mode');
   app.innerHTML = `
     <header class="top">
-      <div class="hello-wrap"><div id="diana-slot"></div><div class="hello"><span class="date" id="date"></span><h1 id="title"></h1></div></div>
+      <div class="hello-wrap"><div id="diana-slot"></div><div class="hello"><h1 id="title"></h1></div></div>
       <div class="row" style="flex-wrap:nowrap"><button class="streak-btn" id="streak-btn" aria-label="Ma progression"></button><button class="avatar" id="coach-btn" aria-label="Coach IA">${icon('chat', 19)}</button><button class="avatar" id="avatar" aria-label="Profil"></button></div>
     </header>
     <main id="view"></main>
@@ -94,7 +94,6 @@ function renderView(after, animate = false) {
   // Accueil : seule Diana (elle salue dans sa bulle), sans titre à côté.
   $('#title').textContent = TITLES[tab] || '';
   $('#title').hidden = tab === 'home';
-  $('#date').textContent = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
   $('#avatar').innerHTML = profile.name ? esc(profile.name[0].toUpperCase()) : icon('user', 20);
   $$('.nav [data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
   Diana.setTab(tab);
@@ -115,10 +114,12 @@ function renderView(after, animate = false) {
 
 function go(t, after, dir) {
   tab = t;
+  if (t === 'health' || t === 'home') autoSync(); // données fraîches (Samsung Health envoie ses pas au fil de l'eau)
   history.replaceState(null, '', '#' + t);
   window.scrollTo(0, 0);
-  renderView(after, true);
-  if (dir) { const v = $('#view'); v.classList.add(dir > 0 ? 'swipe-l' : 'swipe-r'); setTimeout(() => v.classList.remove('swipe-l', 'swipe-r'), 400); }
+  // en glissant : simple glissement latéral, sans l'animation d'entrée des cartes (qui partent transparentes → flash noir)
+  renderView(after, !dir);
+  if (dir) { const v = $('#view'); v.classList.remove('swipe-l', 'swipe-r'); void v.offsetWidth; v.classList.add(dir > 0 ? 'swipe-l' : 'swipe-r'); clearTimeout(go.t); go.t = setTimeout(() => v.classList.remove('swipe-l', 'swipe-r'), 400); }
 }
 
 // Glisser vers la gauche ou la droite : menu suivant ou précédent (dans l'ordre de la barre du bas).
@@ -233,7 +234,7 @@ async function onForeground() {
 // Synchronisation automatique dans l'application Android (au lancement puis au retour au premier plan).
 let lastAuto = 0;
 async function autoSync() {
-  if (!N.isNative || Date.now() - lastAuto < 5 * 60e3) return;
+  if (!N.isNative || Date.now() - lastAuto < 60e3) return;
   lastAuto = Date.now();
   await Health.syncAll({ silent: true });
   if (['home', 'health'].includes(tab)) renderView();

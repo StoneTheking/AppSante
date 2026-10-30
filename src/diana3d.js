@@ -13,7 +13,7 @@ const BAND_R = 1.055; // le bandeau dépasse légèrement de la tête
 
 const NAVY = [20, 50, 98], NAVY_DEEP = [6, 16, 38], GLOW = [52, 110, 180];
 const HOLO = [90, 215, 255]; // lueur cyan de l'hologramme
-const PALE = [214, 246, 255], PUPIL = [58, 92, 128], MOUTH_IN = [10, 40, 70];
+const PALE = [214, 246, 255], PUPIL = [58, 92, 128];
 const TEAL = [40, 214, 214], TEAL_DARK = [8, 120, 140];
 const GRID = 0.2618; // une ligne de la grille tous les 15°
 
@@ -161,16 +161,16 @@ export function draw(canvas, state, buf) {
         const glow = 0.12 + 0.95 * fres + grid;
         c = [(c[0] + HOLO[0] * glow) * scan, (c[1] + HOLO[1] * glow) * scan, (c[2] + HOLO[2] * glow) * scan];
         if (open > 0.002 && p[2] > 0.05) {
-          // intérieur de la bouche ouverte, entre la lèvre du haut (sourire) et une lèvre du bas arrondie
+          // bouche ouverte : forme pleine, de la même couleur claire que le trait du sourire (aucune différence bord / intérieur)
           const lon = Math.atan2(p[0], p[2]), lat = Math.asin(clamp(p[1], -1, 1));
-          const w = mood.w * 0.8, x = lon / w;
+          const w = mood.w * 0.92, x = lon / w;
           if (Math.abs(x) < 1) {
             const top = 0.4 - mood.k * x * x, bot = top + open * (1 - x * x);
             const fw2 = 1.3 * px;
             const inside = smooth(top - fw2, top + fw2, lat) * (1 - smooth(bot - fw2, bot + fw2, lat));
-            if (inside > 0 && inside >= feat) { feat = inside; featCol = MOUTH_IN; }
             const lower = 1 - smooth(mouthT - fw2, mouthT + fw2, Math.abs(lat - bot));
-            if (lower > feat) { feat = lower; featCol = PALE; }
+            const m = Math.max(inside, lower);
+            if (m > feat) { feat = m; featCol = PALE; }
           }
         }
         if (feat > 0) c = mix(c, shade(featCol, n, { spec: 0.2, gloss: 30, emissive: 0.45, rim: 0.05 }), feat);
