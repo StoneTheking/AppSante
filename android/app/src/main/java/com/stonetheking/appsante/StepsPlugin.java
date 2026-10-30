@@ -35,7 +35,9 @@ public class StepsPlugin extends Plugin {
     @PluginMethod
     public void hasAccess(PluginCall call) {
         JSObject r = new JSObject();
-        r.put("granted", granted() && sensor() != null);
+        boolean ok = granted() && sensor() != null;
+        if (ok) StepsSampler.schedule(getContext());
+        r.put("granted", ok);
         call.resolve(r);
     }
 
@@ -52,8 +54,18 @@ public class StepsPlugin extends Plugin {
 
     @PermissionCallback
     private void accessCallback(PluginCall call) {
+        if (granted() && sensor() != null) StepsSampler.schedule(getContext());
         JSObject r = new JSObject();
         r.put("granted", granted() && sensor() != null);
+        call.resolve(r);
+    }
+
+    /** Relevés pris en arrière-plan par StepsSampler : { samples: [{ t, v }] }. */
+    @PluginMethod
+    public void history(PluginCall call) {
+        JSObject r = new JSObject();
+        try { r.put("samples", new com.getcapacitor.JSArray(StepsSampler.samples(getContext()).toString())); }
+        catch (Exception e) { r.put("samples", new com.getcapacitor.JSArray()); }
         call.resolve(r);
     }
 
@@ -78,8 +90,10 @@ public class StepsPlugin extends Plugin {
                 done[0] = true;
                 sm.unregisterListener(this);
                 JSObject r = new JSObject();
+                long t = System.currentTimeMillis();
+                StepsSampler.save(getContext(), t, (long) e.values[0]);
                 r.put("value", (long) e.values[0]);
-                r.put("t", System.currentTimeMillis());
+                r.put("t", t);
                 call.resolve(r);
             }
 

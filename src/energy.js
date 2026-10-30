@@ -7,6 +7,8 @@ export const stepsKcal = (steps, kg = 70) => Math.round(((steps || 0) / 1000) * 
 
 // Calories brûlées par l'activité : pas + séances (sans compter deux fois la marche enregistrée en séance).
 export function activeKcal(day = {}, workouts = [], kg = 70) {
+  // calories actives mesurées par Samsung Health / la montre (séances comprises) : prioritaires sur l'estimation
+  if (day.activeKcalHC) return day.activeKcalHC;
   const w = workouts.reduce((a, x) => a + (x.kcal || 0), 0);
   const walkMin = workouts.filter((x) => ['marche', 'randonnee', 'course'].includes(x.type)).reduce((a, x) => a + x.minutes, 0);
   const steps = Math.max(0, (day.steps || 0) - walkMin * 110); // ~110 pas/min déjà comptés dans la séance

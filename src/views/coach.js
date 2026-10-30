@@ -25,7 +25,7 @@ export function render(view, ctx) {
   view.innerHTML = `
     ${chat.length ? `<div class="between" style="margin:4px 0 10px"><span class="small muted">${chat.length} message${chat.length > 1 ? 's' : ''}</span><button class="btn sm ghost" id="clear">${icon('trash', 14)} Nouvelle conversation</button></div>` : `
     <div class="coach-empty">
-      <div class="coach-diana">${Diana.face('cheer', 84)}</div>
+      <div class="coach-diana">${Diana.face('cheer', 68)}</div>
       <h2>Coach Diana</h2>
       <p class="small muted">Elle connaît ton profil, ton sommeil, ton humeur, ton temps d’écran, ton activité et tes repas. Elle s’appuie sur une base de 60+ études et peut consulter PubMed, l’OMS, l’ANSES et les grandes revues médicales.</p>
     </div>`}

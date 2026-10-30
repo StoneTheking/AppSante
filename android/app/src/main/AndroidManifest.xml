@@ -38,6 +38,13 @@
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/photo_widget_info" />
         </receiver>
 
+        <receiver android:name=".StepsSampler" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="com.stonetheking.appsante.STEPS_SAMPLE" />
+            </intent-filter>
+        </receiver>
+
         <service android:name=".SleepService" android:exported="false" android:foregroundServiceType="specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Suivi de la nuit en cours : chronomètre et arrêt au déverrouillage du téléphone" />
         </service>

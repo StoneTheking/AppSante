@@ -15,7 +15,6 @@ const NAVY = [20, 50, 98], NAVY_DEEP = [6, 16, 38], GLOW = [52, 110, 180];
 const HOLO = [90, 215, 255]; // lueur cyan de l'hologramme
 const PALE = [214, 246, 255], PUPIL = [58, 92, 128], MOUTH_IN = [10, 40, 70];
 const TEAL = [40, 214, 214], TEAL_DARK = [8, 120, 140];
-const RING = 'rgba(120, 214, 255, ALPHA)';
 const GRID = 0.2618; // une ligne de la grille tous les 15°
 
 // Expressions : courbure et largeur du sourire, yeux.
@@ -54,36 +53,17 @@ function shade(base, n, { spec = 0.55, gloss = 40, emissive = 0, rim = 0.35 } = 
   return [base[0] * k + 255 * s + 120 * f, base[1] * k + 255 * s + 175 * f, base[2] * k + 255 * s + 255 * f];
 }
 
-// Dessine une image de Diana. state : { yaw, pitch, roll, blink (0 ouvert → 1 fermé), mood, gaze:[x,y], talk (0-1), ring (angle), bob }.
+// Dessine une image de Diana. state : { yaw, pitch, roll, blink (0 ouvert → 1 fermé), mood, gaze:[x,y], talk (0-1), bob }.
 export function draw(canvas, state, buf) {
   const W = canvas.width, H = canvas.height;
   const ctx = canvas.getContext('2d');
   const S = Math.min(W, H);
-  const R = S * 0.32, cx = W / 2, cy = H / 2 + (state.bob || 0) * S;
+  const R = S * 0.42, cx = W / 2, cy = H / 2 + (state.bob || 0) * S;
   const M = rot(state.yaw || 0, state.pitch || 0, state.roll || 0);
   const mood = MOODS[state.mood] || MOODS.happy;
   const px = 1 / R; // taille d'un pixel en unités de sphère
 
-  // 1) Anneaux, moitié arrière (cachée ensuite par la tête).
   ctx.clearRect(0, 0, W, H);
-  const rings = ringPaths(M, state.ring || 0);
-  const strokeRing = (front) => {
-    ctx.lineWidth = Math.max(1, S * 0.011);
-    ctx.lineCap = 'round';
-    for (const [r, pts, alpha] of rings) {
-      ctx.strokeStyle = RING.replace('ALPHA', (alpha * (front ? 1 : 0.55)).toFixed(3));
-      ctx.beginPath();
-      let on = false;
-      for (let i = 0; i < pts.length - 1; i++) {
-        const a = pts[i], b = pts[i + 1];
-        if ((a[2] + b[2] > 0) !== front) { on = false; continue; }
-        if (!on) { ctx.moveTo(cx + a[0] * R * r, cy + a[1] * R * r); on = true; }
-        ctx.lineTo(cx + b[0] * R * r, cy + b[1] * R * r);
-      }
-      ctx.stroke();
-    }
-  };
-  strokeRing(false);
 
   // 2) Tête, pixel par pixel, dans un tampon dessiné par-dessus.
   const size = Math.ceil(R * BAND_R * 2) + 4;
@@ -204,22 +184,4 @@ export function draw(canvas, state, buf) {
   buf.cv.getContext('2d').putImageData(buf.img, 0, 0);
   ctx.drawImage(buf.cv, ox, oy);
 
-  // 3) Anneaux, moitié avant.
-  strokeRing(true);
-}
-
-// Deux anneaux autour de la tête, dans le plan du visage, qui oscillent chacun sur un axe : [rayon, points 3D, opacité].
-function ringPaths(M, t) {
-  const out = [];
-  for (const [r, ax, ph, alpha] of [[1.24, 0, 0, 0.5], [1.42, 1, 2.1, 0.34]]) {
-    const tilt = 0.35 * Math.sin(t + ph);
-    const T = ax ? rot(tilt, 0, 0) : rot(0, tilt, 0);
-    const pts = [];
-    for (let k = 0; k <= 96; k++) {
-      const a = (k / 96) * Math.PI * 2;
-      pts.push(apply(M, apply(T, [Math.cos(a), Math.sin(a), 0])));
-    }
-    out.push([r, pts, alpha]);
-  }
-  return out;
 }

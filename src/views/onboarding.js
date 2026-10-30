@@ -15,7 +15,7 @@ export function render(root, done, dir) {
   document.body.classList.add('onb-mode');
   const p = { ...store.get().profile, ...draft };
   const steps = [
-    () => `<div class="logo diana-logo">${Diana.face('cheer', 92)}</div>
+    () => `<div class="logo diana-logo">${Diana.face('cheer', 76)}</div>
       <h1>Ton coach santé,<br>fondé sur la science.</h1>
       <p class="lead">Diana Health croise ton sommeil, ton humeur, tes écrans, ton activité et ce que tu manges pour te dire quoi faire, et quand.</p>
       ${[['camera', 'var(--c-food)', 'Photo ou code-barres', 'Calories, Nutri-Score et additifs en un geste'],

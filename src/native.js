@@ -8,7 +8,9 @@ export const platform = Capacitor.getPlatform();
 // Plugin maison (android/app/src/main/java/.../UsageStatsPlugin.java)
 const UsageStats = registerPlugin('UsageStats');
 
-const HEALTH_READ = ['steps', 'sleep', 'heartRate', 'restingHeartRate', 'heartRateVariability', 'weight', 'calories', 'workouts'];
+// Données lues (Samsung Health, Google Fit, montres… les partagent via Health Connect).
+const HEALTH_READ = ['steps', 'sleep', 'heartRate', 'restingHeartRate', 'heartRateVariability', 'weight', 'calories', 'workouts',
+  'distance', 'totalCalories', 'flightsClimbed', 'oxygenSaturation', 'respiratoryRate', 'vo2Max', 'bodyFat'];
 
 // Une promesse du plugin qui ne revient jamais ne doit pas bloquer l'écran (« Connexion… » à l'infini).
 const timeout = (p, ms, msg) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error(msg)), ms))]);
@@ -30,7 +32,8 @@ export async function healthStatus() {
 
 
 // Autorisations Android correspondant aux types lus (voir HealthDataType.kt du plugin).
-const HEALTH_PERMS = ['STEPS', 'SLEEP', 'HEART_RATE', 'RESTING_HEART_RATE', 'HEART_RATE_VARIABILITY', 'WEIGHT', 'ACTIVE_CALORIES_BURNED', 'EXERCISE']
+const HEALTH_PERMS = ['STEPS', 'SLEEP', 'HEART_RATE', 'RESTING_HEART_RATE', 'HEART_RATE_VARIABILITY', 'WEIGHT', 'ACTIVE_CALORIES_BURNED', 'EXERCISE',
+  'DISTANCE', 'TOTAL_CALORIES_BURNED', 'FLOORS_CLIMBED', 'OXYGEN_SATURATION', 'RESPIRATORY_RATE', 'VO2_MAX', 'BODY_FAT']
   .map((x) => `android.permission.health.READ_${x}`);
 
 // Accès accordés lus directement auprès d'Android 14+ (null si inconnu : Android plus ancien ou APK sans cette fonction).
@@ -115,7 +118,8 @@ export async function healthDiagnose() {
     if (!a.available) return { ok: false, reason: /update/i.test(a.reason || '') ? 'update' : 'unavailable', detail: a.reason || '', info, log };
     const granted = await grantedTypes(H);
     step(`accès accordés : ${granted.join(', ') || 'aucun'}`);
-    return { ok: granted.length > 0, reason: granted.length ? 'ok' : 'denied', granted, steps: granted.includes('steps'), info, log };
+    const missing = HEALTH_READ.filter((x) => !granted.includes(x));
+    return { ok: granted.length > 0, reason: granted.length ? 'ok' : 'denied', granted, missing, steps: granted.includes('steps'), info, log };
   } catch (e) { step(`erreur : ${e.message || e}`); return { ok: false, reason: 'error', detail: e.message || String(e), info, log }; }
 }
 
@@ -125,6 +129,8 @@ const Steps = registerPlugin('Steps');
 export const stepsAccess = () => Steps.requestAccess().then((r) => r.granted).catch(() => false);
 export const stepsHasAccess = () => Steps.hasAccess().then((r) => r.granted).catch(() => false);
 export const stepsRead = () => Steps.read().catch(() => null); // { value, t } ou null
+// Relevés pris en arrière-plan toutes les ~15 min (APK récents) : [{ t, v }].
+export const stepsHistory = () => timeout(Steps.history(), 3000, '').then((r) => r.samples || []).catch(() => []);
 
 // Pas du jour à partir des relevés [{ t, v }] (v = compteur cumulé ; une baisse = redémarrage).
 export function stepsFromSamples(samples, dayStart) {
@@ -152,6 +158,30 @@ const VIGOROUS = /running|highIntensity|hiit|swimming|rowing|boxing|kickboxing|m
 const WORKOUT_MAP = [[/running|treadmill/i, 'course'], [/walking|wheelchairWalk/i, 'marche'], [/cycling|biking|handCycling/i, 'velo'], [/swimming|waterFitness/i, 'natation'], [STRENGTH, 'renfo'], [/highIntensity|crossTraining|bootCamp|burpee|jumpRope|mixedCardio/i, 'hiit'], [/yoga|pilates|stretching|flexibility|mindAndBody|taiChi|barre/i, 'yoga'], [/hiking|snowshoe/i, 'randonnee'], [/soccer|basketball|handball|rugby|volleyball|hockey|football|cricket|baseball|softball|lacrosse/i, 'collectif'], [/tennis|badminton|squash|padel|pickleball|racquet|tableTennis/i, 'raquette'], [/danc/i, 'danse']];
 const mapWorkout = (t) => WORKOUT_MAP.find(([re]) => re.test(t))?.[1] || 'autre';
 
+// Relevés bruts regroupés par jour local, puis réduits par f(relevés du jour).
+function perDay(samples = [], f) {
+  const by = {};
+  for (const s of samples) (by[localKey(new Date(s.startDate))] ||= []).push(s);
+  return Object.fromEntries(Object.entries(by).map(([k, v]) => [k, f(v)]));
+}
+// Plusieurs applis (Samsung Health, Google Fit…) peuvent écrire les mêmes pas : on garde la source la plus complète.
+function bestSource(samples) {
+  const by = {};
+  for (const s of samples) (by[s.sourceId || s.sourceName || '?'] ||= []).push(s);
+  return Object.values(by).sort((a, b) => b.reduce((x, s) => x + s.value, 0) - a.reduce((x, s) => x + s.value, 0))[0] || [];
+}
+export const bestSourceSum = (samples) => bestSource(samples).reduce((a, s) => a + (s.value || 0), 0);
+// Temps de marche (min) d'après les relevés de pas : chaque relevé compte au plus sa durée, et au plus
+// le temps qu'il faut pour faire ces pas à ~100 pas/min (un relevé d'une heure avec 300 pas ≈ 3 min de marche).
+export function walkMinutes(samples) {
+  let m = 0;
+  for (const s of bestSource(samples)) {
+    const dur = Math.max(0, (new Date(s.endDate) - new Date(s.startDate)) / 60000);
+    m += Math.min(dur || s.value / 100, s.value / 100);
+  }
+  return Math.round(m);
+}
+
 // Lit les N derniers jours depuis Health Connect : { days: { 'AAAA-MM-JJ': {...} }, workouts: [...] }.
 export async function syncHealth(days = 7) {
   const { H } = await health();
@@ -164,19 +194,40 @@ export async function syncHealth(days = 7) {
   const day = (k) => (out[k] ||= {});
   const safe = (p) => p.catch(() => null);
 
-  const [steps, rhr, hrv, weight, sleep, workouts] = await Promise.all([
+  const [steps, rhr, hrv, weight, sleep, workouts, dist, active, hr, stepRecs, total, floors, spo2, resp, vo2, fat] = await Promise.all([
     safe(H.queryAggregated({ dataType: 'steps', ...range, bucket: 'day', aggregation: 'sum' })),
     safe(H.queryAggregated({ dataType: 'restingHeartRate', ...range, bucket: 'day', aggregation: 'average' })),
     safe(H.queryAggregated({ dataType: 'heartRateVariability', ...range, bucket: 'day', aggregation: 'average' })),
     safe(H.readSamples({ dataType: 'weight', ...range, limit: 50 })),
     safe(H.readSamples({ dataType: 'sleep', startDate: new Date(start.getTime() - 12 * 3600e3).toISOString(), endDate: end.toISOString(), limit: 500 })),
     safe(H.queryWorkouts({ ...range, limit: 200 })),
+    safe(H.queryAggregated({ dataType: 'distance', ...range, bucket: 'day', aggregation: 'sum' })),
+    safe(H.queryAggregated({ dataType: 'calories', ...range, bucket: 'day', aggregation: 'sum' })),
+    safe(H.queryAggregated({ dataType: 'heartRate', ...range, bucket: 'day', aggregation: ['average', 'min', 'max'] })),
+    safe(H.readSamples({ dataType: 'steps', ...range, limit: 5000 })),
+    safe(H.readSamples({ dataType: 'totalCalories', ...range, limit: 2000 })),
+    safe(H.readSamples({ dataType: 'flightsClimbed', ...range, limit: 2000 })),
+    safe(H.readSamples({ dataType: 'oxygenSaturation', ...range, limit: 500 })),
+    safe(H.readSamples({ dataType: 'respiratoryRate', ...range, limit: 500 })),
+    safe(H.readSamples({ dataType: 'vo2Max', ...range, limit: 50 })),
+    safe(H.readSamples({ dataType: 'bodyFat', ...range, limit: 50 })),
   ]);
 
   for (const s of steps?.samples || []) if (s.value) day(localKey(new Date(s.startDate))).steps = Math.round(s.value);
   for (const s of rhr?.samples || []) if (s.value) day(localKey(new Date(s.startDate))).restingHR = Math.round(s.value);
   for (const s of hrv?.samples || []) if (s.value) day(localKey(new Date(s.startDate))).hrv = Math.round(s.value);
   for (const s of weight?.samples || []) day(localKey(new Date(s.startDate))).weight = Math.round(s.value * 10) / 10;
+  for (const s of dist?.samples || []) if (s.value) day(localKey(new Date(s.startDate))).distanceM = Math.round(s.value);
+  for (const s of active?.samples || []) if (s.value) day(localKey(new Date(s.startDate))).activeKcalHC = Math.round(s.value);
+  for (const s of hr?.samples || []) if (s.value) Object.assign(day(localKey(new Date(s.startDate))), { hrAvg: Math.round(s.values?.average ?? s.value), hrMin: s.values?.min != null ? Math.round(s.values.min) : undefined, hrMax: s.values?.max != null ? Math.round(s.values.max) : undefined });
+  for (const [k, v] of Object.entries(perDay(stepRecs?.samples, walkMinutes))) if (v) day(k).walkMin = v;
+  for (const [k, v] of Object.entries(perDay(total?.samples, bestSourceSum))) if (v) day(k).totalKcalHC = Math.round(v);
+  for (const [k, v] of Object.entries(perDay(floors?.samples, bestSourceSum))) if (v) day(k).floors = Math.round(v);
+  const last = (arr, f) => { for (const s of arr || []) f(day(localKey(new Date(s.startDate))), s.value); };
+  last(spo2?.samples, (d, v) => { d.spo2 = Math.round(v > 1 ? v : v * 100); });
+  last(resp?.samples, (d, v) => { d.respRate = Math.round(v * 10) / 10; });
+  last(vo2?.samples, (d, v) => { d.vo2max = Math.round(v * 10) / 10; });
+  last(fat?.samples, (d, v) => { d.bodyFat = Math.round((v > 1 ? v : v * 100) * 10) / 10; });
 
   // Sommeil : on rattache chaque session au jour du réveil ; durée = temps endormi (hors éveil / au lit).
   const byWake = {};

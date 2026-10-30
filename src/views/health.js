@@ -52,8 +52,13 @@ export async function syncAll({ silent = false } = {}) {
   try {
     if (!hcSteps && (await N.stepsHasAccess())) {
       const r = await N.stepsRead();
+      const bg = await N.stepsHistory(); // relevés d'arrière-plan : les pas entre deux ouvertures comptent aussi
       if (r) {
-        store.update((s) => { s.stepSamples = [...(s.stepSamples || []).filter((x) => r.t - x.t < 3 * 86400e3), { t: r.t, v: r.value }]; });
+        store.update((s) => {
+          const all = [...(s.stepSamples || []), ...bg, { t: r.t, v: r.value }].filter((x) => r.t - x.t < 3 * 86400e3);
+          const seen = new Set();
+          s.stepSamples = all.sort((a, b) => a.t - b.t).filter((x) => !seen.has(x.t) && seen.add(x.t));
+        });
         const start = new Date(); start.setHours(0, 0, 0, 0);
         const steps = N.stepsFromSamples(store.get().stepSamples, start.getTime());
         const k = store.today();
@@ -88,6 +93,29 @@ function merge(byDay) {
 const stat = (k, v, u = '', ic = '') => `<div class="stat"><div class="k">${ic ? icon(ic, 14) : ''}${k}</div><div class="v">${v}${u ? `<small>${u}</small>` : ''}</div></div>`;
 const section = (ic, title, col, right = '') => `<div class="between" style="margin:18px 0 8px"><div class="row" style="gap:10px;flex-wrap:nowrap"><span class="icon-badge" style="width:30px;height:30px;border-radius:10px;background:color-mix(in srgb,${col} 15%,transparent);color:${col}">${icon(ic, 16)}</span><b>${title}</b></div>${right}</div>`;
 
+// Mesures de la montre ou de Samsung Health (affichées seulement si elles existent).
+function watchStats(d) {
+  const items = [
+    d.hrAvg && stat('Cœur (moyenne)', d.hrAvg, 'bpm', 'heart'),
+    d.hrMin && d.hrMax && stat('Cœur min – max', `${d.hrMin}–${d.hrMax}`, 'bpm', 'heart'),
+    d.restingHR && stat('Cœur au repos', d.restingHR, 'bpm', 'heart'),
+    d.hrv && stat('Variabilité cardiaque', d.hrv, 'ms', 'activity'),
+    d.spo2 && stat('Oxygène du sang', d.spo2, '%'),
+    d.respRate && stat('Respiration', fmt(d.respRate, 1), '/min'),
+    d.vo2max && stat('VO₂ max', fmt(d.vo2max, 1), 'mL/kg/min'),
+    d.bodyFat && stat('Masse grasse', fmt(d.bodyFat, 1), '%'),
+  ].filter(Boolean);
+  return items.length ? `${section('heart', 'Cœur et forme', 'var(--bad)', '<span class="tiny muted">montre · Samsung Health</span>')}<div class="ro-grid">${items.join('')}</div>` : '';
+}
+
+// Le compteur du téléphone ne connaît pas les pas faits avant le premier relevé : on l'indique.
+function stepsSince(st) {
+  const ss = st.stepSamples || [], d0 = new Date().setHours(0, 0, 0, 0);
+  if (ss.some((x) => x.t <= d0)) return 'actif';
+  const first = ss.find((x) => x.t > d0);
+  return first ? `actif · compte depuis ${new Date(first.t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : 'actif';
+}
+
 function sourcesCard(st) {
   const d = st.healthDiag;
   if (!N.isNative) return `<div class="card">
@@ -101,8 +129,9 @@ function sourcesCard(st) {
   return `<div class="card">
     <div class="card-head"><h2>${icon('refresh', 18)} Données du téléphone</h2>${st.lastSync ? `<span class="tiny muted">à jour ${new Date(st.lastSync).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>` : ''}</div>
     <p class="tiny muted" style="margin-top:-6px">Synchronisées automatiquement à chaque ouverture de l’application.</p>
-    ${line('heart', 'Health Connect', hc, d?.ok ? '' : `<button class="btn sm soft" id="hc">${d?.reason === 'unavailable' || d?.reason === 'update' ? 'Pourquoi ?' : 'Autoriser'}</button>`)}
-    ${line('steps', 'Podomètre du téléphone', st.stepsAccess ? ['ok', 'actif'] : ['muted', d?.ok ? 'inutile (Health Connect)' : 'non activé'], st.stepsAccess || d?.ok ? '' : `<button class="btn sm soft" id="steps-on">Activer</button>`)}
+    ${line('heart', 'Health Connect', hc, d?.ok ? (d.missing?.length ? `<button class="btn sm soft" id="hc">+ de données</button>` : '') : `<button class="btn sm soft" id="hc">${d?.reason === 'unavailable' || d?.reason === 'update' ? 'Pourquoi ?' : 'Autoriser'}</button>`)}
+    ${d?.ok ? `<p class="tiny muted" style="margin:-4px 0 6px">Samsung Health, Google Fit ou ta montre envoient leurs données via Health Connect : pas, marche, distance, calories, cœur, sommeil, séances.</p>` : ''}
+    ${line('steps', 'Podomètre du téléphone', st.stepsAccess ? ['ok', stepsSince(st)] : ['muted', d?.ok ? 'inutile (Health Connect)' : 'non activé'], st.stepsAccess || d?.ok ? '' : `<button class="btn sm soft" id="steps-on">Activer</button>`)}
     ${line('phone', 'Temps d’écran', st.usageOk ? ['ok', 'autorisé'] : ['warn', 'non autorisé'], st.usageOk ? '' : `<button class="btn sm soft" id="usage">Autoriser</button>`)}
     <div id="sync-res" class="small" style="margin-top:8px"></div>
   </div>`;
@@ -141,7 +170,12 @@ function renderTrack(el, ctx) {
         ${stat('Calories brûlées', d.steps != null || ws.length ? fmt(E.activeKcal(d, ws, kg)) : '—', 'kcal', 'flame')}
         ${stat('Activité modérée', fmtMin((d.modMin || 0) + (d.vigMin || 0)), '', 'activity')}
         ${stat('Séances', ws.length ? ws.map((w) => `${SP.activity(w.type).label.split(' ')[0]} ${w.minutes}′`).join(', ') : '0', '', 'dumbbell')}
+        ${d.walkMin ? stat('Temps de marche', fmtMin(d.walkMin), '', 'steps') : ''}
+        ${d.distanceM ? stat('Distance', fmt(d.distanceM / 1000, 1), 'km', 'pin') : ''}
+        ${d.floors ? stat('Étages montés', fmt(d.floors)) : ''}
+        ${d.totalKcalHC ? stat('Dépense totale', fmt(d.totalKcalHC), 'kcal', 'flame') : ''}
       </div>
+      ${watchStats(d)}
 
       ${section('phone', 'Bien-être numérique', 'var(--c-screen)', '<span class="tiny muted">mesuré par le téléphone</span>')}
       <div class="ro-grid">
@@ -188,7 +222,7 @@ function renderTrack(el, ctx) {
         new Promise((r) => setTimeout(() => r({ ok: false, reason: 'error', detail: 'La vérification de Health Connect ne répond pas (plus de 25 s).' }), 25000))]);
       store.update((s) => { s.healthDiag = { ...d0, at: Date.now() }; });
       if (['unavailable', 'update'].includes(d0.reason)) { res.innerHTML = ''; return openHealthHelp(d0, re); }
-      if (!d0.ok) {
+      if (!d0.ok || d0.missing?.length) {
         try { await N.connectHealth((m) => { res.innerHTML = `<span class="spinner"></span> ${m}`; }); } catch (e) { res.innerHTML = ''; return openHealthHelp({ ...d0, reason: d0.reason === 'error' ? 'error' : 'denied', detail: e.message, log: [...(d0.log || []), ...(e.log || [])] }, re); }
       }
       res.innerHTML = '<span class="spinner"></span> Synchronisation…';

@@ -27,3 +27,17 @@ test('Coach Diana a toujours quelque chose à dire, partout', () => {
   assert.ok(lines('guided', st, null, { step: { isRest: true }, i: 3, n: 10 })[0][0].includes('Souffle'));
   assert.match(face('cheer'), /<canvas class="diana-orb"/);
 });
+
+// ---------- Samsung Health via Health Connect ----------
+import { walkMinutes, bestSourceSum } from '../src/native.js';
+
+test('temps de marche : une seule source (la plus complète), plafonné à ~100 pas/min', () => {
+  const iso = (h, m) => new Date(2026, 9, 30, h, m).toISOString();
+  const samsung = [
+    { value: 1000, startDate: iso(9, 0), endDate: iso(9, 12), sourceId: 'samsung' }, // 12 min, 10 min de marche
+    { value: 300, startDate: iso(10, 0), endDate: iso(11, 0), sourceId: 'samsung' }, // 1 h, ~3 min de marche
+  ];
+  const fit = [{ value: 900, startDate: iso(9, 0), endDate: iso(9, 12), sourceId: 'fit' }];
+  assert.equal(walkMinutes([...samsung, ...fit]), 13);
+  assert.equal(bestSourceSum([...samsung, ...fit]), 1300);
+});

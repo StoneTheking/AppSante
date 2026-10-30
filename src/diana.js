@@ -39,7 +39,7 @@ function render(o, now) {
   const blink = still ? 0 : bt > 0 && bt < 1 ? Math.sin(Math.PI * bt) : 0;
   const sp = (now - o.spinAt) / 1.1;
   const spin = sp > 0 && sp < 1 ? 1 - Math.pow(1 - sp, 3) : 0;
-  const jump = sp > 0 && sp < 1 ? -0.07 * Math.sin(Math.PI * Math.min(1, sp * 1.6)) : 0;
+  const jump = sp > 0 && sp < 1 ? -0.04 * Math.sin(Math.PI * Math.min(1, sp * 1.6)) : 0;
   const k = still ? 0.4 : 1;
   const yaw = (0.22 * Math.sin(t * 0.5) + 0.06 * Math.sin(t * 1.27)) * k + spin * Math.PI * 2;
   // Elle regarde l'utilisateur, avec de temps en temps un bref coup d'œil sur le côté.
@@ -52,7 +52,7 @@ function render(o, now) {
   draw(o.cv, {
     yaw, pitch: (0.07 * Math.sin(t * 0.7 + 1)) * k, roll: 0.05 * Math.sin(t * 0.43 + 2) * k,
     bob: still ? 0 : 0.018 * Math.sin(t * 1.8) + jump, blink, mood: now < (o.moodUntil || 0) ? o.moodNow : o.mood, talk,
-    gaze: o.glance ? [o.glance[0] * gk, o.glance[1] * gk] : [0, 0], ring: t * 0.8, time: t, flicker,
+    gaze: o.glance ? [o.glance[0] * gk, o.glance[1] * gk] : [0, 0], time: t, flicker,
   }, o.buf);
 }
 
@@ -203,7 +203,7 @@ let dock = null, ctxArgs = ['home'], turn = {}, hideT = 0, greeted = false, last
 export function mount(slot, onOpenCoach) {
   dock = slot;
   dock.classList.add('diana-dock');
-  dock.innerHTML = `<button class="dd-face" type="button" aria-label="Coach Diana : une nouvelle phrase">${face('happy', 54)}</button>
+  dock.innerHTML = `<button class="dd-face" type="button" aria-label="Coach Diana : une nouvelle phrase">${face('happy', 66)}</button>
     <div class="dd-bubble" role="status" aria-live="polite"><b>Coach Diana</b><span></span><button class="dd-chat" type="button">Discuter avec moi →</button></div>`;
   dock.querySelector('.dd-face').onclick = () => { turn[ctxArgs[0]] = (turn[ctxArgs[0]] || 0) + 1; sayCurrent(true); };
   dock.querySelector('.dd-bubble').onclick = (e) => { if (e.target.closest('.dd-chat')) { hide(); onOpenCoach?.(); } else hide(); };

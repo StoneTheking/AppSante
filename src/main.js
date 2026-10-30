@@ -82,6 +82,7 @@ function shell() {
   $('#coach-btn').onclick = () => tab !== 'coach' && go('coach');
   $('#streak-btn').onclick = () => P.openProgress();
   Diana.mount($('#diana-slot'), () => go('coach'));
+  if (!swipeNav.on) { swipeNav.on = true; swipeNav(); }
   $('#view').addEventListener('click', (e) => {
     const t = e.target.closest('[data-tab]');
     if (t) go(t.dataset.tab);
@@ -90,8 +91,9 @@ function shell() {
 
 function renderView(after, animate = false) {
   const { profile } = store.get();
-  // Accueil : Diana prend la place du « Bonjour » (c'est elle qui salue dans sa bulle).
-  $('#title').textContent = tab === 'home' ? 'Coach Diana' : TITLES[tab];
+  // Accueil : seule Diana (elle salue dans sa bulle), sans titre à côté.
+  $('#title').textContent = TITLES[tab] || '';
+  $('#title').hidden = tab === 'home';
   $('#date').textContent = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
   $('#avatar').innerHTML = profile.name ? esc(profile.name[0].toUpperCase()) : icon('user', 20);
   $$('.nav [data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
@@ -105,17 +107,47 @@ function renderView(after, animate = false) {
   renderView.t = setTimeout(() => $$('.view-enter').forEach((e) => e.classList.remove('view-enter')), 1200);
   const s = G.streak(store.get());
   const sb = $('#streak-btn');
-  sb.innerHTML = `🔥 ${s.current}`;
+  sb.innerHTML = `${icon('flame', 17)}<span>${s.current}</span>`;
   sb.className = `streak-btn ${s.atRisk ? 'risk' : s.current ? '' : 'cold'}`;
   P.celebrate();
   after?.();
 }
 
-function go(t, after) {
+function go(t, after, dir) {
   tab = t;
   history.replaceState(null, '', '#' + t);
   window.scrollTo(0, 0);
   renderView(after, true);
+  if (dir) { const v = $('#view'); v.classList.add(dir > 0 ? 'swipe-l' : 'swipe-r'); setTimeout(() => v.classList.remove('swipe-l', 'swipe-r'), 400); }
+}
+
+// Glisser vers la gauche ou la droite : menu suivant ou précédent (dans l'ordre de la barre du bas).
+const ORDER = ['home', 'nutrition', 'sport', 'health'];
+function swipeNav() {
+  let x0 = 0, y0 = 0, t0 = 0, ok = false;
+  // Pas de changement de menu depuis un élément qui défile ou se manipule à l'horizontale.
+  const blocked = (el) => {
+    for (let e = el; e && e !== document.body; e = e.parentElement) {
+      if (e.matches?.('input, textarea, select, canvas, .sheet-root, [data-noswipe]')) return true;
+      if (e.scrollWidth > e.clientWidth + 2 && /(auto|scroll)/.test(getComputedStyle(e).overflowX)) return true;
+    }
+    return false;
+  };
+  document.addEventListener('touchstart', (e) => {
+    const p = e.touches[0];
+    ok = e.touches.length === 1 && ORDER.includes(tab) && !$('.sheet-root') && !blocked(e.target);
+    x0 = p.clientX; y0 = p.clientY; t0 = Date.now();
+  }, { passive: true });
+  document.addEventListener('touchend', (e) => {
+    if (!ok) return;
+    ok = false;
+    const p = e.changedTouches[0], dx = p.clientX - x0, dy = p.clientY - y0;
+    if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.8 || Date.now() - t0 > 700) return;
+    // le bord gauche est réservé au geste « retour » d'Android
+    if (x0 < 18 || x0 > innerWidth - 18) return;
+    const i = ORDER.indexOf(tab) + (dx < 0 ? 1 : -1);
+    if (i >= 0 && i < ORDER.length) go(ORDER[i], null, dx < 0 ? 1 : -1);
+  }, { passive: true });
 }
 
 // Lancement : Diana apparaît, fait un clin d'œil, puis s'efface sur l'appli déjà prête (rien ne se dessine sous les yeux).
@@ -123,7 +155,7 @@ function boot() {
   const el = $('#boot');
   if (!el) return;
   const slot = $('#boot-face');
-  slot.innerHTML = Diana.face('happy', 150);
+  slot.innerHTML = Diana.face('happy', 124);
   const cv = slot.querySelector('canvas');
   cv.classList.add('boot-orb');
   setTimeout(() => Diana.express(cv, 'proud', 650), 450);
