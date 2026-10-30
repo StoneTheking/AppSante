@@ -161,7 +161,7 @@ export function lines(where, st = store.get(), sm, extra = {}) {
 
   if (where === 'home' || where === 'health') {
     if (now >= 14 * 60 && now < 21 * 60 && water < (t.waterMl || 2000) * 0.4) add(`Seulement ${L(water)} L d’eau pour l’instant… Un grand verre maintenant ? 💧`);
-    if (now >= 15 * 60 && steps && steps < (t.steps || 8000) / 2) add(`${steps.toLocaleString('fr-FR')} pas pour l’instant : 15 min de marche et tu rattrapes une bonne partie 🚶`);
+    if (now >= 15 * 60 && nowAdj < bed - 90 && steps && steps < (t.steps || 8000) / 2) add(`${steps.toLocaleString('fr-FR')} pas pour l’instant : 15 min de marche et tu rattrapes une bonne partie 🚶`);
     if (steps >= (t.steps || 8000)) add(`${steps.toLocaleString('fr-FR')} pas aujourd’hui, objectif atteint 👟`, 'proud');
   }
 
@@ -187,6 +187,12 @@ export function lines(where, st = store.get(), sm, extra = {}) {
   if (['home', 'health'].includes(where)) {
     if (scores.global >= 80) add(`Score de ${scores.global} sur la semaine : tu es en feu${name} ! Continue comme ça.`, 'proud');
     else if (weakest && weakest[1] < 65) add(`Cette semaine, ton point à travailler, c’est ${PILLAR[weakest[0]]}. On s’y met ensemble, un petit pas à la fois ?`, 'happy');
+  }
+
+  // Tard le soir : plus de conseils à appliquer (manger, marcher, boire), seulement le sommeil et les félicitations.
+  if (nowAdj >= bed - 60 && where !== 'guided') {
+    const calm = out.filter(([, m]) => m === 'sleepy' || m === 'proud');
+    if (calm.length) return calm;
   }
 
   // Phrases de secours selon le moment de la journée

@@ -236,8 +236,12 @@ let lastAuto = 0;
 async function autoSync() {
   if (!N.isNative || Date.now() - lastAuto < 60e3) return;
   lastAuto = Date.now();
+  const before = JSON.stringify([store.get().days, store.get().hcReport?.todaySteps, store.get().workouts.length]);
   await Health.syncAll({ silent: true });
-  if (['home', 'health'].includes(tab)) renderView();
+  // on ne redessine que si quelque chose a changé, et jamais pendant une saisie ou avec une fenêtre ouverte
+  const changed = before !== JSON.stringify([store.get().days, store.get().hcReport?.todaySteps, store.get().workouts.length]);
+  const busy = document.activeElement?.matches?.('input, textarea, select') || document.querySelector('.sheet-root');
+  if (changed && !busy && ['home', 'health'].includes(tab)) renderView();
 }
 // Réseau retrouvé : les photos de repas mises de côté sont analysées.
 window.addEventListener('online', () => { if (store.get().onboarded) A.processPendingPhotos().then((n) => { if (n && ['home', 'nutrition'].includes(tab)) renderView(); }); });

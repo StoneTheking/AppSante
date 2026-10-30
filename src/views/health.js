@@ -32,7 +32,13 @@ export function openSection(s) { seg = s; }
 
 // ---------- Synchronisation ----------
 // Health Connect (pas, sommeil, séances, poids) + temps d'écran ; podomètre du téléphone si Health Connect manque.
-export async function syncAll({ silent = false } = {}) {
+// Une seule synchro à la fois : un deuxième appel (bouton + synchro auto) attend la synchro en cours.
+let running = null;
+export function syncAll(opts) {
+  if (!running) running = doSync(opts).finally(() => { running = null; });
+  return running;
+}
+async function doSync({ silent = false } = {}) {
   const st = store.get();
   const results = [];
   if (!N.isNative) return results;
