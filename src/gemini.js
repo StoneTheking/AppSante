@@ -6,6 +6,8 @@ const BASE = 'https://generativelanguage.googleapis.com/v1beta/models/';
 // alias maintenu par Google vers le dernier modèle Flash, puis versions fixes et « Lite » :
 // chaque modèle a son propre quota gratuit et sa propre charge, on passe au suivant s'il est saturé.
 const MODELS = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-flash-lite-latest', 'gemini-2.5-flash-lite'];
+// mode rapide (coach, recettes, captures) : Flash-Lite d'abord, bien plus réactif, puis Flash en secours
+const FAST = ['gemini-flash-lite-latest', 'gemini-2.5-flash-lite', 'gemini-flash-latest', 'gemini-2.5-flash'];
 const BUSY = [500, 502, 503, 504];
 
 export const isGeminiKey = (k) => /^AIza[\w-]{30,}$/.test(String(k || '').trim());
@@ -40,7 +42,9 @@ function body(p, { schema = true, think = true } = {}) {
   const gen = { maxOutputTokens: Math.min(p.max_tokens || 8192, 32768) };
   // Réflexion limitée pour les tâches courantes (analyse photo, lecture de capture) : réponse bien plus rapide.
   const effort = p.output_config?.effort;
-  if (think && (effort === 'low' || effort === 'medium')) gen.thinkingConfig = { thinkingBudget: effort === 'low' ? 512 : 1024 };
+  // mode rapide : pas de réflexion du tout (le premier mot arrive beaucoup plus tôt)
+  if (think && p.model === 'gemini-fast') gen.thinkingConfig = { thinkingBudget: 0 };
+  else if (think && (effort === 'low' || effort === 'medium')) gen.thinkingConfig = { thinkingBudget: effort === 'low' ? 512 : 1024 };
   if (fmt?.type === 'json_schema') {
     gen.responseMimeType = 'application/json';
     if (schema) gen.responseJsonSchema = fmt.schema;
@@ -68,9 +72,9 @@ const textFrom = (j) => (j.candidates?.[0]?.content?.parts || []).filter((x) => 
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function post(key, path, payload, signal) {
+async function post(key, path, payload, fast, signal) {
   let last;
-  for (const model of MODELS) {
+  for (const model of fast ? FAST : MODELS) {
     for (let attempt = 0; attempt < 2; attempt++) {
       const res = await fetch(`${BASE}${model}:${path}`, {
         method: 'POST',
@@ -93,13 +97,13 @@ async function post(key, path, payload, signal) {
 }
 
 // Certains schémas JSON (anyOf, additionalProperties…) peuvent être refusés : on réessaie avec le schéma dans la consigne.
-async function withSchemaRetry(fn, p) {
-  try { return await fn(body(p)); } catch (e) {
+async function withSchemaRetry(fn, p, opts = {}) {
+  try { return await fn(body(p, opts)); } catch (e) {
     // réglage de réflexion refusé par ce modèle : même requête sans ce réglage
-    if (e.status === 400 && /thinking/i.test(e.raw)) return withSchemaRetry((payload) => fn(payload), { ...p, output_config: { ...p.output_config, effort: undefined } });
+    if (e.status === 400 && /thinking/i.test(e.raw) && opts.think !== false) return withSchemaRetry(fn, p, { ...opts, think: false });
     // schéma refusé (400) ou qui fait planter le serveur (500) : schéma passé dans la consigne
-    if ([400, 500].includes(e.status) && p.output_config?.format && !/API key/i.test(e.raw)) return fn(body(p, { schema: false }));
-    if (p.tools && ((e.status === 400 && /search|tool/i.test(e.raw)) || BUSY.includes(e.status))) return fn(body({ ...p, tools: undefined }));
+    if ([400, 500].includes(e.status) && p.output_config?.format && opts.schema !== false && !/API key/i.test(e.raw)) return withSchemaRetry(fn, p, { ...opts, schema: false });
+    if (p.tools && ((e.status === 400 && /search|tool/i.test(e.raw)) || BUSY.includes(e.status))) return withSchemaRetry(fn, { ...p, tools: undefined }, opts);
     throw e;
   }
 }
@@ -107,13 +111,13 @@ async function withSchemaRetry(fn, p) {
 export function geminiClient(apiKey) {
   const key = apiKey.trim();
   const create = (p) => withSchemaRetry(async (payload) => {
-    const j = await (await post(key, 'generateContent', payload)).json();
+    const j = await (await post(key, 'generateContent', payload, p.model === 'gemini-fast')).json();
     return toMessage(textFrom(j), j.candidates);
   }, p);
   const stream = (p) => {
     const listeners = [];
     const done = withSchemaRetry(async (payload) => {
-      const res = await post(key, 'streamGenerateContent?alt=sse', payload);
+      const res = await post(key, 'streamGenerateContent?alt=sse', payload, p.model === 'gemini-fast');
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let buf = '', text = '', cands = null;

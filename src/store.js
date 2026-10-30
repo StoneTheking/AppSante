@@ -40,6 +40,7 @@ const DEFAULT = {
   settings: {
     apiKey: '',
     model: 'claude-opus-5-5',
+    aiSpeed: 'rapide', // 'rapide' | 'equilibre' | 'precis' : modèle choisi selon la tâche
     reminders: { enabled: false, kinds: { light: true, meal: false, coffee: true, walk: true, sport: true, screens: true, bed: true, water: false, streak: true, weigh: true } },
     autoSync: true,
     webSearch: true, // le coach peut consulter PubMed, OMS, Lancet…

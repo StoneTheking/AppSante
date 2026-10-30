@@ -16,6 +16,19 @@ export const MODELS = [
   { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5 (le plus économique)' },
 ];
 
+// Vitesse des réponses : chaque tâche prend le modèle le plus rapide qui la fait bien.
+// « rapide » : Haiku pour le coach et les recettes, Sonnet pour lire une photo ou composer des menus ;
+// « equilibre » : Sonnet partout ; « precis » : le modèle choisi (Opus par défaut), plus lent.
+// Avec Gemini, « gemini-fast » = modèle Flash-Lite d'abord et réflexion coupée.
+export const SPEEDS = [['rapide', 'Rapide', 'réponse en quelques secondes'], ['equilibre', 'Équilibré', ''], ['precis', 'Précis', 'plus lent']];
+export function modelFor(settings = {}, task = 'chat') {
+  const speed = settings.aiSpeed || 'rapide';
+  if (isGeminiKey(settings.apiKey)) return speed === 'precis' || task === 'photo' || task === 'plan' ? 'gemini' : 'gemini-fast';
+  if (speed === 'precis') return settings.model || 'claude-opus-5-5';
+  if (speed === 'equilibre') return 'claude-sonnet-5-5';
+  return task === 'chat' || task === 'quick' ? 'claude-haiku-5-5' : 'claude-sonnet-5-5';
+}
+
 export const provider = (apiKey) => (!apiKey ? null : isGeminiKey(apiKey) ? 'gemini' : 'claude');
 
 async function client(apiKey) {
@@ -117,7 +130,9 @@ function imageBlock(dataUrl) {
   return { type: 'image', source: { type: 'base64', media_type, data } };
 }
 
-export async function analyzePlate({ apiKey, model }, dataUrl, personContext, note = '') {
+export async function analyzePlate(settings, dataUrl, personContext, note = '') {
+  const { apiKey } = settings;
+  const model = modelFor(settings, 'photo');
   const c = await client(apiKey);
   const resp = await c.beta.messages.create({
     model,
@@ -139,7 +154,9 @@ export async function analyzePlate({ apiKey, model }, dataUrl, personContext, no
   return parseJson(resp);
 }
 
-export async function readScreenshot({ apiKey, model }, dataUrl) {
+export async function readScreenshot(settings, dataUrl) {
+  const { apiKey } = settings;
+  const model = modelFor(settings, 'quick');
   const c = await client(apiKey);
   const resp = await c.beta.messages.create({
     model,
@@ -184,7 +201,9 @@ const SCIENCE_DOMAINS = [
 
 // Conversation en streaming. history : [{role, content}] ; onText reçoit le texte cumulé.
 // Renvoie { text, sources } où sources liste les pages web citées par le coach.
-export async function coachChat({ apiKey, model }, history, personContext, onText, { webSearch = true } = {}) {
+export async function coachChat(settings, history, personContext, onText, { webSearch = true } = {}) {
+  const { apiKey } = settings;
+  let model = modelFor(settings, 'chat');
   const c = await client(apiKey);
   const messages = history.map((m) => ({ role: m.role, content: m.content }));
   // Les données du jour sont jointes au dernier message utilisateur, le préfixe reste stable (cache).
@@ -192,6 +211,8 @@ export async function coachChat({ apiKey, model }, history, personContext, onTex
   last.content = `<donnees_utilisateur>\n${personContext}\n</donnees_utilisateur>\n\n${last.content}`;
   // Recherche web seulement si la question en a besoin (études récentes, sources…) : sinon réponse bien plus rapide.
   const needsWeb = /étude|etude|recherche|source|récent|recent|nouveau|preuve|prouv|scientifi|actualit|20\d\d|selon|publi/i.test(history.at(-1)?.content || '');
+  // question qui demande des études : Haiku ne cherche pas sur le web, on passe à Sonnet pour cette réponse
+  if (webSearch && needsWeb && model.startsWith('claude-haiku')) model = 'claude-sonnet-5-5';
   const tools = webSearch && needsWeb && !model.startsWith('claude-haiku')
     ? [{ type: 'web_search_20260209', name: 'web_search', max_uses: 4, allowed_domains: SCIENCE_DOMAINS }]
     : undefined;
@@ -271,7 +292,9 @@ const WEEK_SCHEMA = {
 };
 
 // Menus de 7 jours personnalisés (quantités pour `people` personnes), avec recettes.
-export async function planWeek({ apiKey, model }, personContext, { days, people = 1, budget = 'moyen', cookTime = 30, wishes = '' }) {
+export async function planWeek(settings, personContext, { days, people = 1, budget = 'moyen', cookTime = 30, wishes = '' }) {
+  const { apiKey } = settings;
+  const model = modelFor(settings, 'plan');
   const c = await client(apiKey);
   const stream = c.beta.messages.stream({
     model,
@@ -311,7 +334,9 @@ const RECIPE_SCHEMA = {
     tip: { type: 'string', description: 'Astuce santé ou variante (une phrase)' },
   },
 };
-export async function recipe({ apiKey, model }, dish, { people = 1, context = '' } = {}) {
+export async function recipe(settings, dish, { people = 1, context = '' } = {}) {
+  const { apiKey } = settings;
+  const model = modelFor(settings, 'quick');
   const c = await client(apiKey);
   const resp = await c.beta.messages.create({
     model,
@@ -356,7 +381,9 @@ const RECEIPT_SCHEMA = {
 };
 
 // Ticket de caisse → liste d'articles normalisés (garde-manger).
-export async function readReceipt({ apiKey, model }, dataUrl) {
+export async function readReceipt(settings, dataUrl) {
+  const { apiKey } = settings;
+  const model = modelFor(settings, 'photo');
   const c = await client(apiKey);
   const resp = await c.beta.messages.create({
     model,

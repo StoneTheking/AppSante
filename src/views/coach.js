@@ -2,7 +2,8 @@
 import * as store from '../store.js';
 import * as Diana from '../diana.js';
 import * as AI from '../ai.js';
-import { personContext } from '../context.js';
+import { personContext, summary, taste } from '../context.js';
+import { instantAnswer } from '../instant.js';
 import { icon, esc, md, $, $$ } from '../ui.js';
 
 const QUICK = [
@@ -30,17 +31,24 @@ export function render(view, ctx) {
       <p class="small muted">Elle connaît ton profil, ton sommeil, ton humeur, ton temps d’écran, ton activité et tes repas. Elle s’appuie sur une base de 60+ études et peut consulter PubMed, l’OMS, l’ANSES et les grandes revues médicales.</p>
     </div>`}
     ${!st.settings.apiKey ? `<div class="note warn">${icon('key', 18)}<span>Ajoute une clé IA dans <a href="#" data-profile>Profil</a> pour discuter avec Diana. Une clé Google Gemini est gratuite.</span></div>` : ''}
-    <div class="chat" id="chat">${chat.map((m) => `<div class="msg ${m.role}">${m.role === 'assistant' ? md(m.content) + sourcesHtml(m.sources) : esc(m.content)}</div>`).join('')}</div>
+    <div class="chat" id="chat">${chat.map((m, i) => `<div class="msg ${m.role}">${m.role === 'assistant' ? md(m.content) + sourcesHtml(m.sources) + (m.instant ? `<div class="instant-foot"><span class="tiny muted">${icon('zap', 12)} Réponse instantanée, calculée sur ton téléphone</span>${i === chat.length - 1 && st.settings.apiKey ? `<button class="btn sm soft" data-deeper>${icon('sparkles', 14)} Approfondir avec l’IA</button>` : ''}</div>` : '') : esc(m.content)}</div>`).join('')}</div>
     ${!chat.length ? `<div class="stack" style="margin-top:8px">${QUICK.map(([ic, q]) => `<button class="suggest" style="width:100%;border:0;text-align:left" data-q="${esc(q)}"><span class="row" style="flex-wrap:nowrap"><span style="color:var(--primary)">${icon(ic, 18)}</span><span class="ttl">${esc(q)}</span></span>${icon('right', 16)}</button>`).join('')}</div>` : ''}
     <div style="height:90px"></div>
     <div class="composer"><textarea id="ask" rows="1" placeholder="Pose ta question…"></textarea><button class="btn" id="send" aria-label="Envoyer">${icon('send', 18)}</button></div>`;
 
   const ask = $('#ask', view);
   ask.addEventListener('input', () => { ask.style.height = '44px'; ask.style.height = Math.min(120, ask.scrollHeight) + 'px'; });
-  const send = async (text) => {
+  const send = async (text, { ai = false } = {}) => {
     text = text.trim();
     if (!text) return;
-    store.update((s) => s.chat.push({ role: 'user', content: text }));
+    // questions courantes : réponse immédiate à partir des données de l'appli (l'IA reste proposée pour approfondir)
+    const quick = !ai && instantAnswer(text, { sm: summary(), profile: store.get().profile, taste: taste() });
+    if (quick) {
+      store.update((s) => { s.chat.push({ role: 'user', content: text }); s.chat.push({ role: 'assistant', content: quick, instant: true }); });
+      render(view, ctx);
+      return;
+    }
+    if (!ai) store.update((s) => s.chat.push({ role: 'user', content: text }));
     render(view, ctx);
     const box = $('#chat', view);
     const bubble = document.createElement('div');
@@ -50,19 +58,25 @@ export function render(view, ctx) {
     bubble.scrollIntoView({ block: 'end', behavior: 'smooth' });
     try {
       // Diana (en haut à gauche) bouge la bouche pendant que sa réponse s'écrit.
-      const { text: answer, sources } = await AI.coachChat(st.settings, store.get().chat.slice(-20).map(({ role, content }) => ({ role, content })), personContext(), (acc) => { Diana.talking(true); bubble.innerHTML = md(acc); }, { webSearch: st.settings.webSearch });
+      const { text: answer, sources } = await AI.coachChat(st.settings, store.get().chat.filter((m) => !m.instant).slice(-20).map(({ role, content }) => ({ role, content })), personContext(), (acc) => { Diana.talking(true); bubble.innerHTML = md(acc); }, { webSearch: st.settings.webSearch });
       Diana.talking(false);
       store.update((s) => s.chat.push({ role: 'assistant', content: answer, sources }));
       bubble.innerHTML = md(answer) + sourcesHtml(sources);
     } catch (e) {
       Diana.talking(false);
-      store.update((s) => s.chat.pop());
+      if (!ai) store.update((s) => s.chat.pop());
       bubble.innerHTML = `<span style="color:var(--bad)">${icon('alert', 16)} ${esc(AI.friendlyError(e))}</span>`;
     }
   };
   $('#send', view).onclick = () => send(ask.value);
   ask.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && window.innerWidth > 700) { e.preventDefault(); send(ask.value); } });
   $$('[data-q]', view).forEach((b) => (b.onclick = () => send(b.dataset.q)));
+  // « Approfondir » : la réponse instantanée est remplacée par celle de l'IA
+  $('[data-deeper]', view)?.addEventListener('click', () => {
+    const q = store.get().chat.at(-2)?.content;
+    store.update((s) => { s.chat.pop(); });
+    send(q, { ai: true });
+  });
   $('#clear', view)?.addEventListener('click', () => { store.update((s) => (s.chat = [])); render(view, ctx); });
   view.querySelector('[data-profile]')?.addEventListener('click', (e) => { e.preventDefault(); ctx.go('profile'); });
   $('#chat', view).lastElementChild?.scrollIntoView({ block: 'end' });

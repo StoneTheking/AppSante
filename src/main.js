@@ -114,7 +114,7 @@ function renderView(after, animate = false) {
 
 function go(t, after, dir) {
   tab = t;
-  if (t === 'health' || t === 'home') autoSync(); // données fraîches (Samsung Health envoie ses pas au fil de l'eau)
+  if (['health', 'home', 'sport'].includes(t)) autoSync(); // données fraîches (Samsung Health envoie pas et séances au fil de l'eau)
   history.replaceState(null, '', '#' + t);
   window.scrollTo(0, 0);
   // en glissant : simple glissement latéral, sans l'animation d'entrée des cartes (qui partent transparentes → flash noir)
@@ -281,10 +281,10 @@ const busy = () => document.activeElement?.matches?.('input, textarea, select') 
 async function autoSync(force = false) {
   if (!N.isNative || (!force && Date.now() - lastAuto < 20e3)) return;
   lastAuto = Date.now();
-  const before = JSON.stringify([store.get().days, store.get().hcReport?.todaySteps, store.get().workouts.length]);
+  const before = JSON.stringify([store.get().days, store.get().hcReport?.todaySteps, store.get().workouts.map((w) => w.id + w.minutes)]);
   await Health.syncAll({ silent: true });
   // on ne redessine que si quelque chose a changé, et jamais pendant une saisie ou avec une fenêtre ouverte
-  const changed = before !== JSON.stringify([store.get().days, store.get().hcReport?.todaySteps, store.get().workouts.length]);
+  const changed = before !== JSON.stringify([store.get().days, store.get().hcReport?.todaySteps, store.get().workouts.map((w) => w.id + w.minutes)]);
   if (changed && !busy() && ORDER.includes(tab)) renderView();
 }
 // Appli ouverte : air, météo et pas se mettent à jour tout seuls toutes les 10 min.

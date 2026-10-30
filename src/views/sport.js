@@ -6,6 +6,7 @@ import * as SP from '../sport.js';
 import * as W from '../workouts.js';
 import * as SC from '../schedule.js';
 import * as N from '../native.js';
+import * as X3 from '../exercise3d.js';
 import { summary } from '../context.js';
 import * as Diana from '../diana.js';
 import { icon, esc, fmt, donut, sheet, toast, undoToast, srcLinks, $, $$ } from '../ui.js';
@@ -13,14 +14,24 @@ import { icon, esc, fmt, donut, sheet, toast, undoToast, srcLinks, $, $$ } from 
 let timer = null;
 
 // Activité conseillée aujourd'hui : semaine type + état du jour (sommeil, humeur, air, ce qui est déjà fait).
+// La ligne du jour dans « Ta semaine » affiche exactement la même séance (durée, intensité, sport),
+// avec ce qui était prévu quand le conseil du jour l'a ajustée.
 export function todayAdvice(sm, st) {
   const plan = SP.weekPlan(st.profile, st.workouts, new Date(), st.days);
-  const slot = plan.find((d) => d.today);
+  const i = plan.findIndex((d) => d.today);
+  const slot = plan[i];
   const reco = C.recommendActivity(sm, st.profile);
   const dayPlan = C.dailyPlan(sm, st.profile);
   const when = dayPlan.find((p) => p.icon === '🏃');
   const { type, minutes, intensity, ad, why } = C.sportOfDay(sm, st.profile);
-  return { type, minutes, intensity, ad, when: when?.time, whenText: when?.text, reco, why: slot?.matches ? why : [...why, ...reco.why], src: [...new Set([...reco.src, ...(when?.src || [])])], plan };
+  // raison principale : celle du jour (ajustement, récupération…), sinon la semaine type — jamais un conseil générique
+  // qui parlerait d'un autre sport que celui affiché
+  const mainWhy = why.length ? why : slot?.type ? [`Prévu dans ta semaine type (${slot.day.toLowerCase()}).`] : reco.why;
+  if (slot && !slot.matches) {
+    const changed = slot.type !== type || slot.minutes !== minutes || slot.intensity !== intensity;
+    plan[i] = { ...slot, planned: changed ? { type: slot.type, minutes: slot.minutes, intensity: slot.intensity } : null, type, minutes, intensity };
+  }
+  return { type, minutes, intensity, ad, when: when?.time, whenText: when?.text, reco, why: mainWhy, src: [...new Set([...(why.length ? [] : reco.src), ...(when?.src || [])])], plan, dayIndex: i };
 }
 
 export function render(view, ctx) {
@@ -69,7 +80,7 @@ export function render(view, ctx) {
       <div class="card-head"><h2 style="white-space:nowrap">${icon('calendar', 18)} Ta semaine</h2><span class="row" style="gap:14px;flex-wrap:nowrap;white-space:nowrap"><button class="link" id="edit-week">${icon('pencil', 14)} Modifier</button><button class="link" id="my-sports">${icon('settings', 14)} Sports</button></span></div>
       ${adv.plan.map((d, i) => `<div class="list-item" data-day="${i}" style="cursor:pointer;grid-template-columns:76px 1fr auto;${d.today ? 'background:var(--primary-soft);border-radius:12px;padding-left:8px;padding-right:8px' : ''}">
         <b class="small">${d.day}</b>
-        <div><div class="small" style="font-weight:600">${d.type ? esc(SP.activity(d.type).label) : 'Repos'}</div><div class="tiny muted">${d.type ? `${d.minutes} min · ${SP.INTENSITY[d.intensity].label.toLowerCase()}` : 'récupération'}${d.done.length ? ` · fait : ${d.done.map((w) => `${esc(SP.activity(w.type).label.split(' ')[0].toLowerCase())} ${w.minutes} min`).join(', ')}` : ''}</div></div>
+        <div><div class="small" style="font-weight:600">${d.type ? esc(SP.activity(d.type).label) : 'Repos'}</div><div class="tiny muted">${d.type ? `${d.minutes} min · ${SP.INTENSITY[d.intensity].label.toLowerCase()}` : 'récupération'}${d.today && d.matches && adv.type ? ` · ensuite : ${esc(SP.activity(adv.type).label.split(' ')[0].toLowerCase())} ${adv.minutes} min` : ''}${d.planned ? ` · ajusté (prévu : ${d.planned.type ? `${esc(SP.activity(d.planned.type).label.split(' ')[0].toLowerCase())} ${d.planned.minutes} min` : 'repos'})` : ''}${d.done.length ? ` · fait : ${d.done.map((w) => `${esc(SP.activity(w.type).label.split(' ')[0].toLowerCase())} ${w.minutes} min`).join(', ')}` : ''}</div></div>
         ${d.matches ? `<span style="color:var(--good)">${icon('ok', 20)}</span>` : d.past && d.type ? '<span class="tiny muted">manqué</span>' : d.type ? `<span class="muted">${icon('right', 16)}</span>` : ''}
       </div>`).join('')}
       <button class="btn soft block" id="plan-week" style="margin-top:10px">${icon('calendar', 18)} Planifier ma semaine dans l’agenda</button>
@@ -109,7 +120,7 @@ export function render(view, ctx) {
   $('#add', view).onclick = () => openWorkout(ctx, view, false);
   Diana.context('sport', st, sm);
   $('#plan-week', view).onclick = () => planWeekInCalendar(adv.plan);
-  $('#guided', view)?.addEventListener('click', () => openSession(ctx, view, { activity: adv.type, minutes: adv.minutes, intensity: adv.intensity, dayIndex: adv.plan.findIndex((d) => d.today) }));
+  $('#guided', view)?.addEventListener('click', () => openSession(ctx, view, { activity: adv.type, minutes: adv.minutes, intensity: adv.intensity, dayIndex: adv.dayIndex }));
   $$('[data-day]', view).forEach((r) => (r.onclick = () => {
     const d = adv.plan[Number(r.dataset.day)];
     if (d.type) openSession(ctx, view, { activity: d.type, minutes: d.minutes, intensity: d.intensity, dayIndex: Number(r.dataset.day), day: d.day });
@@ -224,6 +235,17 @@ export function openVideoList(done) {
 }
 
 const equip = (st) => st.profile.equipment || 'aucun';
+
+// Démonstration animée en 3D (mannequin Diana) : on peut la faire tourner au doigt.
+const animHtml = (label, big = false) => (X3.hasAnim(label) ? `<div class="ex3d${big ? ' big' : ''}" data-anim="${esc(label)}" data-noswipe><canvas aria-label="Démonstration animée : ${esc(label)}"></canvas><div class="ex3d-cue"></div><span class="ex3d-hint">${icon('refresh', 11)} glisse pour tourner</span></div>` : '');
+function mountAnims(root) {
+  $$('[data-anim]', root).forEach((box) => {
+    if (box.dataset.on || !box.offsetParent) return;
+    box.dataset.on = '1';
+    const cue = $('.ex3d-cue', box);
+    X3.play($('canvas', box), box.dataset.anim, { onCue: (t) => { cue.textContent = t; cue.classList.remove('in'); void cue.offsetWidth; cue.classList.add('in'); } });
+  });
+}
 const fmtDur = (sec) => (sec >= 60 ? `${Math.floor(sec / 60)} min${sec % 60 ? ` ${sec % 60} s` : ''}` : `${sec} s`);
 
 // Détail d'une séance : durée au choix (une durée conseillée), blocs, exercices, séries, repos, consignes.
@@ -244,17 +266,18 @@ export function openSession(ctx, view, { activity, minutes, intensity, dayIndex 
         <div style="text-align:right"><div style="font-size:1.4rem;font-weight:800">${session.minutes}<small style="font-size:.75rem;color:var(--muted)"> min</small></div><div class="tiny muted">~${SP.kcal(activity, intensity, session.minutes, st.profile.weight || 70)} kcal</div></div></div>
       <label class="lbl">Durée</label>
       <div class="chips">${opts.map((m) => `<button class="chip ${m === chosen ? 'on' : ''}" data-min="${m}">${m} min${m === advised ? ' ★' : ''}</button>`).join('')}</div>
-      <p class="tiny muted" style="margin:2px 0 0">★ conseillé${ad.note ? ` · ${esc(ad.note)}` : ' d’après ta semaine type et ton ressenti'} · touche un exercice pour sa vidéo, choisir la tienne ou le retirer</p>
+      <p class="tiny muted" style="margin:2px 0 0">★ conseillé${ad.note ? ` · ${esc(ad.note)}` : ' d’après ta semaine type et ton ressenti'} · touche un exercice pour voir le mouvement en 3D, sa vidéo, ou le retirer</p>
       ${session.blocks.map((b) => `<div class="card" style="margin:12px 0;padding:14px">
         <div class="between"><b>${esc(b.title)}</b><span class="tiny muted">${W.minutesOf([b])} min</span></div>
         ${b.note ? `<p class="tiny muted" style="margin:4px 0 6px">${esc(b.note)}</p>` : ''}
-        ${b.items.map((it) => `<details style="padding:8px 0;border-top:1px solid var(--line)"><summary><span class="small" style="font-weight:600">${esc(it.label)}${W.hasTuto(it) || exCustom()[it.label]?.video ? ` <span style="color:var(--c-move);vertical-align:-2px">${icon('video', 13)}</span>` : ''}</span><span class="tiny muted" style="white-space:nowrap;margin-left:8px">${it.sets && !b.circuit ? `${it.sets} × ` : ''}${it.kind === 'reps' ? `${esc(String(it.reps))}${String(it.reps).includes('m') ? '' : ' rép.'}` : it.seconds ? fmtDur(it.seconds) : ''}${it.rest && !b.circuit ? ` · repos ${it.rest} s` : ''}</span></summary>${it.detail ? `<p class="tiny muted" style="margin:6px 0 0">${esc(it.detail)}</p>` : ''}<div class="ex-actions">${W.hasTuto(it) || exCustom()[it.label]?.video ? `<a class="tuto" href="${esc(videoFor(it.label))}" target="_blank" rel="noopener">▶ ${exCustom()[it.label]?.video ? 'Ma vidéo' : 'Voir la démo'}</a><button class="link tiny" data-vid="${esc(it.label)}">${icon('pencil', 12)} Changer</button>` : ''}<button class="link tiny" data-hide-ex="${esc(it.label)}" style="color:var(--bad)">${icon('trash', 12)} Retirer</button></div></details>`).join('')}
+        ${b.items.map((it) => `<details style="padding:8px 0;border-top:1px solid var(--line)"><summary><span class="small" style="font-weight:600">${esc(it.label)}${X3.hasAnim(it.label) ? ` <span class="ex3d-tag">3D</span>` : W.hasTuto(it) || exCustom()[it.label]?.video ? ` <span style="color:var(--c-move);vertical-align:-2px">${icon('video', 13)}</span>` : ''}</span><span class="tiny muted" style="white-space:nowrap;margin-left:8px">${it.sets && !b.circuit ? `${it.sets} × ` : ''}${it.kind === 'reps' ? `${esc(String(it.reps))}${String(it.reps).includes('m') ? '' : ' rép.'}` : it.seconds ? fmtDur(it.seconds) : ''}${it.rest && !b.circuit ? ` · repos ${it.rest} s` : ''}</span></summary>${animHtml(it.label)}${it.detail ? `<p class="tiny muted" style="margin:6px 0 0">${esc(it.detail)}</p>` : ''}<div class="ex-actions">${W.hasTuto(it) || exCustom()[it.label]?.video ? `<a class="tuto" href="${esc(videoFor(it.label))}" target="_blank" rel="noopener">▶ ${exCustom()[it.label]?.video ? 'Ma vidéo' : X3.hasAnim(it.label) ? 'Vidéo' : 'Voir la démo'}</a><button class="link tiny" data-vid="${esc(it.label)}">${icon('pencil', 12)} Changer</button>` : ''}<button class="link tiny" data-hide-ex="${esc(it.label)}" style="color:var(--bad)">${icon('trash', 12)} Retirer</button></div></details>`).join('')}
       </div>`).join('')}
       ${hidden.size ? `<details class="small" style="margin:8px 0"><summary class="muted">${hidden.size} exercice${hidden.size > 1 ? 's' : ''} retiré${hidden.size > 1 ? 's' : ''}</summary>${[...hidden].map((l) => `<div class="between" style="padding:6px 0;border-top:1px solid var(--line)"><span class="small">${esc(l)}</span><button class="btn sm soft" data-unhide-ex="${esc(l)}">Rétablir</button></div>`).join('')}</details>` : ''}
       ${srcLinks([...session.src, ...(ad.note ? ['foster2001', 'greig2020'] : [])])}
       <button class="btn block" id="start-guided" style="margin-top:12px">${icon('zap', 18)} Lancer le mode guidé</button>
       <button class="btn ghost block" id="vid-list" style="margin-top:8px">${icon('video', 18)} Choisir les vidéos des exercices</button>`;
     $$('[data-min]', el).forEach((b) => (b.onclick = () => { chosen = Number(b.dataset.min); draw(); }));
+    $$('details', el).forEach((d) => d.addEventListener('toggle', () => d.open && mountAnims(d)));
     $$('[data-vid]', el).forEach((b) => (b.onclick = () => openVideoPicker(b.dataset.vid, draw)));
     $$('[data-hide-ex]', el).forEach((b) => (b.onclick = () => { setEx(b.dataset.hideEx, { hidden: true }); toast('Exercice retiré : il ne te sera plus proposé', 1800); draw(); }));
     $$('[data-unhide-ex]', el).forEach((b) => (b.onclick = () => { setEx(b.dataset.unhideEx, { hidden: null }); draw(); }));
@@ -401,9 +424,10 @@ function guided(ctx, view, session, activity, intensity) {
         <div class="gd-label">${esc(s.label)}</div>
         <div class="gd-big" style="color:${s.isRest ? 'var(--c-sleep)' : 'var(--c-move)'}" id="big">${s.kind === 'time' ? fmtClock(left) : `${esc(String(s.reps))}${String(s.reps).includes('m') ? '' : ' rép.'}`}</div>
       </div>
+      ${animHtml(s.isRest ? next?.label || '' : s.label, true)}
       <!-- zones de hauteur fixe : les boutons restent au même endroit quel que soit l'exercice -->
       <p class="small muted gd-detail">${esc(s.detail || '')}</p>
-      <p class="gd-tuto">${!s.isRest && (W.hasTuto(s) || exCustom()[s.label]?.video) ? `<a class="tuto" href="${esc(videoFor(s.label))}" target="_blank" rel="noopener">▶ ${exCustom()[s.label]?.video ? 'Ma vidéo' : 'Voir la démo'}</a>` : ''}</p>
+      <p class="gd-tuto">${!s.isRest && (W.hasTuto(s) || exCustom()[s.label]?.video) ? `<a class="tuto" href="${esc(videoFor(s.label))}" target="_blank" rel="noopener">▶ ${exCustom()[s.label]?.video ? 'Ma vidéo' : X3.hasAnim(s.label) ? 'Voir en vidéo' : 'Voir la démo'}</a>` : ''}</p>
       <p class="tiny muted gd-next">${next && !s.isRest ? `Ensuite : ${esc(next.label)}` : ''}</p>
       <div class="row gd-ctrl">
         <button class="btn ghost" id="prev" ${i === 0 ? 'disabled' : ''} aria-label="Précédent">${icon('left', 18)}</button>
@@ -413,7 +437,7 @@ function guided(ctx, view, session, activity, intensity) {
       <button class="btn ghost block" id="finish" style="margin-top:10px">${icon('check', 18)} Terminer et enregistrer la séance</button>
       ${Diana.inline('guided', store.get(), null, { step: s, i, n: steps.length })}`;
     // la barre avance depuis sa position précédente au lieu de repartir de zéro
-    requestAnimationFrame(() => { const f = $('#gd-fill', el); if (f) f.style.width = `${pct}%`; });
+    requestAnimationFrame(() => { const f = $('#gd-fill', el); if (f) f.style.width = `${pct}%`; mountAnims(el); });
     lastPct = pct;
     $('#prev', el).onclick = () => go(i - 1);
     $('#next', el).onclick = () => go(i + 1);

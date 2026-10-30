@@ -12,6 +12,7 @@ import * as SP from '../sport.js';
 import { icon, esc, fmt, fmtMin, segmented, srcLinks, barChart, timeChart, faces, bindFaces, toast, undoToast, compressImage, pickImage, sheet, $, $$ } from '../ui.js';
 import * as E from '../energy.js';
 import { correlations } from '../correlate.js';
+import { openSection as openProfile } from './profile.js';
 
 let seg = 'suivi';
 let dayOffset = 0;
@@ -152,7 +153,17 @@ function stepsSince(st) {
   return first ? `actif · compte depuis ${new Date(first.t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : 'actif';
 }
 
-function sourcesCard(st) {
+// Rappel discret dans Santé : l'état de la synchro, les réglages sont dans le profil.
+function phoneLink(st) {
+  const d = st.healthDiag;
+  const warn = N.isNative && (!d?.ok || !st.usageOk);
+  return `<button class="list-item card" id="phone-link" style="width:100%;text-align:left;padding:10px 14px;margin-bottom:12px">
+    <span class="icon-badge" style="color:${warn ? 'var(--warn)' : 'var(--good)'}">${icon(N.isNative ? 'phone' : 'upload', 16)}</span>
+    <span><span class="small" style="font-weight:600">Données du téléphone</span><span class="tiny muted" style="display:block">${N.isNative ? (st.lastSync ? `à jour ${new Date(st.lastSync).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : 'pas encore synchronisées') + (warn ? ' · un accès manque' : '') : 'capture d’écran ou CSV'} · réglages dans Profil</span></span>
+    <span class="muted">${icon('right', 16)}</span></button>`;
+}
+
+export function sourcesCard(st) {
   const d = st.healthDiag;
   if (!N.isNative) return `<div class="card">
       <div class="card-head"><h2>${icon('refresh', 18)} Données automatiques</h2></div>
@@ -181,7 +192,7 @@ function renderTrack(el, ctx) {
   const kg = st.profile.weight || 70;
   const due = E.weighDue(st);
   el.innerHTML = `
-    ${sourcesCard(st)}
+    ${phoneLink(st)}
     ${dayOffset === 0 ? sleepWeekCard(st) : ''}
     <div class="card">
       <div class="between">
@@ -249,6 +260,12 @@ function renderTrack(el, ctx) {
   $('#next', el).onclick = () => { if (dayOffset < 0) { dayOffset++; re(); } };
   $('#add-stool', el).onclick = () => ctx.action('stool');
   $$('[data-stool-del]', el).forEach((b) => (b.onclick = () => { const undo = store.removing((s) => { s.stools = s.stools.filter((x) => x.id !== b.dataset.stoolDel); }); re(); undoToast('Entrée supprimée', undo); }));
+  $('#phone-link', el)?.addEventListener('click', () => { openProfile('phone'); ctx.go('profile'); });
+}
+
+// Pas, Health Connect, podomètre, temps d’écran (affiché dans Profil → Données du téléphone).
+export function bindSources(el, re) {
+  const key = store.today();
   if (N.isNative) {
     $('#hc', el)?.addEventListener('click', async () => {
       const res = $('#sync-res', el);
@@ -289,7 +306,7 @@ function renderTrack(el, ctx) {
       if (u !== store.get().usageOk || sa !== !!store.get().stepsAccess) { store.update((s) => { s.usageOk = u; s.stepsAccess = sa; }); if (el.isConnected) re(); }
     });
   } else {
-    $('#shot', el).onclick = () => readShots(key, el, ctx);
+    $('#shot', el).onclick = () => readShots(key, el, re);
     $('#csv-btn', el).onclick = () => $('#csv', el).click();
     $('#csv', el).onchange = async (e) => {
       const f = e.target.files[0];
@@ -358,7 +375,7 @@ export function openWeigh(done) {
   };
 }
 
-async function readShots(key, el, ctx) {
+async function readShots(key, el, re) {
   const files = await pickImage({ camera: false, multiple: true });
   if (!files.length) return;
   const res = $('#sync-res', el);
@@ -376,7 +393,7 @@ async function readShots(key, el, ctx) {
     }
   }
   merge({ [key]: merged });
-  renderTrack(el, ctx);
+  re();
   $('#sync-res', el).innerHTML = `<div class="note good">${icon('ok', 18)}<span>${Object.keys(merged).length} valeur(s) importée(s). ${esc(notes.join(' '))}</span></div>`;
 }
 

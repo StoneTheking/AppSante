@@ -692,3 +692,38 @@ span.qcam-side { background: none; }
 .pp-thumb span { display: block; text-align: center; font-size: .68rem; color: var(--muted); margin-top: 2px; }
 .pp-thumb button { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%; border: 0; background: var(--elev); color: var(--text); display: grid; place-items: center; padding: 0; }
 .pending-photos .spinner { width: 16px; height: 16px; color: var(--primary); }
+
+/* ---------- Profil : réglages façon téléphone (menu + pages) ---------- */
+.pf-menu { display: flex; flex-direction: column; gap: 2px; }
+.pf-me { display: flex; gap: 12px; align-items: center; padding: 14px; margin-bottom: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 18px; }
+.pf-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; width: 100%; padding: 10px 12px; background: transparent; border: 0; border-radius: 14px; color: var(--text); text-align: left; cursor: pointer; font: inherit; }
+.pf-item:active, .pf-item:hover { background: var(--card-2, var(--card)); }
+.pf-item.on { background: var(--primary-soft); }
+.pf-item > svg { color: var(--muted); }
+.pf-ic { width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; background: color-mix(in srgb, var(--primary) 14%, transparent); color: var(--primary); }
+.pf-txt b { display: block; font-weight: 650; font-size: .95rem; }
+.pf-txt span { display: block; font-size: .76rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pf-back { display: inline-flex; align-items: center; gap: 2px; background: none; border: 0; color: var(--primary); font: inherit; font-weight: 600; padding: 6px 0; cursor: pointer; }
+.pf-title { display: flex; align-items: center; gap: 8px; margin: 4px 4px 12px; font-size: 1.25rem; }
+.pf-page > .card:first-of-type { margin-top: 0; }
+/* téléphone : le menu, puis la rubrique choisie en plein écran */
+.pf-root.has-sec .pf-menu { display: none; }
+.pf-root:not(.has-sec) .pf-pages { display: none; }
+/* grand écran : menu à gauche, rubrique à droite */
+@media (min-width: 760px) {
+  .pf-root { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 20px; align-items: start; }
+  .pf-root.has-sec .pf-menu { display: flex; position: sticky; top: 72px; }
+  .pf-back { display: none; }
+}
+
+/* ---------- Démonstrations 3D des exercices ---------- */
+.ex3d { position: relative; height: 210px; margin: 8px 0 4px; border-radius: 16px; overflow: hidden; background: radial-gradient(120% 90% at 50% 20%, #14284a 0%, #0a1426 60%, #060c18 100%); border: 1px solid rgba(90, 215, 255, .22); touch-action: pan-y; }
+.ex3d.big { height: min(34vh, 280px); margin: 4px 0 8px; }
+.ex3d canvas { width: 100%; height: 100%; display: block; cursor: grab; }
+.ex3d-cue { position: absolute; left: 10px; right: 10px; top: 8px; color: #d6f6ff; font-size: .8rem; font-weight: 650; text-align: center; text-shadow: 0 1px 6px #000; pointer-events: none; }
+.ex3d-cue.in { animation: cueIn .35s ease; }
+@keyframes cueIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.ex3d-hint { position: absolute; right: 8px; bottom: 6px; font-size: .66rem; color: rgba(214, 246, 255, .55); display: inline-flex; gap: 3px; align-items: center; pointer-events: none; }
+.ex3d-tag { font-size: .62rem; font-weight: 800; color: #5ad7ff; border: 1px solid rgba(90, 215, 255, .5); border-radius: 6px; padding: 0 4px; vertical-align: 1px; }
+@media (prefers-reduced-motion: reduce) { .ex3d-cue.in { animation: none; } }
+.instant-foot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }

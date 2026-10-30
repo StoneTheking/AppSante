@@ -253,7 +253,7 @@ export function dailyPlan(sm, profile, date = new Date()) {
     const slot = suggestSlot({ duration: sess.duration, intensity: sess.intensity === 'soutenue' ? 'intense' : 'moderee', wake: profile.wakeTime, bed: profile.bedTime, busy: sm.busy || [], pref: profile.sportPref || 'auto', usualHour: sm.usualHour, env });
     const slotChosen = !!slot && ((sm.busy || []).length > 0 || (profile.sportPref && profile.sportPref !== 'auto') || sm.usualHour != null);
     if (slotChosen) actStart = slot.start;
-    let actText = [pType ? 'Séance prévue dans ta semaine type.' : '', ...sod.why, ...act.why.slice(0, pType ? 1 : 2)].filter(Boolean).join(' ');
+    let actText = [pType ? 'Séance prévue dans ta semaine type.' : '', ...sod.why, ...(pType || sod.why.length ? [] : act.why.slice(0, 2))].filter(Boolean).join(' ');
     const actSrc = [...act.src];
     if (env) {
       if (env.aqi > 60 || env.tMax >= 33) {
