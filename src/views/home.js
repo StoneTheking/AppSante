@@ -1,4 +1,4 @@
-// Accueil : score, prochaine étape, actions rapides, plan de la journée, nutrition, analyses.
+// Accueil : score, prochaine étape, actions rapides, repas / séance / coucher du jour, analyses.
 import * as store from '../store.js';
 import * as S from '../science.js';
 import * as C from '../coach.js';
@@ -13,10 +13,12 @@ import { correlations } from '../correlate.js';
 import { goodNightTips } from './actions.js';
 import { openWeigh } from './health.js';
 import { weighDue } from '../energy.js';
+import * as Diana from '../diana.js';
 
 const PLAN_ICONS = { '🌅': 'sunrise', '🌇': 'sun', '⭐': 'star', '⚡': 'zap', '🌳': 'leaf', '☀️': 'sunrise', '🍳': 'coffee', '☕': 'coffee', '🥗': 'salad', '🚶': 'steps', '😴': 'bed', '🏃': 'dumbbell', '🍎': 'apple', '🍽️': 'utensils', '📵': 'phone', '🧘': 'brain', '🌙': 'moon', '💼': 'work' };
 const LEVEL_ICON = { bon: 'ok', attention: 'alert', alerte: 'alert' };
-let showAllPlan = false;
+const MEAL_KEYS = ['🍳', '🥗', '🍎', '🍽️'];
+const DAY_KEYS = [...MEAL_KEYS, '🏃', '🌙'];
 
 export function meter(label, v, max, unit, color, inverse = false) {
   const p = Math.min(100, max ? (v / max) * 100 : 0);
@@ -55,12 +57,14 @@ export function render(view, ctx) {
   const ins = C.insights(sm).sort((a, b) => order[a.level] - order[b.level]).slice(0, 2);
   const t = sm.t, tot = sm.totToday, d = sm.today;
   const water = d.waterMl || 0;
-  const visiblePlan = showAllPlan ? plan : plan.slice(nextIdx, nextIdx + 3).length ? plan.slice(nextIdx, nextIdx + 3) : plan.slice(-2);
+  // l'accueil ne garde que l'essentiel : les repas (faits et à venir), la séance et l'heure du coucher
+  const dayPlan = plan.filter((p) => DAY_KEYS.includes(p.key));
 
   // la bannière se fie à la version réellement installée : après la mise à jour, l’ancien « disponible » enregistré ne compte plus
   const up = st.update?.available && N.installedVersion() && N.isNewer(st.update.latest, N.installedVersion()) ? st.update : null;
   view.innerHTML = `
     ${up ? `<div class="note" style="margin:4px 0 10px">${icon('download', 18)}<span style="flex:1"><b>Mise à jour ${esc(up.latest)} disponible</b><br><span class="tiny">Télécharge puis ouvre le fichier : elle s’installe par-dessus, tes données sont conservées.</span></span><button class="btn sm" data-update>Installer</button></div>` : ''}
+    ${Diana.card('home', st, sm)}
     ${hero(sm, st)}
     ${reviewCard(st)}
     ${questsCard(st)}
@@ -77,11 +81,12 @@ export function render(view, ctx) {
     </div>
 
     <div class="card" id="plan">
-      <div class="card-head"><h2>${icon('calendar', 18)} Plan du jour</h2><span class="row" style="gap:12px;flex-wrap:nowrap"><button class="link" data-add-step aria-label="Ajouter une étape">${icon('plus', 14)} Ajouter</button><button class="link" data-toggle-plan>${showAllPlan ? 'Réduire' : 'Tout voir'}</button></span></div>
-      <ul class="timeline">${visiblePlan.map((p) => {
+      <div class="card-head"><h2>${icon('calendar', 18)} Ma journée</h2><span class="tiny muted">repas · sport · coucher</span></div>
+      <ul class="timeline">${dayPlan.map((p) => {
         const i = plan.indexOf(p);
+        const late = !p.done && i < nextIdx && MEAL_KEYS.includes(p.key);
         return `<li class="${p.done ? 'done ok' : i === nextIdx ? 'now' : i < nextIdx ? 'done' : ''}" data-step="${i}"><span class="t">${p.time}</span><span class="dot">${icon(p.done ? 'check' : PLAN_ICONS[p.icon] || 'clock', 16)}</span>
-          <div class="step-main"><div class="ttl">${esc(p.title)}${p.edited || p.custom ? ` <span class="edited-mark">${icon('pencil', 11)}</span>` : ''}</div>${p.note || p.text ? `<div class="txt one">${esc(p.note || p.text)}</div>` : ''}</div></li>`;
+          <div class="step-main"><div class="ttl">${esc(p.title)}${p.edited || p.custom ? ` <span class="edited-mark">${icon('pencil', 11)}</span>` : ''}</div><div class="txt one">${late ? 'Pas noté · touche pour l’ajouter' : esc(p.done ? p.text : MEAL_KEYS.includes(p.key) ? 'Touche pour noter ce repas' : p.key === '🏃' ? 'Touche pour voir la séance' : p.note || p.text)}</div></div></li>`;
       }).join('')}</ul>
     </div>
 
@@ -91,6 +96,7 @@ export function render(view, ctx) {
 `;
 
   $$('[data-act]', view).forEach((b) => (b.onclick = () => ctx.action(b.dataset.act)));
+  Diana.bind(view, 'home', st, sm);
   const wb = $('[data-water]', view);
   onTapHold(wb, () => addWater(wb, 250, ctx), () => addWater(wb, -250, ctx));
   $('.hero', view).onclick = (e) => { if (e.target.closest('[data-hero-style]')) return; openScore(sm); };
@@ -100,8 +106,12 @@ export function render(view, ctx) {
     toast(`Style : ${{ barres: 'barres', anneaux: 'anneaux' }[heroStyle(store.get())]}`, 1200);
     render(view, ctx);
   });
-  $$('[data-step]', view).forEach((li) => (li.onclick = () => openStep(plan[Number(li.dataset.step)], () => render(view, ctx))));
-  $('[data-add-step]', view).onclick = () => openStep(null, () => render(view, ctx));
+  $$('[data-step]', view).forEach((li) => (li.onclick = () => {
+    const p = plan[Number(li.dataset.step)];
+    if (MEAL_KEYS.includes(p.key)) return p.done ? ctx.go('nutrition') : ctx.action('photo');
+    if (p.key === '🏃') return ctx.go('sport');
+    openStep(p, () => render(view, ctx));
+  }));
   view.querySelector('[data-review]')?.addEventListener('click', () => openReview(ctx, () => render(view, ctx)));
   view.querySelector('[data-goal]')?.addEventListener('click', () => openReview(ctx, () => render(view, ctx), { goalOnly: true }));
   bindQuests(view, ctx);
@@ -111,7 +121,6 @@ export function render(view, ctx) {
   view.querySelector('[data-sleep-info]')?.addEventListener('click', () => goodNightTips());
   view.querySelector('[data-sleep-cancel]')?.addEventListener('click', () => { SL.cancelSleep(); ctx.syncWidget?.(); render(view, ctx); });
   view.querySelector('[data-env-setup]')?.addEventListener('click', () => ctx.go('profile', () => document.getElementById('loc')?.scrollIntoView({ block: 'center' })));
-  view.querySelector('[data-toggle-plan]').onclick = () => { showAllPlan = !showAllPlan; render(view, ctx); };
 }
 
 // Carte « Je vais dormir » : un appui au coucher (sans menu), un appui au réveil ; ⓘ = conseils.

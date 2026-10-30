@@ -18,7 +18,7 @@ export function render(root, done, dir) {
       <h1>Ton coach santé,<br>fondé sur la science.</h1>
       <p class="lead">Diana Health croise ton sommeil, ton humeur, tes écrans, ton activité et ce que tu manges pour te dire quoi faire, et quand.</p>
       ${[['camera', 'var(--c-food)', 'Photo ou code-barres', 'Calories, Nutri-Score et additifs en un geste'],
-        ['calendar', 'var(--primary)', 'Plan du jour personnalisé', 'Repas, sport, lumière, écrans, coucher'],
+        ['calendar', 'var(--primary)', 'Ta journée et Coach Diana', 'Repas, séance, coucher et encouragements'],
         ['trend', 'var(--c-sleep)', 'Tes tendances', 'Ce qui joue sur ton sommeil et ton humeur'],
         ['cart', 'var(--c-move)', 'Menus & courses', 'Ta semaine planifiée, ta liste prête']]
         .map(([ic, c, t, s]) => `<div class="feature"><span class="icon-badge" style="background:color-mix(in srgb,${c} 15%,transparent);color:${c}">${icon(ic)}</span><div><b>${t}</b><div class="small muted">${s}</div></div></div>`).join('')}`,

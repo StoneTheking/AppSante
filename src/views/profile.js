@@ -102,7 +102,7 @@ export function render(view, ctx) {
     <div class="card">
       <label class="between" style="flex-wrap:nowrap"><span><b>Activer les rappels</b><div class="tiny muted">${N.isNative ? 'Notifications programmées, même application fermée.' : 'Dans le navigateur, les rappels ne s’affichent que si l’application est ouverte récemment. Pour des rappels fiables, installe l’application Android.'}</div></span>${sw('id="rem-on"', rs.enabled)}</label>
       <div id="rem-kinds" style="${rs.enabled ? '' : 'opacity:.45;pointer-events:none'}">
-        ${Object.entries(R.KINDS).map(([k, v]) => `<label class="between" style="padding:10px 0;border-top:1px solid var(--line);flex-wrap:nowrap"><span class="small">${v.label}</span>${sw(`data-kind="${k}"`, rs.kinds[k])}</label>`).join('')}
+        ${Object.entries(R.KINDS).map(([k, v]) => `<label class="between" style="padding:10px 0;border-top:1px solid var(--line);flex-wrap:nowrap"><span class="small" style="padding-right:12px"><b style="font-weight:600">${v.label}</b><span class="tiny muted" style="display:block;margin-top:2px;line-height:1.4">${v.desc}</span></span>${sw(`data-kind="${k}"`, rs.kinds[k])}</label>`).join('')}
       </div>
     </div>
 

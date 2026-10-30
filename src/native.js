@@ -28,42 +28,40 @@ const timeout = (p, ms, msg) => Promise.race([p, new Promise((_, no) => setTimeo
 const HEALTH_PERMS = ['STEPS', 'SLEEP', 'HEART_RATE', 'RESTING_HEART_RATE', 'HEART_RATE_VARIABILITY', 'WEIGHT', 'ACTIVE_CALORIES_BURNED', 'EXERCISE']
   .map((x) => `android.permission.health.READ_${x}`);
 
-// Attend le retour dans l'appli après l'ouverture d'une fenêtre système.
-// Rejette si la fenêtre ne s'est jamais ouverte (on n'a pas quitté l'appli en `openMs`).
-function waitReturn(openMs = 6000, maxMs = 180000) {
-  return new Promise((ok, no) => {
-    let left = false;
-    const done = (f) => { clearTimeout(t1); clearTimeout(t2); document.removeEventListener('visibilitychange', vis); f(); };
-    const vis = () => {
-      if (document.visibilityState === 'hidden') left = true;
-      else if (left) done(() => setTimeout(ok, 400)); // laisse Health Connect enregistrer le choix
-    };
-    const t1 = setTimeout(() => { if (!left) done(() => no(new Error('La fenêtre d’autorisation ne s’est pas ouverte'))); }, openMs);
-    const t2 = setTimeout(() => done(ok), maxMs);
-    document.addEventListener('visibilitychange', vis);
-  });
+// Accès accordés lus directement auprès d'Android 14+ (null si inconnu : Android plus ancien ou APK sans cette fonction).
+const nativeGranted = () => timeout(UsageStats.healthGranted({ permissions: HEALTH_PERMS }), 3000, '')
+  .then((r) => (r.known ? r.granted || [] : null)).catch(() => null);
+// Correspondance autorisation Android → type lu par l'appli.
+const PERM_TYPE = Object.fromEntries(HEALTH_PERMS.map((p, i) => [p, HEALTH_READ[i]]));
+
+// Accès accordés : plugin Health Connect, sinon Android directement (les deux peuvent diverger juste après l'accord).
+async function grantedTypes(H) {
+  const st = await timeout(H.checkAuthorization({ read: HEALTH_READ }), 8000, 'Health Connect ne répond pas (autorisations)').catch(() => null);
+  const viaPlugin = st?.readAuthorized || [];
+  if (viaPlugin.length) return viaPlugin;
+  const nat = await nativeGranted();
+  if (nat) return nat.map((p) => PERM_TYPE[p]).filter(Boolean);
+  if (!st) throw new Error('Health Connect ne répond pas (autorisations)');
+  return [];
 }
 
-// Demande d'accès. L'appli ouvre elle-même la fenêtre de Health Connect puis relit les accès accordés à son retour :
-// plus aucune attente d'un résultat qui peut ne jamais arriver. Repli sur le plugin pour les anciennes versions natives.
+// Demande d'accès : la fenêtre est ouverte en natif et la promesse se résout quand on la ferme.
+// Android 14+ : autorisations système (requestPermissions) ; Android 13 et moins : appli Health Connect.
 export async function connectHealth(onStep = () => {}) {
   const H = await health();
   onStep('Vérification de Health Connect…');
   const a = await timeout(H.isAvailable(), 5000, 'Health Connect ne répond pas');
   if (!a.available) throw new Error('Health Connect n’est pas disponible. Installe « Health Connect » depuis le Play Store (inclus d’office depuis Android 14).');
-  onStep('Ouverture de la fenêtre d’autorisation…');
-  let native = true;
-  try { await timeout(UsageStats.requestHealth({ permissions: HEALTH_PERMS }), 4000, 'pas de réponse'); }
+  onStep('Choisis les accès dans la fenêtre de Health Connect…');
+  try { await timeout(UsageStats.requestHealth({ permissions: HEALTH_PERMS }), 300000, 'Pas de réponse de la fenêtre d’autorisation'); }
   catch (e) {
-    if (!/not implemented|pas de réponse/i.test(e.message || '')) throw e;
-    native = false;
+    if (!/not implemented/i.test(e.message || '')) throw e;
+    await timeout(H.requestAuthorization({ read: HEALTH_READ }), 120000, 'Pas de réponse de Health Connect').catch(() => {});
   }
-  if (native) await waitReturn();
-  else await Promise.race([H.requestAuthorization({ read: HEALTH_READ }).catch(() => {}), waitReturn()]);
   onStep('Lecture des accès accordés…');
-  const st = await timeout(H.checkAuthorization({ read: HEALTH_READ }), 8000, 'Health Connect ne répond pas (autorisations)');
-  if (!(st.readAuthorized || []).length) throw new Error('Aucun accès accordé dans la fenêtre de Health Connect');
-  return st;
+  const granted = await grantedTypes(H);
+  if (!granted.length) throw new Error('Aucun accès accordé (si la fenêtre ne s’est pas affichée, Android l’a bloquée après des refus)');
+  return { readAuthorized: granted };
 }
 
 export const openHealthSettings = async () => (await health()).openHealthConnectSettings();
@@ -79,8 +77,7 @@ export async function healthDiagnose() {
     const H = await health();
     const a = await timeout(H.isAvailable(), 5000, 'Health Connect ne répond pas (disponibilité)');
     if (!a.available) return { ok: false, reason: /update/i.test(a.reason || '') ? 'update' : 'unavailable', detail: a.reason || '', info };
-    const st = await timeout(H.checkAuthorization({ read: HEALTH_READ }), 8000, 'Health Connect ne répond pas (autorisations)');
-    const granted = st.readAuthorized || [];
+    const granted = await grantedTypes(H);
     return { ok: granted.length > 0, reason: granted.length ? 'ok' : 'denied', granted, steps: granted.includes('steps'), info };
   } catch (e) { return { ok: false, reason: 'error', detail: e.message || String(e), info }; }
 }

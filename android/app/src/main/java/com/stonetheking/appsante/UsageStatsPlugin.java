@@ -119,32 +119,70 @@ public class UsageStatsPlugin extends Plugin {
         }
     }
 
-    // Health Connect : ouvre directement la fenêtre d'autorisation, sans attendre son résultat.
-    // L'appli vérifie les accès accordés au retour (visibilitychange), ce qui évite les attentes sans fin
-    // quand le résultat de l'activité se perd (activité recréée, lanceur non rappelé).
+    // Health Connect : demande d'accès, résolue quand l'utilisateur a répondu (MainActivity relaie le résultat).
+    // Android 14+ : les accès santé sont des autorisations système, demandées avec requestPermissions
+    // (l'intent du contrat androidx « REQUEST_PERMISSIONS » n'est pas une vraie activité et ne s'ouvrait jamais).
+    // Android 13 et moins : fenêtre de l'appli Health Connect, ouverte avec startActivityForResult.
+    static final int HEALTH_REQUEST = 7311;
+    private static PluginCall healthCall;
+    private static UsageStatsPlugin healthPlugin;
+
     @PluginMethod
     public void requestHealth(PluginCall call) {
         JSArray arr = call.getArray("permissions");
         Set<String> perms = new HashSet<>();
         try { for (int i = 0; i < arr.length(); i++) perms.add(arr.getString(i)); } catch (Exception e) { call.reject("Liste d'autorisations invalide"); return; }
-        Intent intent;
-        try {
-            intent = androidx.health.connect.client.PermissionController.createRequestPermissionResultContract()
-                .createIntent(getContext(), perms);
-        } catch (Throwable e) { call.reject("Health Connect indisponible : " + e.getMessage()); return; }
-        final Intent launch = intent;
+        final String[] list = perms.toArray(new String[0]);
+        healthCall = call;
+        healthPlugin = this;
         getActivity().runOnUiThread(() -> {
             try {
-                // startActivityForResult (et non startActivity) : Health Connect identifie l'appli demandeuse par l'appelant
-                getActivity().startActivityForResult(launch, 7311);
-                JSObject r = new JSObject();
-                r.put("launched", true);
-                r.put("action", String.valueOf(launch.getAction()));
-                call.resolve(r);
+                if (Build.VERSION.SDK_INT >= 34) {
+                    androidx.core.app.ActivityCompat.requestPermissions(getActivity(), list, HEALTH_REQUEST);
+                } else {
+                    Intent intent = androidx.health.connect.client.PermissionController.createRequestPermissionResultContract()
+                        .createIntent(getContext(), perms);
+                    getActivity().startActivityForResult(intent, HEALTH_REQUEST);
+                }
             } catch (Throwable e) {
+                healthCall = null;
                 call.reject("La fenêtre d'autorisation ne s'ouvre pas : " + e.getMessage());
             }
         });
+    }
+
+    /** Appelé par MainActivity quand la fenêtre de Health Connect se ferme. */
+    static void onHealthResult() {
+        PluginCall call = healthCall;
+        UsageStatsPlugin p = healthPlugin;
+        healthCall = null;
+        if (call == null || p == null) return;
+        JSObject r = p.grantedHealth(call.getArray("permissions"));
+        r.put("answered", true);
+        call.resolve(r);
+    }
+
+    // Accès santé accordés, lus directement auprès d'Android (14+) : ne dépend pas du plugin Health Connect.
+    private JSObject grantedHealth(JSArray arr) {
+        JSArray granted = new JSArray();
+        boolean known = Build.VERSION.SDK_INT >= 34;
+        if (known && arr != null) {
+            for (int i = 0; i < arr.length(); i++) {
+                try {
+                    String perm = arr.getString(i);
+                    if (getContext().checkSelfPermission(perm) == PackageManager.PERMISSION_GRANTED) granted.put(perm);
+                } catch (Exception ignored) { }
+            }
+        }
+        JSObject r = new JSObject();
+        r.put("known", known);
+        r.put("granted", granted);
+        return r;
+    }
+
+    @PluginMethod
+    public void healthGranted(PluginCall call) {
+        call.resolve(grantedHealth(call.getArray("permissions")));
     }
 
     // Informations utiles au diagnostic de Health Connect (version d'Android, profil géré, application installée).

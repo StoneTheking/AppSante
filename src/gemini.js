@@ -3,8 +3,10 @@
 // Seul le sous-ensemble utilisé par ai.js est traduit : système, texte, images, sortie JSON, recherche web, streaming.
 
 const BASE = 'https://generativelanguage.googleapis.com/v1beta/models/';
-// alias maintenu par Google vers le dernier modèle Flash ; repli sur une version fixe si l'alias disparaît
-const MODELS = ['gemini-flash-latest', 'gemini-2.5-flash'];
+// alias maintenu par Google vers le dernier modèle Flash, puis versions fixes et « Lite » :
+// chaque modèle a son propre quota gratuit et sa propre charge, on passe au suivant s'il est saturé.
+const MODELS = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-flash-lite-latest', 'gemini-2.5-flash-lite'];
+const BUSY = [500, 502, 503, 504];
 
 export const isGeminiKey = (k) => /^AIza[\w-]{30,}$/.test(String(k || '').trim());
 
@@ -17,7 +19,7 @@ function friendly(status, body) {
   if (status === 400 && /API key/i.test(msg)) return 'Clé Gemini invalide. Vérifie-la dans Profil.';
   if (status === 403) return 'Cette clé Gemini n’a pas accès à l’API (active « Generative Language API » sur aistudio.google.com).';
   if (status === 429) return 'Quota gratuit de Gemini atteint : réessaie dans une minute (ou demain si la limite du jour est atteinte).';
-  if (status >= 500) return 'Gemini est momentanément indisponible, réessaie.';
+  if (status >= 500) return `Les serveurs de Gemini sont saturés en ce moment (ta clé n’est pas en cause), réessaie dans quelques minutes.${msg ? ` (${msg})` : ''}`;
   return `Erreur Gemini (${status}) : ${msg || 'requête refusée'}`;
 }
 
@@ -61,20 +63,28 @@ function toMessage(text, cands) {
 
 const textFrom = (j) => (j.candidates?.[0]?.content?.parts || []).filter((x) => x.text && !x.thought).map((x) => x.text).join('');
 
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
 async function post(key, path, payload, signal) {
   let last;
   for (const model of MODELS) {
-    const res = await fetch(`${BASE}${model}:${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify(payload),
-      signal,
-    });
-    if (res.ok) return res;
-    const err = await res.json().catch(() => ({}));
-    last = new GeminiError(res.status, friendly(res.status, err));
-    last.raw = err?.error?.message || '';
-    if (res.status !== 404) throw last; // modèle introuvable : on essaie le suivant
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const res = await fetch(`${BASE}${model}:${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify(payload),
+        signal,
+      });
+      if (res.ok) return res;
+      const err = await res.json().catch(() => ({}));
+      last = new GeminiError(res.status, friendly(res.status, err));
+      last.raw = err?.error?.message || '';
+      // surcharge passagère (503 « overloaded » très fréquent sur l'offre gratuite) : une nouvelle tentative, puis modèle suivant
+      if (BUSY.includes(res.status)) { if (!attempt) await wait(1200); continue; }
+      break;
+    }
+    // clé refusée ou requête invalide : inutile d'essayer un autre modèle
+    if (![404, 429, ...BUSY].includes(last.status)) throw last;
   }
   throw last;
 }
@@ -82,8 +92,9 @@ async function post(key, path, payload, signal) {
 // Certains schémas JSON (anyOf, additionalProperties…) peuvent être refusés : on réessaie avec le schéma dans la consigne.
 async function withSchemaRetry(fn, p) {
   try { return await fn(body(p)); } catch (e) {
-    if (e.status === 400 && p.output_config?.format && !/API key/i.test(e.raw)) return fn(body(p, { schema: false }));
-    if (e.status === 400 && p.tools && /search|tool/i.test(e.raw)) return fn(body({ ...p, tools: undefined }));
+    // schéma refusé (400) ou qui fait planter le serveur (500) : schéma passé dans la consigne
+    if ([400, 500].includes(e.status) && p.output_config?.format && !/API key/i.test(e.raw)) return fn(body(p, { schema: false }));
+    if (p.tools && ((e.status === 400 && /search|tool/i.test(e.raw)) || BUSY.includes(e.status))) return fn(body({ ...p, tools: undefined }));
     throw e;
   }
 }

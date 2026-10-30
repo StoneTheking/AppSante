@@ -5,6 +5,7 @@ import * as AI from '../ai.js';
 import * as P from '../planner.js';
 import * as PT from '../pantry.js';
 import { summary, personContext, taste } from '../context.js';
+import * as Diana from '../diana.js';
 import * as S from '../science.js';
 import * as D from '../digestion.js';
 import { tokens, familyFactor } from '../family.js';
@@ -25,9 +26,11 @@ const badge = (v) => (v ? `<span class="badge ${v}">${VERDICT[v]}</span>` : '');
 
 let shownSeg = null;
 export function render(view, ctx) {
-  view.innerHTML = `${segmented('nut', [['jour', 'Jour'], ['historique', 'Historique'], ['menus', 'Menus'], ['courses', 'Courses']], seg)}<div id="nut-body" class="${seg !== shownSeg ? 'view-enter' : ''}"></div>`;
+  const dsm = summary();
+  view.innerHTML = `${Diana.card('nutrition', store.get(), dsm)}${segmented('nut', [['jour', 'Jour'], ['historique', 'Historique'], ['menus', 'Menus'], ['courses', 'Courses']], seg)}<div id="nut-body" class="${seg !== shownSeg ? 'view-enter' : ''}"></div>`;
   shownSeg = seg; // animations d'entrée seulement au changement d'onglet, pas à chaque mise à jour
   $$('[data-seg="nut"]', view).forEach((b) => (b.onclick = () => { seg = b.dataset.v; render(view, ctx); }));
+  Diana.bind(view, 'nutrition', store.get(), dsm);
   const body = $('#nut-body', view);
   ({ jour: renderDay, historique: renderHistory, menus: renderMenus, courses: renderShop })[seg](body, ctx, view);
   setTimeout(() => body.classList.remove('view-enter'), 1200);
@@ -150,8 +153,8 @@ function renderDay(el, ctx) {
 
     <div class="grid3">
       <button class="btn soft" data-a="photo">${icon('camera', 18)} Photo</button>
-      <button class="btn soft" data-a="scan">${icon('barcode', 18)} Produit</button>
-      <button class="btn soft" data-a="snack">${icon('apple', 18)} Grignotage</button>
+      <button class="btn soft" data-a="scan">${icon('barcode', 18)} Scanner</button>
+      <button class="btn soft" data-a="product">${icon('search', 18)} Par nom</button>
     </div>
 
     <div class="card">

@@ -40,7 +40,7 @@ export function allergenTags(allergies = '') {
 const NUTRI_LABEL = { a: 'Excellent', b: 'Bon', c: 'Moyen', d: 'Médiocre', e: 'Mauvais' };
 export const NUTRI_COLORS = { a: '#038141', b: '#85bb2f', c: '#fecb02', d: '#ee8100', e: '#e63e11' };
 
-const FIELDS = 'code,product_name,product_name_fr,generic_name_fr,product_quantity,product_quantity_unit,brands,quantity,serving_size,serving_quantity,nutriscore_grade,nova_group,ecoscore_grade,additives_tags,nutriments,image_front_small_url,allergens_tags,labels_tags';
+const FIELDS = 'code,product_name,product_name_fr,generic_name_fr,product_quantity,product_quantity_unit,brands,quantity,serving_size,serving_quantity,nutriscore_grade,nova_group,ecoscore_grade,additives_tags,nutriments,image_front_small_url,allergens_tags,labels_tags,categories_tags';
 
 export async function lookup(code) {
   const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}?fields=${FIELDS}`, { headers: { Accept: 'application/json' } });
@@ -72,6 +72,41 @@ export function packGrams(p) {
   return v > 0 && v < 20000 ? Math.round(v * 10) / 10 : null;
 }
 
+// Nom d'une unité à partir du libellé de portion (« 1 barre (18,5 g) ») ou du nom du produit.
+const UNIT_WORDS = [[/barre|bar\b|balisto|kit ?kat|twix|mars\b|snickers|bounty|lion\b|kinder bueno|granola/i, 'barre', 'barres'], [/biscuit|cookie|g[aâ]teau|madeleine|galette|sabl[ée]|petit beurre|prince|oreo/i, 'biscuit', 'biscuits'],
+  [/yaourt|yogourt|skyr|cr[eè]me dessert|compote|petit suisse|fromage blanc|danette|activia/i, 'pot', 'pots'], [/canette|soda|coca|cola|pepsi|fanta|sprite|orangina|ice tea|red bull|monster|bi[eè]re/i, 'canette', 'canettes'],
+  [/bouteille|eau |jus|smoothie|lait\b/i, 'bouteille', 'bouteilles'], [/tranche|jambon|pain de mie|brioche tranch/i, 'tranche', 'tranches'], [/sachet|paquet|chips/i, 'sachet', 'sachets'],
+  [/[œo]uf/i, 'œuf', 'œufs'], [/croissant|pain au chocolat|chocolatine|viennoiserie|muffin|donut|beignet/i, 'pièce', 'pièces']];
+const unitWord = (txt) => UNIT_WORDS.find(([re]) => re.test(txt || '')) || null;
+
+// Portion typique quand l'emballage ne dit rien (estimation affichée comme telle).
+const TYPICAL = [[/chocolate-bars|cereal-bars|protein-bars|bars\b/, 30], [/yogurts|desserts|compotes/, 125], [/sodas|soft-drinks|energy-drinks|beers/, 330], [/biscuits|cookies/, 12],
+  [/breads|sliced/, 30], [/cheeses/, 30], [/crisps|chips/, 30], [/chocolates/, 20], [/candies|confectioneries/, 10], [/viennoiseries|pastries/, 60], [/eggs/, 55]];
+
+// Une unité du produit (1 barre, 1 pot, 1 canette…) : { g, one, many, est }.
+// Paquet multiple « 9 x 18,5 g » → 18,5 g ; sinon portion de l'emballage ; sinon paquet ÷ nombre d'unités ; sinon estimation.
+export function unitOf(p, pack, serving) {
+  const q = String(p.quantity || '').toLowerCase().replace(/,/g, '.');
+  const w = unitWord(`${p.serving_size || ''} ${p.product_name_fr || p.product_name || ''}`) || unitWord((p.categories_tags || []).join(' '));
+  const [one, many] = w ? [w[1], w[2]] : ['portion', 'portions'];
+  const conv = (v, u) => Number(v) * ({ kg: 1000, g: 1, l: 1000, cl: 10, ml: 1 }[u] || 1);
+  const ok = (g) => g > 0 && g < 2000;
+  let m = q.match(/(\d+)\s*[x×]\s*(\d+(?:\.\d+)?)\s*(kg|g|cl|ml|l)\b/) || null;
+  if (m && Number(m[1]) > 1 && ok(conv(m[2], m[3]))) return { g: Math.round(conv(m[2], m[3]) * 10) / 10, one, many, count: Number(m[1]) };
+  m = q.match(/(\d+(?:\.\d+)?)\s*(kg|g|cl|ml|l)\s*[x×]\s*(\d+)\b/);
+  if (m && Number(m[3]) > 1 && ok(conv(m[1], m[2]))) return { g: Math.round(conv(m[1], m[2]) * 10) / 10, one, many, count: Number(m[3]) };
+  if (serving && ok(serving) && (!pack || serving < pack * 0.95)) return { g: Math.round(serving * 10) / 10, one, many };
+  m = q.match(/(?:[x×]\s*(\d+)\b|\b(\d+)\s*(?:barres|pi[eè]ces|pots|biscuits|sachets|canettes|bouteilles|tranches|portions|unit[ée]s|bars|pcs))/);
+  const count = m ? Number(m[1] || m[2]) : 0;
+  if (pack && count > 1 && ok(pack / count)) return { g: Math.round((pack / count) * 10) / 10, one, many, count };
+  if (pack && pack <= 80) return { g: pack, one, many }; // petit format individuel (barre, pot, sachet)
+  const cat = (p.categories_tags || []).join(' ');
+  const typ = TYPICAL.find(([re]) => re.test(cat))?.[1];
+  if (typ) return { g: typ, one, many, est: true };
+  if (pack && pack <= 400 && w) return { g: pack, one, many };
+  return null;
+}
+
 export function normalize(p, code) {
   const n = p.nutriments || {};
   const serving = Number(p.serving_quantity) || null;
@@ -100,6 +135,7 @@ export function normalize(p, code) {
     quantity: p.quantity || '',
     pack: packGrams(p),
     serving,
+    unit: unitOf(p, packGrams(p), serving),
     missing: !per100.kcal && !per100.protein && !per100.carbs && !per100.fat,
     servingLabel: p.serving_size || '',
     nutriscore: (p.nutriscore_grade || '').toLowerCase().match(/^[a-e]$/) ? p.nutriscore_grade.toLowerCase() : null,
@@ -165,6 +201,9 @@ export async function search(q, { signal } = {}) {
   cache.set(key, out);
   return out;
 }
+
+// Quantité proposée d'office : une unité (1 barre, 1 pot…) quand on la connaît, sinon la portion, sinon 100 g.
+export const defaultGrams = (prod) => prod.unit?.g || prod.serving || 100;
 
 export const forGrams = (per100, g) => Object.fromEntries(Object.entries(per100).map(([k, v]) => [k, Math.round(((v * g) / 100) * 10) / 10]));
 

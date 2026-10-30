@@ -10,6 +10,7 @@ import * as N from '../native.js';
 import * as D from '../digestion.js';
 import * as PT from '../pantry.js';
 import * as SN from '../snacks.js';
+import * as Diana from '../diana.js';
 import { allowedMeals } from '../meals.js';
 
 const VERDICT = { bon: 'Bon pour toi', moyen: 'Moyen', a_limiter: 'À limiter' };
@@ -21,7 +22,8 @@ export function addMeal(m) {
     // alcool repéré sur la photo, le produit scanné ou le grignotage : compté automatiquement
     if (m.alcohol) { const k = store.today(); s.days[k] = { ...(s.days[k] || {}), alcohol: Math.round(((s.days[k]?.alcohol || 0) + m.alcohol) * 10) / 10 }; }
   });
-  toast(m.snack ? `${m.title} : ajouté` : 'Repas enregistré ✅', 1200);
+  const [say, mood] = Diana.mealReaction(m);
+  setTimeout(() => Diana.pop(say, mood), 400); // après la fermeture de la fenêtre d'ajout
 }
 
 export function openAddMenu(ctx) {
@@ -29,8 +31,8 @@ export function openAddMenu(ctx) {
     <div class="action-grid">
       ${[
         ['photo', 'camera', 'var(--c-food)', 'Photo du repas'],
-        ['snack', 'apple', 'var(--c-mood)', 'Grignotage'],
-        ['scan', 'barcode', 'var(--c-move)', 'Produit (scan ou nom)'],
+        ['product', 'search', 'var(--c-mood)', 'Recherche par nom'],
+        ['scan', 'barcode', 'var(--c-move)', 'Scanner un produit'],
         ['workout', 'dumbbell', 'var(--c-move)', 'Séance de sport'],
         ['checkin', 'smile', 'var(--c-mood)', 'Humeur du jour'],
         ['receipt', 'receipt', 'var(--c-food)', 'Ticket de caisse'],
@@ -140,7 +142,7 @@ export function openScanner(ctx, slot = null) {
     try {
       const prod = await BC.lookup(code);
       if (!prod) { out.innerHTML = `<div class="note warn">${icon('info', 18)}<span>Produit ${esc(code)} introuvable dans Open Food Facts. Tape son nom dans le champ ci-dessus pour le chercher.</span></div>`; return; }
-      productCard(out, prod, prod.serving || 100, body, slot || C.currentSlot());
+      productCard(out, prod, BC.defaultGrams(prod), body, slot || C.currentSlot());
     } catch (e) {
       out.innerHTML = `<div class="note bad">${icon('alert', 18)}<span>${esc(e.message)}</span></div>`;
     }
@@ -173,7 +175,31 @@ function qtyChips(prod, grams) {
   return opts.length ? `<div class="chips" style="margin-top:8px;flex-wrap:wrap">${opts.map(([g, l]) => `<button class="chip ${Math.abs(grams - g) < 0.5 ? 'on' : ''}" data-por="${g}">${l}</button>`).join('')}</div>` : '';
 }
 
-function productCard(out, prod, grams, body, slot, back = null) {
+// Quantité : en unités (barres, pots, canettes…) quand on connaît le poids d'une unité, sinon en grammes.
+const unitCount = (prod, grams) => Math.round((grams / prod.unit.g) * 4) / 4;
+const unitName = (u, n) => (n > 1 ? u.many : u.one);
+function qtyBlock(prod, grams, mode) {
+  const u = prod.unit;
+  if (mode === 'unit' && u) {
+    const n = unitCount(prod, grams);
+    return `<label class="lbl">Combien en as-tu mangé ?</label>
+    <div class="row" style="flex-wrap:nowrap">
+      <div class="stepper" style="flex:1"><button data-u="-1" aria-label="Une de moins">−</button><input id="units" type="number" inputmode="decimal" step="0.5" min="0.25" value="${n}"><button data-u="1" aria-label="Une de plus">+</button></div>
+      <span class="muted" style="min-width:64px">${unitName(u, n)}</span>
+    </div>
+    <div class="chips" style="margin-top:8px;flex-wrap:wrap">${[0.5, 1, 2, 3].map((k) => `<button class="chip ${n === k ? 'on' : ''}" data-units="${k}">${k === 0.5 ? '½' : k} ${unitName(u, k)}</button>`).join('')}${u.count ? `<button class="chip ${n === u.count ? 'on' : ''}" data-units="${u.count}">Tout le paquet (${u.count})</button>` : ''}</div>
+    <p class="tiny muted" style="margin:6px 0 0">1 ${u.one} ≈ ${fmt(u.g, 1)} g${u.est ? ' (estimation)' : ''} · soit ${fmt(grams, 1)} g · <button class="link-btn" id="to-g">en grammes</button></p>`;
+  }
+  return `<label class="lbl">Quantité consommée</label>
+    <div class="row" style="flex-wrap:nowrap">
+      <div class="stepper" style="flex:1"><button data-d="-10">−</button><input id="grams" type="number" inputmode="decimal" value="${grams}"><button data-d="10">+</button></div>
+      <span class="muted">g</span>
+    </div>
+    ${qtyChips(prod, grams)}
+    ${u ? `<p class="tiny muted" style="margin:6px 0 0"><button class="link-btn" id="to-u">Compter en ${u.many} plutôt qu’en grammes</button></p>` : ''}`;
+}
+
+function productCard(out, prod, grams, body, slot, back = null, mode = prod.unit ? 'unit' : 'g') {
   const sm = summary();
   const v = BC.verdict(prod, grams, { targets: sm.t, totToday: sm.totToday, profile: store.get().profile });
   const n = v.n;
@@ -193,12 +219,7 @@ function productCard(out, prod, grams, body, slot, back = null) {
       ${v.cons.map((x) => `<div class="small" style="color:var(--bad)">✗ ${esc(x)}</div>`).join('')}
     </div>
     ${prod.missing ? `<div class="note warn" style="margin-bottom:12px">${icon('alert', 18)}<span>Valeurs nutritionnelles absentes de la fiche Open Food Facts : cherche une autre version du produit${back ? ' dans les résultats' : ' par son nom'}.</span></div>` : ''}
-    <label class="lbl">Quantité consommée</label>
-    <div class="row" style="flex-wrap:nowrap">
-      <div class="stepper" style="flex:1"><button data-d="-10">−</button><input id="grams" type="number" inputmode="decimal" value="${grams}"><button data-d="10">+</button></div>
-      <span class="muted">g</span>
-    </div>
-    ${qtyChips(prod, grams)}
+    ${qtyBlock(prod, grams, mode)}
     <table style="margin-top:12px"><tr><th></th><th class="num">pour ${fmt(grams)} g</th><th class="num">100 g</th></tr>
       ${[['Calories', 'kcal', 'kcal'], ['Protéines', 'protein', 'g'], ['Glucides', 'carbs', 'g'], ['dont sucres', 'sugar', 'g'], ['Lipides', 'fat', 'g'], ['dont saturés', 'satFat', 'g'], ['Fibres', 'fiber', 'g'], ['Sodium', 'sodium', 'mg']]
         .map(([l, k, u]) => `<tr><td>${l}</td><td class="num"><b>${fmt(n[k], k === 'kcal' || k === 'sodium' ? 0 : 1)}</b> ${u}</td><td class="num muted">${fmt(prod.per100[k], 1)}</td></tr>`).join('')}
@@ -210,15 +231,24 @@ function productCard(out, prod, grams, body, slot, back = null) {
     <div class="chips" style="flex-wrap:wrap">${MEAL_TYPES.map(([k, l]) => `<button class="chip ${slot === k ? 'on' : ''}" data-slot="${k}">${l}</button>`).join('')}</div>
     <button class="btn block" id="add" style="margin-top:14px">${icon('plus', 18)} Ajouter</button>
     <p class="tiny muted" style="text-align:center">Données : Open Food Facts (ODbL)</p>`;
-  const g = () => Math.max(1, Number($('#grams', out).value) || 0);
+  const g = () => (mode === 'unit' ? grams : Math.max(1, Number($('#grams', out).value) || 0));
+  const redo = (gr, m = mode) => productCard(out, prod, Math.round(gr * 10) / 10, body, slot, back, m);
+  const setUnits = (k) => redo(Math.max(0.25, k) * prod.unit.g);
   $$('[data-slot]', out).forEach((b) => (b.onclick = () => { slot = b.dataset.slot; $$('[data-slot]', out).forEach((x) => x.classList.toggle('on', x === b)); }));
-  $('#grams', out).onchange = () => productCard(out, prod, g(), body, slot, back);
-  $$('[data-d]', out).forEach((b) => (b.onclick = () => productCard(out, prod, Math.max(5, g() + Number(b.dataset.d)), body, slot, back)));
+  $('#grams', out)?.addEventListener('change', () => redo(g()));
+  $$('[data-d]', out).forEach((b) => (b.onclick = () => redo(Math.max(5, g() + Number(b.dataset.d)))));
+  $('#units', out)?.addEventListener('change', (e) => setUnits(Number(String(e.target.value).replace(',', '.')) || 1));
+  $$('[data-u]', out).forEach((b) => (b.onclick = () => { const n = unitCount(prod, grams); setUnits(n + Number(b.dataset.u) < 1 && n > 0.5 ? 0.5 : n + Number(b.dataset.u)); }));
+  $$('[data-units]', out).forEach((b) => (b.onclick = () => setUnits(Number(b.dataset.units))));
+  $('#to-g', out)?.addEventListener('click', () => redo(grams, 'g'));
+  $('#to-u', out)?.addEventListener('click', () => redo(Math.max(1, unitCount(prod, grams)) * prod.unit.g, 'unit'));
   if (back) $('#back', out).onclick = back;
-  $$('[data-por]', out).forEach((b) => (b.onclick = () => productCard(out, prod, Number(b.dataset.por), body, slot, back)));
+  $$('[data-por]', out).forEach((b) => (b.onclick = () => redo(Number(b.dataset.por))));
   $('#add', out).onclick = () => {
     const frac = prod.pack && [[0.25, '¼ paquet'], [0.5, '½ paquet'], [0.75, '¾ paquet']].find(([k]) => Math.abs(g() - prod.pack * k) < 0.5)?.[1];
-    addMeal({ title: `${prod.name}${prod.brand ? ' – ' + prod.brand.split(',')[0] : ''} (${frac ? `${frac}, ` : ''}${g()} g)`, alcohol: prod.alcohol ? Math.round(((g() * prod.alcohol) / 100) * 0.8 / 10 * 10) / 10 : 0, nutrients: n, nova: prod.nova || 3, quality: v.score, verdict: v.verdict, nutriscore: prod.nutriscore, barcode: prod.code, thumb: prod.image, comment: [...v.pros, ...v.cons].join(' · '), slot: slot === 'grignotage' ? 'collation' : slot, snack: slot === 'grignotage' });
+    const count = mode === 'unit' && prod.unit ? unitCount(prod, grams) : 0;
+    const how = count ? `${fmt(count, 2)} ${unitName(prod.unit, count)}, ` : frac ? `${frac}, ` : '';
+    addMeal({ title: `${prod.name}${prod.brand ? ' – ' + prod.brand.split(',')[0] : ''} (${how}${g()} g)`, alcohol: prod.alcohol ? Math.round(((g() * prod.alcohol) / 100) * 0.8 / 10 * 10) / 10 : 0, nutrients: n, nova: prod.nova || 3, quality: v.score, verdict: v.verdict, nutriscore: prod.nutriscore, barcode: prod.code, thumb: prod.image, comment: [...v.pros, ...v.cons].join(' · '), slot: slot === 'grignotage' ? 'collation' : slot, snack: slot === 'grignotage' });
     body.close();
   };
 }
@@ -245,7 +275,7 @@ export async function repairScannedMeals() {
 // ---------- Recherche d'un produit du commerce par son nom (Open Food Facts) ----------
 export function openProductSearch(ctx, slot = null, q0 = '') {
   const body = sheet(`
-    <div class="row" style="flex-wrap:nowrap"><input id="pq" type="search" placeholder="ex. Kit Kat, yaourt Danone, Coca zéro…" autocomplete="off" value="${esc(q0)}"><button class="btn" id="pgo" aria-label="Chercher">${icon('search', 18)}</button></div>
+    <div class="row" style="flex-wrap:nowrap"><input id="pq" type="search" placeholder="ex. Balisto, yaourt Danone, Coca zéro…" autocomplete="off" value="${esc(q0)}"><button class="btn" id="pgo" aria-label="Chercher">${icon('search', 18)}</button></div>
     <div id="pres" style="margin-top:10px"></div>
     <div id="pdet"></div>
     <p class="tiny muted" style="text-align:center;margin-top:12px">Base Open Food Facts : plus de 3 millions de produits (ODbL)</p>`, { title: 'Chercher un produit', full: true, onClose: () => ctx.render() });
@@ -261,7 +291,7 @@ export function openProductSearch(ctx, slot = null, q0 = '') {
       list = await BC.search(q, { signal: ctrl.signal });
       res.innerHTML = list.length ? list.map((p, i) => `<button class="list-item prod-hit" data-pi="${i}">
           ${p.image ? `<img class="thumb" src="${esc(p.image)}" alt="" loading="lazy">` : `<span class="thumb">${icon('barcode')}</span>`}
-          <div style="min-width:0;text-align:left"><div class="small" style="font-weight:600">${esc(p.name)}</div><div class="tiny muted">${esc([p.brand.split(',')[0], p.quantity].filter(Boolean).join(' · '))}</div></div>
+          <div style="min-width:0;text-align:left"><div class="small" style="font-weight:600">${esc(p.name)}</div><div class="tiny muted">${esc([p.brand.split(',')[0], p.quantity].filter(Boolean).join(' · '))}</div>${p.unit && !p.missing ? `<div class="tiny" style="color:var(--primary);font-weight:600">1 ${esc(p.unit.one)} ≈ ${fmt(Math.round((p.per100.kcal * p.unit.g) / 100))} kcal</div>` : ''}</div>
           <div class="tiny" style="text-align:right;white-space:nowrap">${p.missing ? '<span class="muted">valeurs ?</span>' : `<b>${fmt(p.per100.kcal)}</b> kcal<br><span class="muted">/100 g</span>`}${p.nutriscore ? `<div><span class="ns" style="background:${BC.NUTRI_COLORS[p.nutriscore]}">${p.nutriscore.toUpperCase()}</span></div>` : ''}</div>
         </button>`).join('')
         : '<p class="small muted">Aucun produit trouvé. Essaie avec la marque (ex. « kinder bueno »).</p>';
@@ -276,7 +306,7 @@ export function openProductSearch(ctx, slot = null, q0 = '') {
     const b = e.target.closest('[data-pi]'); if (!b) return;
     const p = list[Number(b.dataset.pi)];
     res.hidden = true; $('#pq', body).parentElement.hidden = true;
-    productCard(det, p, p.serving || 100, body, slot || C.currentSlot(), showList);
+    productCard(det, p, BC.defaultGrams(p), body, slot || C.currentSlot(), showList);
     body.scrollTop = 0;
   };
   if (q0) run(); else setTimeout(() => $('#pq', body).focus(), 300);

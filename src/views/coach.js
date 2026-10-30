@@ -1,5 +1,6 @@
 // Coach IA conversationnel.
 import * as store from '../store.js';
+import * as Diana from '../diana.js';
 import * as AI from '../ai.js';
 import { personContext } from '../context.js';
 import { icon, esc, md, $, $$ } from '../ui.js';
@@ -24,8 +25,8 @@ export function render(view, ctx) {
   view.innerHTML = `
     ${chat.length ? `<div class="between" style="margin:4px 0 10px"><span class="small muted">${chat.length} message${chat.length > 1 ? 's' : ''}</span><button class="btn sm ghost" id="clear">${icon('trash', 14)} Nouvelle conversation</button></div>` : `
     <div class="coach-empty">
-      <div class="icon-badge">${icon('sparkles', 30)}</div>
-      <h2>Ton coach santé</h2>
+      <div class="coach-diana">${Diana.face('cheer', 84)}</div>
+      <h2>Coach Diana</h2>
       <p class="small muted">Il connaît ton profil, ton sommeil, ton humeur, ton temps d’écran, ton activité et tes repas. Il s’appuie sur une base de 60+ études et peut consulter PubMed, l’OMS, l’ANSES et les grandes revues médicales.</p>
     </div>`}
     ${!st.settings.apiKey ? `<div class="note warn">${icon('key', 18)}<span>Ajoute une clé IA dans <a href="#" data-profile>Profil</a> pour discuter avec le coach. Une clé Google Gemini est gratuite.</span></div>` : ''}

@@ -7,6 +7,7 @@ import * as W from '../workouts.js';
 import * as SC from '../schedule.js';
 import * as N from '../native.js';
 import { summary } from '../context.js';
+import * as Diana from '../diana.js';
 import { icon, esc, fmt, donut, sheet, toast, srcLinks, $, $$ } from '../ui.js';
 
 let timer = null;
@@ -46,6 +47,7 @@ export function render(view, ctx) {
   const recent = [...st.workouts].sort((x, y) => y.start.localeCompare(x.start)).slice(0, 25);
 
   view.innerHTML = `
+    ${Diana.card('sport', st, sm)}
     ${cur ? `<section class="sleep-card" style="background:radial-gradient(120% 160% at 100% 0%,rgba(251,146,60,.28),rgba(251,146,60,0) 60%),#140f0b;border-color:rgba(251,146,60,.3)">
       <div class="between"><span class="tiny muted" style="font-weight:700;letter-spacing:.08em;text-transform:uppercase">Séance en cours</span>${icon(SP.activity(cur.type).icon, 18)}</div>
       <div class="big" id="chrono">00:00</div>
@@ -119,6 +121,7 @@ export function render(view, ctx) {
     $('#other', view).onclick = () => openWorkout(ctx, view, true);
   }
   $('#add', view).onclick = () => openWorkout(ctx, view, false);
+  Diana.bind(view, 'sport', st, sm);
   $('#plan-week', view).onclick = () => planWeekInCalendar(adv.plan);
   $('#guided', view)?.addEventListener('click', () => openSession(ctx, view, { activity: adv.type, minutes: adv.minutes, intensity: adv.intensity, dayIndex: adv.plan.findIndex((d) => d.today) }));
   $$('[data-day]', view).forEach((r) => (r.onclick = () => {
@@ -405,20 +408,22 @@ function guided(ctx, view, session, activity, intensity) {
     const pct = Math.round((i / steps.length) * 100);
     el.innerHTML = `
       <div class="meter" style="margin-top:0"><div class="between tiny muted"><span>${esc(s.block)}</span><span>étape ${i + 1}/${steps.length}</span></div><div class="track"><div class="fill" id="gd-fill" style="width:${lastPct}%;background:var(--c-move);animation:none"></div></div></div>
-      <div style="text-align:center;padding:18px 0 8px">
-        ${s.isRest ? '' : s.sets > 1 ? `<div class="tiny muted" style="font-weight:700;letter-spacing:.08em;text-transform:uppercase">${s.block.startsWith('Circuit') ? 'Tour' : 'Série'} ${s.set} / ${s.sets}</div>` : ''}
-        <div style="font-size:1.35rem;font-weight:750;margin:6px 0">${esc(s.label)}</div>
-        <div style="font-size:3.4rem;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums;color:${s.isRest ? 'var(--c-sleep)' : 'var(--c-move)'}" id="big">${s.kind === 'time' ? fmtClock(left) : `${esc(String(s.reps))}${String(s.reps).includes('m') ? '' : ' rép.'}`}</div>
+      <div class="gd-main">
+        <div class="gd-set">${s.isRest || !(s.sets > 1) ? '' : `${s.block.startsWith('Circuit') ? 'Tour' : 'Série'} ${s.set} / ${s.sets}`}</div>
+        <div class="gd-label">${esc(s.label)}</div>
+        <div class="gd-big" style="color:${s.isRest ? 'var(--c-sleep)' : 'var(--c-move)'}" id="big">${s.kind === 'time' ? fmtClock(left) : `${esc(String(s.reps))}${String(s.reps).includes('m') ? '' : ' rép.'}`}</div>
       </div>
-      ${s.detail ? `<p class="small muted" style="text-align:center">${esc(s.detail)}</p>` : ''}
-      ${!s.isRest && (W.hasTuto(s) || exCustom()[s.label]?.video) ? `<p style="text-align:center;margin:4px 0"><a class="tuto" href="${esc(videoFor(s.label))}" target="_blank" rel="noopener">▶ ${exCustom()[s.label]?.video ? 'Ma vidéo' : 'Voir la démo'}</a></p>` : ''}
-      ${next && !s.isRest ? `<p class="tiny muted" style="text-align:center;margin-top:10px">Ensuite : ${esc(next.label)}</p>` : ''}
-      <div class="row" style="flex-wrap:nowrap;margin-top:16px">
+      <!-- zones de hauteur fixe : les boutons restent au même endroit quel que soit l'exercice -->
+      <p class="small muted gd-detail">${esc(s.detail || '')}</p>
+      <p class="gd-tuto">${!s.isRest && (W.hasTuto(s) || exCustom()[s.label]?.video) ? `<a class="tuto" href="${esc(videoFor(s.label))}" target="_blank" rel="noopener">▶ ${exCustom()[s.label]?.video ? 'Ma vidéo' : 'Voir la démo'}</a>` : ''}</p>
+      <p class="tiny muted gd-next">${next && !s.isRest ? `Ensuite : ${esc(next.label)}` : ''}</p>
+      <div class="row gd-ctrl">
         <button class="btn ghost" id="prev" ${i === 0 ? 'disabled' : ''} aria-label="Précédent">${icon('left', 18)}</button>
         ${s.kind === 'time' ? `<button class="btn ghost" id="pause" style="flex:1">${paused ? 'Reprendre' : 'Pause'}</button>` : ''}
         <button class="btn" id="next" style="flex:2;background:var(--c-move);color:#1a0d02">${s.kind === 'reps' ? `${icon('check', 18)} Série faite` : i === steps.length - 1 ? 'Terminer' : `Passer ${icon('right', 18)}`}</button>
       </div>
-      <button class="btn ghost block" id="finish" style="margin-top:10px">${icon('check', 18)} Terminer et enregistrer la séance</button>`;
+      <button class="btn ghost block" id="finish" style="margin-top:10px">${icon('check', 18)} Terminer et enregistrer la séance</button>
+      <div class="gd-diana">${Diana.card('guided', store.get(), null, { step: s, i, n: steps.length })}</div>`;
     // la barre avance depuis sa position précédente au lieu de repartir de zéro
     requestAnimationFrame(() => { const f = $('#gd-fill', el); if (f) f.style.width = `${pct}%`; });
     lastPct = pct;
@@ -438,7 +443,8 @@ function guided(ctx, view, session, activity, intensity) {
   const finish = () => {
     clearInterval(tick);
     const w = SP.stopWorkout();
-    toast(w ? `Bravo ! ${w.minutes} min enregistrées, ~${w.kcal} kcal` : 'Séance trop courte pour être enregistrée');
+    if (w) Diana.pop(`Bravo, séance terminée ! ${w.minutes} min enregistrées (~${w.kcal} kcal). Tu peux être fier·e de toi 🏆`, 'proud', 4200);
+    else toast('Séance trop courte pour être enregistrée');
     body.close();
     if (w) setTimeout(() => askFeedback(w, () => render(view, ctx)), 350);
   };

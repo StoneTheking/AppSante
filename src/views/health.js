@@ -6,6 +6,7 @@ import * as AI from '../ai.js';
 import * as N from '../native.js';
 import { parseCSV, CSV_TEMPLATE } from '../importer.js';
 import { summary } from '../context.js';
+import * as Diana from '../diana.js';
 import * as D from '../digestion.js';
 import * as SP from '../sport.js';
 import { icon, esc, fmt, fmtMin, segmented, srcLinks, barChart, timeChart, faces, bindFaces, toast, compressImage, pickImage, sheet, $, $$ } from '../ui.js';
@@ -17,9 +18,11 @@ let dayOffset = 0;
 
 let shownSeg = null;
 export function render(view, ctx) {
-  view.innerHTML = `${segmented('hl', [['suivi', 'Suivi'], ['tendances', 'Tendances'], ['projection', 'Projection'], ['science', 'Science']], seg)}<div id="hl-body" class="${seg !== shownSeg ? 'view-enter' : ''}"></div>`;
+  const dsm = summary();
+  view.innerHTML = `${Diana.card('health', store.get(), dsm)}${segmented('hl', [['suivi', 'Suivi'], ['tendances', 'Tendances'], ['projection', 'Projection'], ['science', 'Science']], seg)}<div id="hl-body" class="${seg !== shownSeg ? 'view-enter' : ''}"></div>`;
   shownSeg = seg; // animations d'entrée seulement au changement d'onglet, pas à chaque mise à jour
   $$('[data-seg="hl"]', view).forEach((b) => (b.onclick = () => { seg = b.dataset.v; render(view, ctx); }));
+  Diana.bind(view, 'health', store.get(), dsm);
   const body = $('#hl-body', view);
   ({ suivi: renderTrack, tendances: renderTrends, projection: renderFuture, science: renderScience })[seg](body, ctx);
   setTimeout(() => body.classList.remove('view-enter'), 1200);

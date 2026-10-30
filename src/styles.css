@@ -624,3 +624,43 @@ span.qcam-side { background: none; }
 .tiles.two .tile small { font-weight: 500; font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
 .more-fields { margin-top: 10px; }
 .more-fields summary { cursor: pointer; padding: 6px 0; }
+
+/* Mode guidé : chaque zone a une hauteur fixe pour que les boutons ne bougent pas d'un exercice à l'autre */
+.gd-main { text-align: center; padding: 14px 0 4px; }
+.gd-set { height: 1.2em; font-size: .75rem; color: var(--muted); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.gd-label { font-size: 1.35rem; font-weight: 750; line-height: 1.25; margin: 6px 0; height: 2.5em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; align-content: center; }
+.gd-big { font-size: min(3.4rem, 12vw); font-weight: 800; letter-spacing: -.03em; font-variant-numeric: tabular-nums; line-height: 1.1; height: 1.1em; white-space: nowrap; }
+.gd-detail { text-align: center; margin: 6px 0 0; line-height: 1.45; height: 4.35em; overflow-y: auto; }
+.gd-tuto { text-align: center; margin: 4px 0; height: 28px; }
+.gd-next { text-align: center; margin: 6px 0 0; height: 1.4em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gd-ctrl { flex-wrap: nowrap; margin-top: 14px; }
+.gd-ctrl .btn { height: 52px; white-space: nowrap; overflow: hidden; }
+
+/* Coach Diana */
+.diana { display: flex; align-items: center; gap: 10px; margin: 2px 0 12px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.diana-face { flex: none; display: grid; place-items: center; }
+.diana-svg { overflow: visible; filter: drop-shadow(0 4px 10px rgba(47, 86, 132, .45)); }
+.diana-ring { animation: diana-ring 3.2s ease-in-out infinite; transform-origin: 50px 50px; }
+.diana-head { animation: diana-bob 3.2s ease-in-out infinite; transform-origin: 50px 90px; }
+.diana-eyes { animation: diana-blink 5s infinite; transform-box: fill-box; transform-origin: center; }
+.mood-sleepy .diana-eyes { animation: none; }
+.diana-bubble { position: relative; flex: 1; min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 9px 12px; font-size: .86rem; line-height: 1.4; }
+.diana-bubble::before { content: ''; position: absolute; left: -7px; top: 50%; width: 12px; height: 12px; background: var(--card); border-left: 1px solid var(--line); border-bottom: 1px solid var(--line); transform: translateY(-50%) rotate(45deg); }
+.diana-bubble b { display: block; font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; color: #7fa3cc; margin-bottom: 1px; }
+.diana-pop .diana-bubble { animation: diana-in .3s ease-out; }
+.diana-pop .diana-head { animation: diana-jump .5s ease-out, diana-bob 3.2s ease-in-out .5s infinite; }
+.diana-float { position: fixed; left: 12px; right: 12px; bottom: calc(86px + env(safe-area-inset-bottom)); z-index: 80; display: flex; align-items: center; gap: 10px; animation: diana-up .35s cubic-bezier(.2, .9, .3, 1.3); max-width: 520px; margin: 0 auto; }
+.diana-float .diana-bubble { box-shadow: 0 10px 30px rgba(0, 0, 0, .25); }
+.diana-float.out { transition: opacity .3s, transform .3s; opacity: 0; transform: translateY(16px); }
+.diana-float .diana-head { animation: diana-jump .6s ease-out .1s, diana-bob 3.2s ease-in-out .7s infinite; }
+.gd-diana { margin: 12px 0 0; }
+.gd-diana .diana-bubble { font-size: .82rem; }
+@keyframes diana-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.5px); } }
+@keyframes diana-ring { 0%, 100% { transform: scale(1); opacity: .9; } 50% { transform: scale(1.04); opacity: .45; } }
+@keyframes diana-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.1); } }
+@keyframes diana-jump { 0% { transform: translateY(0) scale(1); } 35% { transform: translateY(-9px) scale(1.06, .95); } 70% { transform: translateY(0) scale(.97, 1.04); } 100% { transform: none; } }
+@keyframes diana-in { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
+@keyframes diana-up { from { opacity: 0; transform: translateY(24px) scale(.96); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .diana-head, .diana-ring, .diana-eyes, .diana-float, .diana-pop .diana-bubble { animation: none !important; } }
+.coach-diana { display: grid; place-items: center; margin: 0 auto 6px; }
+.link-btn { background: none; border: 0; padding: 0; font: inherit; color: var(--primary); font-weight: 650; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }

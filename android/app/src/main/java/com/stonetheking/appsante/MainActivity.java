@@ -21,6 +21,19 @@ public class MainActivity extends BridgeActivity {
         handle(intent);
     }
 
+    // Fenêtre d'autorisation Health Connect fermée : Android 14+ (autorisations système) ou appli Health Connect.
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == UsageStatsPlugin.HEALTH_REQUEST) UsageStatsPlugin.onHealthResult();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == UsageStatsPlugin.HEALTH_REQUEST) UsageStatsPlugin.onHealthResult();
+    }
+
     /** Widget « Photo du repas » : l'application ouvre la caméra dès qu'elle reçoit l'événement. */
     private void handle(Intent intent) {
         if (intent != null && PhotoWidgetProvider.ACTION_PHOTO.equals(intent.getAction())) {
