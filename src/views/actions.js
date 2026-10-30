@@ -65,7 +65,7 @@ export function openCheckin(ctx, { daily = false } = {}) {
 }
 
 // ---------- Photo d'assiette ----------
-const MEAL_TYPES = [['petit-dej', 'Petit-déj'], ['dejeuner', 'Déjeuner'], ['collation', 'Collation'], ['diner', 'Dîner'], ['grignotage', 'Grignotage']];
+const MEAL_TYPES = [['petit-dej', 'Petit-déj'], ['dejeuner', 'Déjeuner'], ['collation', 'Goûter'], ['diner', 'Dîner'], ['grignotage', 'Grignotage']];
 
 export async function openPhoto(ctx, fromGallery = false, slot = null) {
   const st = store.get();

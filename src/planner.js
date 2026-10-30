@@ -4,7 +4,7 @@ import { familyConstraints, familyFactor, tasteScore } from './family.js';
 import { inPantry } from './pantry.js';
 
 export const SLOT_ORDER = ['petit-dej', 'dejeuner', 'collation', 'diner'];
-export const SLOT_LABEL = { 'petit-dej': 'Petit-déjeuner', dejeuner: 'Déjeuner', collation: 'Collation', diner: 'Dîner' };
+export const SLOT_LABEL = { 'petit-dej': 'Petit-déjeuner', dejeuner: 'Déjeuner', collation: 'Goûter', diner: 'Dîner' };
 const SHARE = { 'petit-dej': 0.25, dejeuner: 0.35, collation: 0.1, diner: 0.3 };
 const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
 

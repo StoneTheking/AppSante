@@ -123,7 +123,7 @@ function eatDish(d) {
 
 // ---------- Jour ----------
 // Journal du jour rangé par repas (petit-déj, déjeuner, collation, dîner, puis grignotages), avec le total de chacun.
-const SLOT_ORDER = [['petit-dej', 'Petit-déjeuner'], ['dejeuner', 'Déjeuner'], ['collation', 'Collation'], ['diner', 'Dîner']];
+const SLOT_ORDER = [['petit-dej', 'Petit-déjeuner'], ['dejeuner', 'Déjeuner'], ['collation', 'Goûter'], ['diner', 'Dîner']];
 function mealsBySlot(meals) {
   const slotOf = (m) => {
     if (m.snack) return 'grignotage';

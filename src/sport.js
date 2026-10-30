@@ -128,7 +128,8 @@ export function preferredActivity(profile) {
 
 // Semaine type : celle choisie par l'utilisateur, sinon celle conseillée selon l'objectif et les sports aimés.
 export function currentTemplate(profile) {
-  if (Array.isArray(profile.weekTemplate) && profile.weekTemplate.length === 7) return profile.weekTemplate;
+  // semaine modifiée à la main : on la garde, mais un sport passé en « Jamais » y est remplacé
+  if (Array.isArray(profile.weekTemplate) && profile.weekTemplate.length === 7) return profile.weekTemplate.map((d) => ({ ...d, type: substitute(d.type, profile) }));
   const fav = preferredActivity(profile);
   const tpl = TEMPLATES[profile.goal] || TEMPLATES.maintenir;
   return shapeWeek(tpl.map(([slot, minutes, intensity]) => {

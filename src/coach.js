@@ -177,7 +177,7 @@ export function recommendActivity(sm, profile) {
 
 // ---------- Plan horaire de la journée ----------
 // Le plan se recale sur ce qui a déjà été fait : repas enregistrés (heure et calories), grignotages, séance du jour.
-const SLOT_NAME = { 'petit-dej': 'Petit-déjeuner', dejeuner: 'Déjeuner', collation: 'Collation', diner: 'Dîner' };
+const SLOT_NAME = { 'petit-dej': 'Petit-déjeuner', dejeuner: 'Déjeuner', collation: 'Goûter', diner: 'Dîner' };
 export function dailyPlan(sm, profile, date = new Date()) {
   const wake = toMin(profile.wakeTime || '07:00');
   let bed = toMin(profile.bedTime || '23:00');
@@ -199,7 +199,7 @@ export function dailyPlan(sm, profile, date = new Date()) {
     const ms = logged(slot);
     const k = kcalOf(ms);
     const p = Math.round(ms.reduce((a, m) => a + (m.nutrients?.protein || 0), 0));
-    add(toMin(ms[0].time), SLOT_NAME[slot] === 'Collation' ? '🍎' : slot === 'petit-dej' ? '🍳' : slot === 'diner' ? '🍽️' : '🥗', `${SLOT_NAME[slot]} · ${k} kcal`, `${ms.map((m) => m.title).join(', ')} — ${p} g de protéines.`, [], true);
+    add(toMin(ms[0].time), slot === 'collation' ? '🍎' : slot === 'petit-dej' ? '🍳' : slot === 'diner' ? '🍽️' : '🥗', `${SLOT_NAME[slot]} · ${k} kcal`, `${ms.map((m) => m.title).join(', ')} — ${p} g de protéines.`, [], true);
     return toMin(ms.at(-1).time);
   };
   const budget = (slot) => (tot.kcal > 0 ? ` Il te reste ~${Math.round(leftKcal)} kcal et ${Math.round(leftProt)} g de protéines aujourd’hui : vise ~${target(slot)} kcal à ce repas.` : '');
@@ -278,7 +278,7 @@ export function dailyPlan(sm, profile, date = new Date()) {
 
   // Collation : seulement si utile et si le déjeuner n'a pas été tardif
   if (logged('collation').length) mealDone('collation');
-  else if ((ctx.workout || profile.goal === 'prendre' || actStart < 18 * 60) && lunch < 14.5 * 60) add(Math.max(lunch + 3.5 * 60, actStart - 75), '🍎', 'Collation', `Fruit + source de protéines (yaourt, amandes) pour arriver en forme à la séance et éviter les fringales.${budget('collation')}`, []);
+  else if ((ctx.workout || profile.goal === 'prendre' || actStart < 18 * 60) && lunch < 14.5 * 60) add(Math.max(lunch + 3.5 * 60, actStart - 75), '🍎', 'Goûter', `Fruit + source de protéines (yaourt, amandes) pour arriver en forme à la séance et éviter les fringales.${budget('collation')}`, []);
 
   const snackKcal = kcalOf(snacks);
   if (logged('diner').length) mealDone('diner');

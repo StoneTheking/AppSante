@@ -342,7 +342,7 @@ export function sportTimeHtml(p, attr) {
     <div class="chips">${[15, 20, 30, 45, 60, 90].map((m) => `<button class="chip ${Number(p.sportMinutes || 45) === m ? 'on' : ''}" ${attr}="sportMinutes" data-v="${m}">${m === 90 ? '1 h 30+' : m === 60 ? '1 h' : `${m} min`}</button>`).join('')}</div>
     <label class="lbl">Tu préfères</label>
     <div class="choice">${[['courtes', 'Des séances courtes, souvent', '5–6 jours par semaine'], ['equilibre', 'Un peu des deux', '4–5 séances moyennes'], ['longues', 'Quelques grosses séances', '3–4 jours par semaine']].map(([v, t, d]) => `<button ${attr}="sessionStyle" data-v="${v}" class="${(p.sessionStyle || 'equilibre') === v ? 'on' : ''}" style="padding:10px 14px"><span><b>${t}</b><br><span class="small muted" style="font-weight:500">${d}</span></span></button>`).join('')}</div>
-    ${p.weekTemplate ? '<p class="tiny muted" style="margin:6px 0 0">Tu as modifié ta semaine à la main : ces choix s’appliqueront si tu la réinitialises.</p>' : ''}`;
+    ${p.weekTemplate ? '<p class="tiny muted" style="margin:6px 0 0">Tu as modifié ta semaine à la main : changer un de ces choix la recalcule.</p>' : ''}`;
 }
 
 // Mes sports : préférés (proposés en priorité), exclus (jamais proposés, remplacés par un équivalent).
@@ -359,8 +359,10 @@ export function openMySports(done) {
       <button class="btn ghost block" id="vids" style="margin-top:16px">${icon('video', 18)} Vidéos des exercices</button>
       <button class="btn block" id="ok" style="margin-top:8px">${icon('check', 18)} Terminé</button>`;
     $('#vids', el).onclick = () => openVideoList();
-    bindSportPrefs(el, (id, v) => store.update((s) => { Object.assign(s.profile, applySportPref(s.profile, id, v)); }));
-    $$('[data-sp]', el).forEach((b) => (b.onclick = () => { store.update((s) => { s.profile[b.dataset.sp] = b.dataset.sp === 'sportMinutes' ? Number(b.dataset.v) : b.dataset.v; }); draw(); }));
+    // Changer ses préférences recalcule la semaine (même si elle avait été modifiée à la main).
+    const recompute = (s) => { if (s.profile.weekTemplate) { delete s.profile.weekTemplate; toast('Semaine recalculée selon tes préférences', 1600); } };
+    bindSportPrefs(el, (id, v) => store.update((s) => { Object.assign(s.profile, applySportPref(s.profile, id, v)); recompute(s); }));
+    $$('[data-sp]', el).forEach((b) => (b.onclick = () => { store.update((s) => { s.profile[b.dataset.sp] = b.dataset.sp === 'sportMinutes' ? Number(b.dataset.v) : b.dataset.v; recompute(s); }); draw(); }));
     $$('[data-equip]', el).forEach((b) => (b.onclick = () => { store.update((s) => { s.profile.equipment = b.dataset.equip; }); draw(); }));
     $('#ok', el).onclick = () => body.close();
   };

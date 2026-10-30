@@ -264,7 +264,9 @@ export async function syncHealth(days = 7) {
   const tk = localKey(new Date());
   const srcToday = [...new Set((stepRecs?.samples || []).filter((x) => localKey(new Date(x.startDate)) === tk).map((x) => x.sourceName || x.sourceId).filter(Boolean))];
   const lastRec = (stepRecs?.samples || []).reduce((a, x) => (x.endDate > a ? x.endDate : a), '');
-  const report = { at: Date.now(), todaySteps: out[tk]?.steps ?? 0, records: stepRecs?.samples?.length ?? null, sources: srcToday, lastStep: lastRec || null, errors };
+  // premier relevé du jour : montre si Samsung Health n'a envoyé qu'une partie de la journée
+  const firstRec = (stepRecs?.samples || []).filter((x) => localKey(new Date(x.startDate)) === tk && x.value > 0).reduce((a, x) => (!a || x.startDate < a ? x.startDate : a), '');
+  const report = { at: Date.now(), todaySteps: out[tk]?.steps ?? 0, records: stepRecs?.samples?.length ?? null, sources: srcToday, firstStep: firstRec || null, lastStep: lastRec || null, errors };
   return { days: out, workouts: sessions, report };
 }
 

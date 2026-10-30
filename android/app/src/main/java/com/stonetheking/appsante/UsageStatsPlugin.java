@@ -267,9 +267,10 @@ public class UsageStatsPlugin extends Plugin {
             List<Map.Entry<String, Long>> sorted = new ArrayList<>();
             for (Map.Entry<String, Long> en : fg.entrySet()) {
                 String pkg = en.getKey();
-                if (isLauncherOrSystemUi(pkg)) continue;
+                // Diana Health compte aussi dans le temps d'écran (comme dans Bien-être numérique de Samsung)
+                if (isLauncherOrSystemUi(pkg) && !pkg.equals(getContext().getPackageName())) continue;
                 total += en.getValue();
-                if (SOCIAL.contains(pkg)) social += en.getValue();
+                if (SOCIAL.contains(pkg) || isSocialCategory(pm, pkg)) social += en.getValue();
                 sorted.add(en);
             }
             sorted.sort((a, b) -> Long.compare(b.getValue(), a.getValue()));
@@ -335,6 +336,16 @@ public class UsageStatsPlugin extends Plugin {
         JSObject r = new JSObject();
         r.put("events", out);
         call.resolve(r);
+    }
+
+    // Catégorie déclarée par l'appli sur le Play Store (Android 8+) : rattrape les réseaux sociaux absents de la liste.
+    private boolean isSocialCategory(PackageManager pm, String pkg) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false;
+        try {
+            return pm.getApplicationInfo(pkg, 0).category == ApplicationInfo.CATEGORY_SOCIAL;
+        } catch (Exception ex) {
+            return false;
+        }
     }
 
     private boolean isLauncherOrSystemUi(String pkg) {

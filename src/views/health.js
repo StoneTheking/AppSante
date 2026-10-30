@@ -127,7 +127,7 @@ function hcReportLine(r) {
   if (!r) return `<div class="between" style="margin:-2px 0 6px"><span class="tiny muted">Pas encore synchronisé.</span>${btn}</div>`;
   const errs = Object.entries(r.errors || {});
   const txt = r.todaySteps
-    ? `Aujourd’hui : <b>${fmt(r.todaySteps)} pas</b> reçus${r.sources?.length ? ` de ${esc(r.sources.join(', '))}` : ''}${r.lastStep ? ` (dernier relevé ${hm(r.lastStep)})` : ''}.`
+    ? `Aujourd’hui : <b>${fmt(r.todaySteps)} pas</b> reçus${r.sources?.length ? ` de ${esc(r.sources.join(', '))}` : ''}${r.firstStep && r.lastStep ? ` (relevés de ${hm(r.firstStep)} à ${hm(r.lastStep)})` : r.lastStep ? ` (dernier relevé ${hm(r.lastStep)})` : ''}.${r.firstStep && new Date(r.firstStep).getHours() >= 10 ? ` <span style="color:var(--warn)">Rien avant ${hm(r.firstStep)} : Samsung Health n’a pas transmis le début de journée à Health Connect.</span>` : ''}`
     : `<span style="color:var(--warn)">Aucun pas reçu de Health Connect aujourd’hui.</span> Dans Samsung Health → Paramètres → Health Connect, autorise l’<b>écriture</b> des pas ; Samsung Health les envoie ensuite toutes les quelques minutes à quelques heures.`;
   const phone = r.phoneSteps != null ? ` Podomètre du téléphone : <b>${fmt(r.phoneSteps)} pas</b>${r.phoneSteps > (r.todaySteps || 0) ? ' (utilisé, plus complet)' : ''}.` : '';
   return `<div style="margin:-2px 0 6px"><div class="between" style="gap:8px;align-items:flex-start"><span class="tiny muted">${txt}${phone} Synchro ${hm(r.at)}.</span>${btn}</div>
