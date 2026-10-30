@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#22C3DD"/>
+  <rect width="512" height="512" rx="112" fill="#FFFFFF"/>
   <g transform="translate(256 262) scale(1.02) translate(-256 -262)">
     <defs><clipPath id="hd"><circle cx="256" cy="262" r="160"/></clipPath></defs>
     <circle cx="256" cy="262" r="160" fill="#1D3A6B"/>
@@ -7,12 +7,10 @@
       <path d="M80 168 Q256 120 432 168 L432 222 Q256 174 80 222 Z" fill="#2DD4BF"/>
       <path d="M80 222 Q256 174 432 222" fill="none" stroke="#0B1A33" stroke-width="15.399999999999999"/>
       <path d="M80 168 Q256 120 432 168" fill="none" stroke="#0B1A33" stroke-width="15.399999999999999"/>
-      <path d="M150 380 Q256 420 362 380" fill="none" stroke="#ffffff" stroke-opacity=".08" stroke-width="60"/>
     </g>
     <circle cx="256" cy="262" r="160" fill="none" stroke="#0B1A33" stroke-width="22"/>
     <ellipse cx="200" cy="268" rx="30" ry="36" fill="#F4FCFF"/>
-    <ellipse cx="312" cy="268" rx="30" ry="36" fill="#F4FCFF"/>
     <circle cx="200" cy="272" r="14" fill="#0B1A33"/>
-    <circle cx="312" cy="272" r="14" fill="#0B1A33"/>
+    <path d="M284 274 Q312 250 340 274" fill="none" stroke="#F4FCFF" stroke-width="16" stroke-linecap="round"/>
     <path d="M206 336 Q256 372 306 336" fill="none" stroke="#F4FCFF" stroke-width="18" stroke-linecap="round"/>
   </g></svg>
