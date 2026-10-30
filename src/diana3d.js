@@ -64,16 +64,12 @@ export function draw(canvas, state, buf) {
   const mood = MOODS[state.mood] || MOODS.happy;
   const px = 1 / R; // taille d'un pixel en unités de sphère
 
-  // 1) Halo cyan, puis anneaux, moitié arrière (cachée ensuite par la tête).
+  // 1) Anneaux, moitié arrière (cachée ensuite par la tête).
   ctx.clearRect(0, 0, W, H);
-  const halo = ctx.createRadialGradient(cx, cy, R * 0.9, cx, cy, R * 1.5);
-  halo.addColorStop(0, 'rgba(90, 215, 255, 0.22)'); halo.addColorStop(1, 'rgba(90, 215, 255, 0)');
-  ctx.fillStyle = halo; ctx.fillRect(0, 0, W, H);
   const rings = ringPaths(M, state.ring || 0);
   const strokeRing = (front) => {
     ctx.lineWidth = Math.max(1, S * 0.011);
     ctx.lineCap = 'round';
-    ctx.shadowColor = 'rgba(90, 215, 255, 0.8)'; ctx.shadowBlur = S * 0.03;
     for (const [r, pts, alpha] of rings) {
       ctx.strokeStyle = RING.replace('ALPHA', (alpha * (front ? 1 : 0.55)).toFixed(3));
       ctx.beginPath();
@@ -86,7 +82,6 @@ export function draw(canvas, state, buf) {
       }
       ctx.stroke();
     }
-    ctx.shadowBlur = 0;
   };
   strokeRing(false);
 
