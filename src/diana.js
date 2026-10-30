@@ -8,38 +8,63 @@ import * as SP from './sport.js';
 
 let uid = 0;
 
-// Visage en SVG : sphère bleu nuit éclairée de l'intérieur, deux anneaux lumineux, grands yeux pâles,
-// sourire en trait fin et bandeau de sport discret dans les mêmes tons.
+// Visage en 3D (SVG) : sphère bleu nuit éclairée en haut à gauche (reflet, lumière de contour, ombre au sol),
+// yeux bombés, et bandeau de sport en éponge qui fait le tour du front, noué sur le côté.
 // mood : happy | cheer (grand sourire) | proud (clin d'œil) | sleepy (yeux fermés) | oops (bouche hésitante)
 export function face(mood = 'happy', size = 56) {
   const id = `dn${++uid}`;
-  const eye = (x) => mood === 'sleepy' || (mood === 'proud' && x > 50)
-    ? `<path d="M${x - 6} 47 q6 4.5 12 0" stroke="#d6e4f5" stroke-width="2.8" fill="none" stroke-linecap="round"/>`
-    : `<ellipse cx="${x}" cy="45" rx="8.6" ry="9.6" fill="url(#${id}e)"/><circle class="diana-pupil" cx="${x + 0.6}" cy="45.8" r="4" fill="#5b6b80"/>`;
-  const mouth = {
-    happy: '<path d="M39 64 Q50 68.5 61 64" stroke="#dbe7f6" stroke-width="2.8" fill="none" stroke-linecap="round"/>',
-    proud: '<path d="M38 62.5 Q50 70 62 62.5" stroke="#dbe7f6" stroke-width="2.8" fill="none" stroke-linecap="round"/>',
-    cheer: '<path d="M37 61 Q50 74 63 61" stroke="#dbe7f6" stroke-width="3" fill="none" stroke-linecap="round"/>',
-    sleepy: '<path d="M44 65 Q50 66.5 56 65" stroke="#dbe7f6" stroke-width="2.6" fill="none" stroke-linecap="round"/>',
-    oops: '<path d="M40 66 Q45 62.5 50 65.5 T60 64" stroke="#dbe7f6" stroke-width="2.6" fill="none" stroke-linecap="round"/>',
-  }[mood] || '';
+  const closed = (x) => mood === 'sleepy' || (mood === 'proud' && x > 50);
+  const eye = (x) => closed(x)
+    ? `<path d="M${x - 7} 56 q7 5 14 0" stroke="#0a1426" stroke-opacity=".5" stroke-width="3.4" fill="none" stroke-linecap="round" transform="translate(0 1)"/><path d="M${x - 7} 56 q7 5 14 0" stroke="#e3ecf8" stroke-width="3" fill="none" stroke-linecap="round"/>`
+    : `<ellipse cx="${x}" cy="56.5" rx="8.4" ry="9.4" fill="#06101f" opacity=".45"/>
+       <ellipse cx="${x}" cy="55" rx="8.2" ry="9.2" fill="url(#${id}e)"/>
+       <circle class="diana-pupil" cx="${x + 0.8}" cy="56" r="4.3" fill="url(#${id}p)"/>
+       <circle cx="${x + 2.4}" cy="53.6" r="1.6" fill="#fff"/>
+       <path d="M${x - 7.6} 51 q7.6 -5.2 15.2 0" stroke="#0b1830" stroke-opacity=".35" stroke-width="2.2" fill="none"/>`;
+  const smile = {
+    happy: 'M39 71 Q50 76.5 61 71',
+    proud: 'M38 69.5 Q50 78 62 69.5',
+    cheer: 'M37 68 Q50 82 63 68',
+    sleepy: 'M45 73 Q50 74.5 55 73',
+    oops: 'M40 74 Q45 70 50 73 T60 71.5',
+  }[mood] || 'M39 71 Q50 76.5 61 71';
+  const mouth = `<path d="${smile}" stroke="#06101f" stroke-opacity=".45" stroke-width="3.6" fill="none" stroke-linecap="round" transform="translate(0 1.2)"/><path d="${smile}" stroke="#e3ecf8" stroke-width="3" fill="none" stroke-linecap="round"/>`;
   return `<svg class="diana-svg mood-${mood}" width="${size}" height="${size}" viewBox="0 0 100 100" aria-hidden="true">
     <defs>
-      <radialGradient id="${id}b" cx="50%" cy="40%" r="62%"><stop offset="0" stop-color="#2f5684"/><stop offset=".55" stop-color="#1b3254"/><stop offset="1" stop-color="#101c33"/></radialGradient>
-      <radialGradient id="${id}e" cx="42%" cy="38%" r="70%"><stop offset="0" stop-color="#f4f8fd"/><stop offset="1" stop-color="#c3d3e6"/></radialGradient>
-      <linearGradient id="${id}h" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7fa3cc" stop-opacity=".55"/><stop offset="1" stop-color="#4d6f99" stop-opacity=".55"/></linearGradient>
-      <clipPath id="${id}c"><circle cx="50" cy="50" r="38"/></clipPath>
+      <radialGradient id="${id}b" cx="36%" cy="30%" r="78%"><stop offset="0" stop-color="#5d8fc8"/><stop offset=".32" stop-color="#2d5487"/><stop offset=".72" stop-color="#16294a"/><stop offset="1" stop-color="#0a1428"/></radialGradient>
+      <radialGradient id="${id}r" cx="50%" cy="50%" r="50%"><stop offset=".8" stop-color="#7fb2ee" stop-opacity="0"/><stop offset=".95" stop-color="#7fb2ee" stop-opacity=".1"/><stop offset="1" stop-color="#a9cdf5" stop-opacity=".42"/></radialGradient>
+      <radialGradient id="${id}rim" cx="72%" cy="86%" r="45%"><stop offset="0" stop-color="#8cc0ff" stop-opacity=".38"/><stop offset="1" stop-color="#8cc0ff" stop-opacity="0"/></radialGradient>
+      <radialGradient id="${id}e" cx="38%" cy="32%" r="75%"><stop offset="0" stop-color="#ffffff"/><stop offset=".6" stop-color="#dfe8f4"/><stop offset="1" stop-color="#9fb2c9"/></radialGradient>
+      <radialGradient id="${id}p" cx="38%" cy="35%" r="70%"><stop offset="0" stop-color="#7a8ca4"/><stop offset="1" stop-color="#2c3a4f"/></radialGradient>
+      <linearGradient id="${id}h" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c9d6e6"/><stop offset=".28" stop-color="#ffffff"/><stop offset=".7" stop-color="#e3eaf3"/><stop offset="1" stop-color="#9eb0c6"/></linearGradient>
+      <linearGradient id="${id}w" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#0b1830" stop-opacity=".55"/><stop offset=".22" stop-color="#0b1830" stop-opacity="0"/><stop offset=".78" stop-color="#0b1830" stop-opacity="0"/><stop offset="1" stop-color="#0b1830" stop-opacity=".55"/></linearGradient>
+      <pattern id="${id}t" width="2.4" height="2.4" patternUnits="userSpaceOnUse"><circle cx="1.2" cy="1.2" r=".55" fill="#7d90a8" opacity=".35"/></pattern>
+      <radialGradient id="${id}g" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#000" stop-opacity=".5"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
+      <clipPath id="${id}c"><circle cx="50" cy="52" r="38"/></clipPath>
     </defs>
-    <circle class="diana-ring" cx="50" cy="50" r="47" fill="none" stroke="#8394ad" stroke-opacity=".55" stroke-width="1.6"/>
+    <ellipse class="diana-ground" cx="50" cy="96" rx="25" ry="3.6" fill="url(#${id}g)"/>
+    <circle class="diana-ring" cx="50" cy="52" r="46.5" fill="none" stroke="#8394ad" stroke-opacity=".45" stroke-width="1.4"/>
     <g class="diana-head">
-      <circle cx="50" cy="50" r="40" fill="url(#${id}b)"/>
-      <circle cx="50" cy="50" r="40" fill="none" stroke="#8b9bb3" stroke-opacity=".7" stroke-width="1.6"/>
+      <path d="M86 33 C93 28 97 25 99.5 21 C98 28 95 33 90.5 37 Z" fill="url(#${id}h)"/>
+      <path d="M87 39 C94 41 97.5 45 99 50 C95 47.5 91.5 46 86.5 45 Z" fill="url(#${id}h)"/>
+      <path d="M86 33 C93 28 97 25 99.5 21 C98 28 95 33 90.5 37 Z M87 39 C94 41 97.5 45 99 50 C95 47.5 91.5 46 86.5 45 Z" fill="#0b1830" opacity=".25"/>
+      <circle cx="50" cy="52" r="38" fill="url(#${id}b)"/>
+      <circle cx="50" cy="52" r="38" fill="url(#${id}rim)"/>
+      <circle cx="50" cy="52" r="38" fill="url(#${id}r)"/>
       <g clip-path="url(#${id}c)">
-        <path d="M8 24 Q50 10 92 24 L92 31 Q50 17 8 31 Z" fill="url(#${id}h)"/>
-        <path d="M8 27.5 Q50 13.5 92 27.5" stroke="#dbe7f6" stroke-opacity=".5" stroke-width="1" fill="none"/>
+        <path d="M8 44 Q50 25 92 44 L92 50 Q50 31 8 50 Z" fill="#050c18" opacity=".45"/>
       </g>
+      <path d="M10.5 33.5 Q50 13 89.5 33.5 L90 45 Q50 25 10 45 Z" fill="url(#${id}h)"/>
+      <path d="M10.5 33.5 Q50 13 89.5 33.5 L90 45 Q50 25 10 45 Z" fill="url(#${id}t)"/>
+      <path d="M10.6 36.6 Q50 16.2 89.6 36.6" stroke="#38bdf8" stroke-width="1.5" fill="none"/>
+      <path d="M10.4 41.6 Q50 21.4 89.8 41.6" stroke="#38bdf8" stroke-width="1.5" fill="none"/>
+      <path d="M10.5 33.5 Q50 13 89.5 33.5 L90 45 Q50 25 10 45 Z" fill="url(#${id}w)"/>
+      <path d="M49 21.5 L45.5 28.6 H49.3 L47.6 34.6 L54.4 26.2 H50.4 L52.2 21.5 Z" fill="#0ea5e9" stroke="#fff" stroke-width=".5" stroke-linejoin="round"/>
+      <ellipse cx="87.6" cy="39.6" rx="3.6" ry="4.4" fill="url(#${id}h)" stroke="#8ea2bb" stroke-width=".6"/>
       <g class="diana-eyes">${eye(36)}${eye(64)}</g>
+      <ellipse cx="25" cy="67" rx="5" ry="2.8" fill="#9cc4f2" opacity=".1"/><ellipse cx="75" cy="67" rx="5" ry="2.8" fill="#9cc4f2" opacity=".1"/>
       ${mouth}
+      <ellipse cx="38" cy="18.5" rx="9" ry="3.2" transform="rotate(-14 38 18.5)" fill="#fff" opacity=".55"/>
     </g>
   </svg>`;
 }
