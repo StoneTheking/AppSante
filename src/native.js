@@ -129,6 +129,8 @@ const Steps = registerPlugin('Steps');
 export const stepsAccess = () => Steps.requestAccess().then((r) => r.granted).catch(() => false);
 export const stepsHasAccess = () => Steps.hasAccess().then((r) => r.granted).catch(() => false);
 export const stepsRead = () => Steps.read().catch(() => null); // { value, t } ou null
+// Relevés d'arrière-plan : seulement quand le podomètre sert (pas de pas venant de Health Connect).
+export const stepsBackground = (on) => (on ? Steps.start() : Steps.stop()).catch(() => {});
 // Relevés pris en arrière-plan toutes les ~15 min (APK récents) : [{ t, v }].
 export const stepsHistory = () => timeout(Steps.history(), 3000, '').then((r) => r.samples || []).catch(() => []);
 
@@ -213,7 +215,7 @@ export async function syncHealth(days = 7) {
     safe(H.readSamples({ dataType: 'bodyFat', ...range, limit: 50 })),
   ]);
 
-  for (const s of steps?.samples || []) if (s.value) day(localKey(new Date(s.startDate))).steps = Math.round(s.value);
+  for (const s of steps?.samples || []) if (s.value) Object.assign(day(localKey(new Date(s.startDate))), { steps: Math.round(s.value), stepsSource: 'Health Connect' });
   for (const s of rhr?.samples || []) if (s.value) day(localKey(new Date(s.startDate))).restingHR = Math.round(s.value);
   for (const s of hrv?.samples || []) if (s.value) day(localKey(new Date(s.startDate))).hrv = Math.round(s.value);
   for (const s of weight?.samples || []) day(localKey(new Date(s.startDate))).weight = Math.round(s.value * 10) / 10;

@@ -36,7 +36,6 @@ public class StepsPlugin extends Plugin {
     public void hasAccess(PluginCall call) {
         JSObject r = new JSObject();
         boolean ok = granted() && sensor() != null;
-        if (ok) StepsSampler.schedule(getContext());
         r.put("granted", ok);
         call.resolve(r);
     }
@@ -54,10 +53,23 @@ public class StepsPlugin extends Plugin {
 
     @PermissionCallback
     private void accessCallback(PluginCall call) {
-        if (granted() && sensor() != null) StepsSampler.schedule(getContext());
         JSObject r = new JSObject();
         r.put("granted", granted() && sensor() != null);
         call.resolve(r);
+    }
+
+    /** Lance les relevés d'arrière-plan (podomètre utilisé faute de pas Health Connect). */
+    @PluginMethod
+    public void start(PluginCall call) {
+        if (granted() && sensor() != null) StepsSampler.schedule(getContext());
+        call.resolve();
+    }
+
+    /** Arrête les relevés d'arrière-plan (Health Connect fournit les pas). */
+    @PluginMethod
+    public void stop(PluginCall call) {
+        StepsSampler.cancel(getContext());
+        call.resolve();
     }
 
     /** Relevés pris en arrière-plan par StepsSampler : { samples: [{ t, v }] }. */

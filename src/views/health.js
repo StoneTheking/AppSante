@@ -48,9 +48,13 @@ export async function syncAll({ silent = false } = {}) {
       results.push(`Health Connect : ${Object.keys(h.days).length} jour(s)${h.workouts.length ? `, ${h.workouts.length} séance(s)` : ''}`);
     }
   } catch (e) { if (!silent) results.push('Health Connect : ' + (e.message || e)); }
-  // podomètre intégré : relevé à chaque ouverture, pas du jour déduits des relevés
+  // Health Connect (Samsung Health, montre…) fournit les pas : le podomètre du téléphone ne sert plus et s'arrête.
+  store.update((s) => { s.hcSteps = hcSteps; });
+  const pedo = !hcSteps && (await N.stepsHasAccess());
+  N.stepsBackground(pedo);
+  // podomètre intégré (repli) : relevé à chaque ouverture + toutes les ~15 min, pas du jour déduits des relevés
   try {
-    if (!hcSteps && (await N.stepsHasAccess())) {
+    if (pedo) {
       const r = await N.stepsRead();
       const bg = await N.stepsHistory(); // relevés d'arrière-plan : les pas entre deux ouvertures comptent aussi
       if (r) {
@@ -131,7 +135,7 @@ function sourcesCard(st) {
     <p class="tiny muted" style="margin-top:-6px">Synchronisées automatiquement à chaque ouverture de l’application.</p>
     ${line('heart', 'Health Connect', hc, d?.ok ? (d.missing?.length ? `<button class="btn sm soft" id="hc">+ de données</button>` : '') : `<button class="btn sm soft" id="hc">${d?.reason === 'unavailable' || d?.reason === 'update' ? 'Pourquoi ?' : 'Autoriser'}</button>`)}
     ${d?.ok ? `<p class="tiny muted" style="margin:-4px 0 6px">Samsung Health, Google Fit ou ta montre envoient leurs données via Health Connect : pas, marche, distance, calories, cœur, sommeil, séances.</p>` : ''}
-    ${line('steps', 'Podomètre du téléphone', st.stepsAccess ? ['ok', stepsSince(st)] : ['muted', d?.ok ? 'inutile (Health Connect)' : 'non activé'], st.stepsAccess || d?.ok ? '' : `<button class="btn sm soft" id="steps-on">Activer</button>`)}
+    ${st.hcSteps ? line('steps', 'Pas', ['ok', 'fournis par Health Connect (Samsung Health, montre…)']) : line('steps', 'Podomètre du téléphone', st.stepsAccess ? ['ok', stepsSince(st)] : ['muted', d?.ok ? 'inutile (Health Connect)' : 'non activé'], st.stepsAccess || d?.ok ? '' : `<button class="btn sm soft" id="steps-on">Activer</button>`)}
     ${line('phone', 'Temps d’écran', st.usageOk ? ['ok', 'autorisé'] : ['warn', 'non autorisé'], st.usageOk ? '' : `<button class="btn sm soft" id="usage">Autoriser</button>`)}
     <div id="sync-res" class="small" style="margin-top:8px"></div>
   </div>`;

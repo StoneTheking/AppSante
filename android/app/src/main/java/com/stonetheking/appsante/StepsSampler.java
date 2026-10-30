@@ -25,11 +25,21 @@ import org.json.JSONObject;
 public class StepsSampler extends BroadcastReceiver {
     static final String PREFS = "steps_sampler";
 
+    private static PendingIntent intent(Context c) {
+        Intent i = new Intent(c, StepsSampler.class).setAction("com.stonetheking.appsante.STEPS_SAMPLE");
+        return PendingIntent.getBroadcast(c, 41, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    static void cancel(Context c) {
+        AlarmManager am = (AlarmManager) c.getSystemService(Context.ALARM_SERVICE);
+        if (am != null) am.cancel(intent(c));
+        c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean("on", false).apply();
+    }
+
     static void schedule(Context c) {
         AlarmManager am = (AlarmManager) c.getSystemService(Context.ALARM_SERVICE);
         if (am == null) return;
-        Intent i = new Intent(c, StepsSampler.class).setAction("com.stonetheking.appsante.STEPS_SAMPLE");
-        PendingIntent pi = PendingIntent.getBroadcast(c, 41, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        PendingIntent pi = intent(c);
         am.setInexactRepeating(AlarmManager.ELAPSED_REALTIME, SystemClock.elapsedRealtime() + AlarmManager.INTERVAL_FIFTEEN_MINUTES,
             AlarmManager.INTERVAL_FIFTEEN_MINUTES, pi);
         c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean("on", true).apply();
