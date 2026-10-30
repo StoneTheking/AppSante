@@ -150,7 +150,7 @@ function renderDay(el, ctx) {
 
     <div class="grid3">
       <button class="btn soft" data-a="photo">${icon('camera', 18)} Photo</button>
-      <button class="btn soft" data-a="scan">${icon('barcode', 18)} Scanner</button>
+      <button class="btn soft" data-a="scan">${icon('barcode', 18)} Produit</button>
       <button class="btn soft" data-a="snack">${icon('apple', 18)} Grignotage</button>
     </div>
 

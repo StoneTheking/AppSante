@@ -47,3 +47,17 @@ test('détection de clé Gemini', () => {
   assert.equal(isGeminiKey('AIzaSyA1234567890abcdefghijklmnopqrstu'), true);
   assert.equal(isGeminiKey('sk-ant-api03-xxx'), false);
 });
+
+test('poids du paquet pour les fractions', async () => {
+  const { packGrams } = await import('../src/barcode.js');
+  assert.equal(packGrams({ quantity: '250 g' }), 250);
+  assert.equal(packGrams({ quantity: '6 x 41,5 g' }), 249);
+  assert.equal(packGrams({ quantity: '33 cl' }), 330);
+  assert.equal(packGrams({ product_quantity: 43, product_quantity_unit: 'g' }), 43);
+  assert.equal(packGrams({ quantity: '' }), null);
+});
+
+test('chaque exercice technique a une vidéo choisie', async () => {
+  const { DEFAULT_VIDEOS } = await import('../src/videos.js');
+  for (const l of NEEDS_VIDEO) assert.match(DEFAULT_VIDEOS[l] || '', /^https:\/\/youtu\.be\/[\w-]{11}$/, l);
+});

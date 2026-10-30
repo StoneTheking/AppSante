@@ -30,9 +30,7 @@ export function openAddMenu(ctx) {
       ${[
         ['photo', 'camera', 'var(--c-food)', 'Photo du repas'],
         ['snack', 'apple', 'var(--c-mood)', 'Grignotage'],
-        ['scan', 'barcode', 'var(--c-move)', 'Scanner un produit'],
-        ['product', 'search', 'var(--c-water)', 'Chercher un produit'],
-        ['manual', 'pencil', 'var(--c-sleep)', 'Repas manuel'],
+        ['scan', 'barcode', 'var(--c-move)', 'Produit (scan ou nom)'],
         ['workout', 'dumbbell', 'var(--c-move)', 'Séance de sport'],
         ['checkin', 'smile', 'var(--c-mood)', 'Humeur du jour'],
         ['receipt', 'receipt', 'var(--c-food)', 'Ticket de caisse'],
@@ -130,9 +128,10 @@ export function openScanner(ctx, slot = null) {
   let stop = () => {};
   const body = sheet(`
     <div class="scanner"><video muted playsinline poster="${BLANK}"></video><div class="frame"></div><div class="laser"></div></div>
-    <p class="small muted" style="text-align:center">Vise le code-barres du produit</p>
-    <div class="row" style="flex-wrap:nowrap"><input id="code" placeholder="ou tape un code (EAN) ou un nom"><button class="btn" id="lookup">${icon('arrow', 18)}</button></div>
-    <div id="prod" style="margin-top:14px"></div>`, { title: 'Scanner un produit', full: true, onClose: () => { stop(); ctx.render(); } });
+    <p class="small muted" style="text-align:center;margin-bottom:8px">Vise le code-barres du produit</p>
+    <div class="row" style="flex-wrap:nowrap"><input id="code" type="search" placeholder="Pas d’emballage ? Tape le nom (ex. Kit Kat)"><button class="btn" id="lookup" aria-label="Chercher">${icon('search', 18)}</button></div>
+    <div id="prod" style="margin-top:14px"></div>
+    <button class="link small" id="to-manual" style="display:block;margin:14px auto 0">${icon('pencil', 14)} Saisir un repas à la main</button>`, { title: 'Produit', full: true, onClose: () => { stop(); ctx.render(); } });
   const show = async (code) => {
     stop();
     $('.scanner', body).style.display = 'none';
@@ -152,6 +151,7 @@ export function openScanner(ctx, slot = null) {
     else if (raw.length >= 2) { body.close(); setTimeout(() => openProductSearch(ctx, slot, raw), 250); }
   };
   $('#code', body).onkeydown = (e) => { if (e.key === 'Enter') $('#lookup', body).click(); };
+  $('#to-manual', body).onclick = () => { body.close(); setTimeout(() => openManual(ctx), 250); };
   releaseCamera();
   BC.startScanner($('video', body), show).then((s) => (stop = s)).catch(() => {
     $('.scanner', body).innerHTML = `<div class="empty" style="color:#fff">${icon('camera', 28)}<p>Caméra indisponible. Autorise l’accès à la caméra ou saisis le code.</p></div>`;
@@ -163,6 +163,15 @@ function nutriBadge(g) {
 }
 const NOVA_COLORS = { 1: '#038141', 2: '#fecb02', 3: '#ee8100', 4: '#e63e11' };
 const NOVA_LABEL = { 1: 'Brut / peu transformé', 2: 'Ingrédient culinaire', 3: 'Transformé', 4: 'Ultra-transformé' };
+
+// Raccourcis de quantité : fractions du paquet (¼, ½, ¾, entier) et portions indiquées sur l'emballage.
+function qtyChips(prod, grams) {
+  const r = (g) => Math.round(g * 10) / 10;
+  const opts = [];
+  if (prod.pack) [[0.25, '¼'], [0.5, '½'], [0.75, '¾'], [1, 'Entier']].forEach(([k, l]) => opts.push([r(prod.pack * k), `${l}${k < 1 ? ' paquet' : ''} · ${fmt(r(prod.pack * k), 1)} g`]));
+  if (prod.serving && prod.serving !== prod.pack) [1, 2].forEach((k) => opts.push([r(prod.serving * k), `${k} portion${k > 1 ? 's' : ''} · ${fmt(r(prod.serving * k), 1)} g`]));
+  return opts.length ? `<div class="chips" style="margin-top:8px;flex-wrap:wrap">${opts.map(([g, l]) => `<button class="chip ${Math.abs(grams - g) < 0.5 ? 'on' : ''}" data-por="${g}">${l}</button>`).join('')}</div>` : '';
+}
 
 function productCard(out, prod, grams, body, slot, back = null) {
   const sm = summary();
@@ -189,7 +198,7 @@ function productCard(out, prod, grams, body, slot, back = null) {
       <div class="stepper" style="flex:1"><button data-d="-10">−</button><input id="grams" type="number" inputmode="decimal" value="${grams}"><button data-d="10">+</button></div>
       <span class="muted">g</span>
     </div>
-    ${prod.serving ? `<div class="chips" style="margin-top:8px">${[1, 2, 3].map((k) => `<button class="chip ${Math.abs(grams - prod.serving * k) < 0.5 ? 'on' : ''}" data-por="${prod.serving * k}">${k} portion${k > 1 ? 's' : ''} · ${fmt(prod.serving * k, 1)} g</button>`).join('')}</div>` : ''}
+    ${qtyChips(prod, grams)}
     <table style="margin-top:12px"><tr><th></th><th class="num">pour ${fmt(grams)} g</th><th class="num">100 g</th></tr>
       ${[['Calories', 'kcal', 'kcal'], ['Protéines', 'protein', 'g'], ['Glucides', 'carbs', 'g'], ['dont sucres', 'sugar', 'g'], ['Lipides', 'fat', 'g'], ['dont saturés', 'satFat', 'g'], ['Fibres', 'fiber', 'g'], ['Sodium', 'sodium', 'mg']]
         .map(([l, k, u]) => `<tr><td>${l}</td><td class="num"><b>${fmt(n[k], k === 'kcal' || k === 'sodium' ? 0 : 1)}</b> ${u}</td><td class="num muted">${fmt(prod.per100[k], 1)}</td></tr>`).join('')}
@@ -208,7 +217,8 @@ function productCard(out, prod, grams, body, slot, back = null) {
   if (back) $('#back', out).onclick = back;
   $$('[data-por]', out).forEach((b) => (b.onclick = () => productCard(out, prod, Number(b.dataset.por), body, slot, back)));
   $('#add', out).onclick = () => {
-    addMeal({ title: `${prod.name}${prod.brand ? ' – ' + prod.brand.split(',')[0] : ''} (${g()} g)`, alcohol: prod.alcohol ? Math.round(((g() * prod.alcohol) / 100) * 0.8 / 10 * 10) / 10 : 0, nutrients: n, nova: prod.nova || 3, quality: v.score, verdict: v.verdict, nutriscore: prod.nutriscore, barcode: prod.code, thumb: prod.image, comment: [...v.pros, ...v.cons].join(' · '), slot: slot === 'grignotage' ? 'collation' : slot, snack: slot === 'grignotage' });
+    const frac = prod.pack && [[0.25, '¼ paquet'], [0.5, '½ paquet'], [0.75, '¾ paquet']].find(([k]) => Math.abs(g() - prod.pack * k) < 0.5)?.[1];
+    addMeal({ title: `${prod.name}${prod.brand ? ' – ' + prod.brand.split(',')[0] : ''} (${frac ? `${frac}, ` : ''}${g()} g)`, alcohol: prod.alcohol ? Math.round(((g() * prod.alcohol) / 100) * 0.8 / 10 * 10) / 10 : 0, nutrients: n, nova: prod.nova || 3, quality: v.score, verdict: v.verdict, nutriscore: prod.nutriscore, barcode: prod.code, thumb: prod.image, comment: [...v.pros, ...v.cons].join(' · '), slot: slot === 'grignotage' ? 'collation' : slot, snack: slot === 'grignotage' });
     body.close();
   };
 }
@@ -221,7 +231,7 @@ export async function repairScannedMeals() {
   for (const m of broken.slice(0, 5)) {
     try {
       const prod = await BC.lookup(m.barcode);
-      const grams = Number((m.title.match(/\(([\d.,]+) g\)$/) || [])[1]?.replace(',', '.')) || prod?.serving || 100;
+      const grams = Number((m.title.match(/([\d.,]+) g\)$/) || [])[1]?.replace(',', '.')) || prod?.serving || 100;
       store.update((s) => {
         const x = s.meals.find((y) => y.id === m.id); if (!x) return;
         x.repairTried = true;

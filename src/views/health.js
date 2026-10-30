@@ -128,8 +128,9 @@ function renderTrack(el, ctx) {
 
       ${section('smile', 'Humeur', 'var(--c-mood)')}
       ${faces('mood', d.mood)}
+      <details class="more-fields" ${d.energy || d.stress ? 'open' : ''}><summary class="small muted">Énergie et stress${d.energy || d.stress ? '' : ' (facultatif)'}</summary>
       <label class="lbl">Énergie</label>${faces('energy', d.energy)}
-      <label class="lbl">Stress</label>${faces('stress', d.stress)}
+      <label class="lbl">Stress</label>${faces('stress', d.stress)}</details>
 
       ${section('steps', 'Activité', 'var(--c-move)', '<span class="tiny muted">mesurée par le téléphone</span>')}
       <div class="ro-grid">

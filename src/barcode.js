@@ -40,7 +40,7 @@ export function allergenTags(allergies = '') {
 const NUTRI_LABEL = { a: 'Excellent', b: 'Bon', c: 'Moyen', d: 'Médiocre', e: 'Mauvais' };
 export const NUTRI_COLORS = { a: '#038141', b: '#85bb2f', c: '#fecb02', d: '#ee8100', e: '#e63e11' };
 
-const FIELDS = 'code,product_name,product_name_fr,generic_name_fr,brands,quantity,serving_size,serving_quantity,nutriscore_grade,nova_group,ecoscore_grade,additives_tags,nutriments,image_front_small_url,allergens_tags,labels_tags';
+const FIELDS = 'code,product_name,product_name_fr,generic_name_fr,product_quantity,product_quantity_unit,brands,quantity,serving_size,serving_quantity,nutriscore_grade,nova_group,ecoscore_grade,additives_tags,nutriments,image_front_small_url,allergens_tags,labels_tags';
 
 export async function lookup(code) {
   const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}?fields=${FIELDS}`, { headers: { Accept: 'application/json' } });
@@ -58,6 +58,18 @@ export function per100Of(n, key, serving) {
   if (direct != null) return direct;
   const sv = num(n[`${key}_serving`]) ?? num(n[`${key}_prepared_serving`]);
   return sv != null && serving ? (sv * 100) / serving : null;
+}
+
+// Poids (ou volume) du paquet entier en g/mL : champ dédié, sinon lu dans « 250 g », « 1,5 L », « 6 x 41,5 g ».
+export function packGrams(p) {
+  const unit = String(p.product_quantity_unit || 'g').toLowerCase();
+  const pq = Number(p.product_quantity);
+  if (pq > 0 && ['g', 'ml'].includes(unit)) return pq;
+  const q = String(p.quantity || '').toLowerCase().replace(',', '.');
+  const m = q.match(/(?:(\d+)\s*[x×]\s*)?(\d+(?:\.\d+)?)\s*(kg|g|cl|ml|l)\b/);
+  if (!m) return null;
+  const v = Number(m[2]) * ({ kg: 1000, g: 1, l: 1000, cl: 10, ml: 1 }[m[3]]) * (Number(m[1]) || 1);
+  return v > 0 && v < 20000 ? Math.round(v * 10) / 10 : null;
 }
 
 export function normalize(p, code) {
@@ -86,6 +98,7 @@ export function normalize(p, code) {
     name: p.product_name_fr || p.product_name || 'Produit sans nom',
     brand: p.brands || '',
     quantity: p.quantity || '',
+    pack: packGrams(p),
     serving,
     missing: !per100.kcal && !per100.protein && !per100.carbs && !per100.fat,
     servingLabel: p.serving_size || '',

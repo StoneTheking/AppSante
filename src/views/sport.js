@@ -54,12 +54,12 @@ export function render(view, ctx) {
     </section>` : ''}
 
     <div class="card">
-      <div class="card-head"><h2>${icon('activity', 18)} Ces 7 derniers jours</h2><span class="tiny muted">${wk.sessions.length} séance(s)</span></div>
+      <div class="card-head"><h2>${icon('activity', 18)} Ces 7 derniers jours</h2>${wk.sessions.length ? `<span class="tiny muted">${wk.sessions.length} séance${wk.sessions.length > 1 ? 's' : ''} notée${wk.sessions.length > 1 ? 's' : ''}</span>` : ''}</div>
       <div class="row" style="flex-wrap:nowrap;gap:16px">
         ${donut(wk.modEq, 150, { label: fmt(wk.modEq), sub: 'min / 150', color: 'var(--c-move)', size: 120, overColor: 'var(--good)' })}
         <div style="flex:1" class="stack">
           <div class="stat"><div class="k">${icon('dumbbell', 14)} Renforcement</div><div class="v">${wk.strengthSessions}<small>/ 2 séances</small></div></div>
-          <div class="stat"><div class="k">${icon('flame', 14)} Dépense des séances</div><div class="v">${fmt(wk.kcal)}<small>kcal</small></div></div>
+          ${wk.kcal ? `<div class="stat"><div class="k">${icon('flame', 14)} Dépense des séances</div><div class="v">${fmt(wk.kcal)}<small>kcal</small></div></div>` : `<div class="stat"><div class="k">${icon('zap', 14)} Activité intense</div><div class="v">${fmt(wk.vig)}<small>min</small></div></div>`}
         </div>
       </div>
     </div>
@@ -183,8 +183,10 @@ const setEx = (label, patch) => store.update((s) => { s.exerciseCustom = s.exerc
 // Choisir sa propre vidéo pour un exercice (lien copié depuis YouTube ou ailleurs).
 function openVideoPicker(label, done) {
   const cur = exCustom()[label]?.video || '';
+  const def = V.DEFAULT_VIDEOS[label];
   const body = sheet(`
     <p class="small" style="margin-top:0"><b>${esc(label)}</b></p>
+    ${def ? `<a class="btn soft block" href="${esc(cur || def)}" target="_blank" rel="noopener" style="margin-bottom:12px">${icon('video', 18)} Voir ${cur ? 'ma vidéo' : 'la vidéo choisie'}</a><p class="tiny muted" style="margin:0 0 6px">Pour en mettre une autre :</p>` : ''}
     <ol class="small" style="padding-left:18px;line-height:1.6;margin:0 0 10px">
       <li><a class="tuto" href="${W.tutoUrl(label)}" target="_blank" rel="noopener" style="margin:0">Chercher sur YouTube</a> (ou ailleurs)</li>
       <li>Sous la vidéo qui te plaît : <b>Partager → Copier le lien</b></li>
@@ -192,7 +194,7 @@ function openVideoPicker(label, done) {
     </ol>
     <div class="row" style="flex-wrap:nowrap;gap:8px"><input id="u" type="url" inputmode="url" placeholder="https://youtu.be/…" value="${esc(cur)}" style="flex:1"><button class="btn soft sm" id="paste">Coller</button></div>
     <button class="btn block" id="ok" style="margin-top:12px">${icon('check', 18)} Utiliser cette vidéo</button>
-    ${cur ? `<button class="btn ghost block" id="reset" style="margin-top:8px">${icon('refresh', 16)} Revenir à la recherche automatique</button>` : ''}`, { title: 'Ma vidéo pour cet exercice', onClose: done });
+    ${cur ? `<button class="btn ghost block" id="reset" style="margin-top:8px">${icon('refresh', 16)} ${def ? 'Revenir à la vidéo choisie' : 'Revenir à la recherche automatique'}</button>` : ''}`, { title: 'Ma vidéo pour cet exercice', onClose: done });
   $('#paste', body).onclick = async () => {
     try { const t = await navigator.clipboard.readText(); if (t) $('#u', body).value = t.trim(); else toast('Presse-papiers vide'); } catch { toast('Appui long dans le champ → Coller'); $('#u', body).focus(); }
   };
@@ -212,17 +214,18 @@ export function openVideoList(done) {
   const draw = () => {
     const c = exCustom();
     const n = [...V.NEEDS_VIDEO].filter((l) => c[l]?.video).length;
-    el.innerHTML = `<p class="small muted" style="margin-top:0">Une vidéo n’est proposée que pour les exercices où la technique compte. Sans vidéo choisie, l’appli ouvre une recherche YouTube. <b>${n}/${V.NEEDS_VIDEO.size}</b> choisies.</p>
+    const kind = (l) => (c[l]?.video ? 'ma vidéo' : V.DEFAULT_VIDEOS[l] ? 'choisie' : 'recherche');
+    el.innerHTML = `<p class="small muted" style="margin-top:0">Une vidéo n’est proposée que pour les exercices où la technique compte. Chacun a déjà une démonstration choisie ; touche un exercice pour la voir ou mettre la tienne${n ? ` (${n} perso)` : ''}.</p>
       <details class="card" style="padding:12px;margin-bottom:12px"><summary class="small" style="font-weight:600">${icon('upload', 14)} Importer une liste (Exercice | lien)</summary>
         <p class="tiny muted">Colle ici le contenu du fichier « videos-exercices.txt » une fois rempli.</p>
         <textarea id="imp" rows="5" placeholder="Pompes | https://youtu.be/…"></textarea>
         <button class="btn sm block" id="imp-ok" style="margin-top:8px">Importer</button></details>
-      ${V.VIDEO_GROUPS.map(([g, xs]) => `<h3 style="font-size:.9rem;margin:14px 0 4px">${esc(g)}</h3>${xs.map((l) => `<button class="list-item vid-row" data-vl="${esc(l)}"><span class="icon-badge" style="color:${c[l]?.video ? 'var(--good)' : 'var(--muted)'}">${icon(c[l]?.video ? 'video' : 'search', 16)}</span><span class="small" style="text-align:left">${esc(l)}</span><span class="tiny muted">${c[l]?.video ? 'ma vidéo' : 'recherche'}</span></button>`).join('')}`).join('')}`;
+      ${V.VIDEO_GROUPS.map(([g, xs]) => `<h3 style="font-size:.9rem;margin:14px 0 4px">${esc(g)}</h3>${xs.map((l) => `<button class="list-item vid-row" data-vl="${esc(l)}"><span class="icon-badge" style="color:${kind(l) === 'recherche' ? 'var(--muted)' : kind(l) === 'ma vidéo' ? 'var(--good)' : 'var(--c-move)'}">${icon(kind(l) === 'recherche' ? 'search' : 'video', 16)}</span><span class="small" style="text-align:left">${esc(l)}</span><span class="tiny muted">${kind(l)}</span></button>`).join('')}`).join('')}`;
     $$('[data-vl]', el).forEach((b) => (b.onclick = () => openVideoPicker(b.dataset.vl, draw)));
     $('#imp-ok', el).onclick = () => {
-      const m = V.parseVideoList($('#imp', el).value);
+      const m = Object.fromEntries(Object.entries(V.parseVideoList($('#imp', el).value)).filter(([l, u]) => u !== V.DEFAULT_VIDEOS[l] || exCustom()[l]?.video));
       const k = Object.keys(m).length;
-      if (!k) return toast('Aucune ligne « Exercice | https://… » reconnue');
+      if (!k) return toast('Aucun lien nouveau : la liste est identique aux vidéos déjà choisies');
       Object.entries(m).forEach(([l, u]) => setEx(l, { video: u }));
       toast(`${k} vidéo${k > 1 ? 's' : ''} importée${k > 1 ? 's' : ''} 🎬`);
       draw();
@@ -256,7 +259,7 @@ export function openSession(ctx, view, { activity, minutes, intensity, dayIndex 
       ${session.blocks.map((b) => `<div class="card" style="margin:12px 0;padding:14px">
         <div class="between"><b>${esc(b.title)}</b><span class="tiny muted">${W.minutesOf([b])} min</span></div>
         ${b.note ? `<p class="tiny muted" style="margin:4px 0 6px">${esc(b.note)}</p>` : ''}
-        ${b.items.map((it) => `<details style="padding:8px 0;border-top:1px solid var(--line)"><summary><span class="small" style="font-weight:600">${esc(it.label)}${W.hasTuto(it) || exCustom()[it.label]?.video ? ` <span style="color:var(--c-move);vertical-align:-2px">${icon('video', 13)}</span>` : ''}</span><span class="tiny muted" style="white-space:nowrap;margin-left:8px">${it.sets && !b.circuit ? `${it.sets} × ` : ''}${it.kind === 'reps' ? `${esc(String(it.reps))}${String(it.reps).includes('m') ? '' : ' rép.'}` : it.seconds ? fmtDur(it.seconds) : ''}${it.rest && !b.circuit ? ` · repos ${it.rest} s` : ''}</span></summary>${it.detail ? `<p class="tiny muted" style="margin:6px 0 0">${esc(it.detail)}</p>` : ''}<div class="ex-actions">${W.hasTuto(it) || exCustom()[it.label]?.video ? `<a class="tuto" href="${esc(videoFor(it.label))}" target="_blank" rel="noopener">▶ ${exCustom()[it.label]?.video ? 'Ma vidéo' : 'Tutos vidéo'}</a><button class="link tiny" data-vid="${esc(it.label)}">${icon('pencil', 12)} ${exCustom()[it.label]?.video ? 'Changer' : 'Choisir ma vidéo'}</button>` : ''}<button class="link tiny" data-hide-ex="${esc(it.label)}" style="color:var(--bad)">${icon('trash', 12)} Retirer</button></div></details>`).join('')}
+        ${b.items.map((it) => `<details style="padding:8px 0;border-top:1px solid var(--line)"><summary><span class="small" style="font-weight:600">${esc(it.label)}${W.hasTuto(it) || exCustom()[it.label]?.video ? ` <span style="color:var(--c-move);vertical-align:-2px">${icon('video', 13)}</span>` : ''}</span><span class="tiny muted" style="white-space:nowrap;margin-left:8px">${it.sets && !b.circuit ? `${it.sets} × ` : ''}${it.kind === 'reps' ? `${esc(String(it.reps))}${String(it.reps).includes('m') ? '' : ' rép.'}` : it.seconds ? fmtDur(it.seconds) : ''}${it.rest && !b.circuit ? ` · repos ${it.rest} s` : ''}</span></summary>${it.detail ? `<p class="tiny muted" style="margin:6px 0 0">${esc(it.detail)}</p>` : ''}<div class="ex-actions">${W.hasTuto(it) || exCustom()[it.label]?.video ? `<a class="tuto" href="${esc(videoFor(it.label))}" target="_blank" rel="noopener">▶ ${exCustom()[it.label]?.video ? 'Ma vidéo' : 'Voir la démo'}</a><button class="link tiny" data-vid="${esc(it.label)}">${icon('pencil', 12)} Changer</button>` : ''}<button class="link tiny" data-hide-ex="${esc(it.label)}" style="color:var(--bad)">${icon('trash', 12)} Retirer</button></div></details>`).join('')}
       </div>`).join('')}
       ${hidden.size ? `<details class="small" style="margin:8px 0"><summary class="muted">${hidden.size} exercice${hidden.size > 1 ? 's' : ''} retiré${hidden.size > 1 ? 's' : ''}</summary>${[...hidden].map((l) => `<div class="between" style="padding:6px 0;border-top:1px solid var(--line)"><span class="small">${esc(l)}</span><button class="btn sm soft" data-unhide-ex="${esc(l)}">Rétablir</button></div>`).join('')}</details>` : ''}
       ${srcLinks([...session.src, ...(ad.note ? ['foster2001', 'greig2020'] : [])])}
@@ -408,7 +411,7 @@ function guided(ctx, view, session, activity, intensity) {
         <div style="font-size:3.4rem;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums;color:${s.isRest ? 'var(--c-sleep)' : 'var(--c-move)'}" id="big">${s.kind === 'time' ? fmtClock(left) : `${esc(String(s.reps))}${String(s.reps).includes('m') ? '' : ' rép.'}`}</div>
       </div>
       ${s.detail ? `<p class="small muted" style="text-align:center">${esc(s.detail)}</p>` : ''}
-      ${!s.isRest && (W.hasTuto(s) || exCustom()[s.label]?.video) ? `<p style="text-align:center;margin:4px 0"><a class="tuto" href="${esc(videoFor(s.label))}" target="_blank" rel="noopener">▶ ${exCustom()[s.label]?.video ? 'Ma vidéo' : 'Tuto vidéo'}</a></p>` : ''}
+      ${!s.isRest && (W.hasTuto(s) || exCustom()[s.label]?.video) ? `<p style="text-align:center;margin:4px 0"><a class="tuto" href="${esc(videoFor(s.label))}" target="_blank" rel="noopener">▶ ${exCustom()[s.label]?.video ? 'Ma vidéo' : 'Voir la démo'}</a></p>` : ''}
       ${next && !s.isRest ? `<p class="tiny muted" style="text-align:center;margin-top:10px">Ensuite : ${esc(next.label)}</p>` : ''}
       <div class="row" style="flex-wrap:nowrap;margin-top:16px">
         <button class="btn ghost" id="prev" ${i === 0 ? 'disabled' : ''} aria-label="Précédent">${icon('left', 18)}</button>

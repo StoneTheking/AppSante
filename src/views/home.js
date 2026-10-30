@@ -52,10 +52,10 @@ export function render(view, ctx) {
   let nextIdx = plan.findIndex((p) => p.min >= nowAdj);
   if (nextIdx === -1) nextIdx = plan.length;
   const order = { alerte: 0, attention: 1, bon: 2 };
-  const ins = C.insights(sm).sort((a, b) => order[a.level] - order[b.level]).slice(0, 3);
+  const ins = C.insights(sm).sort((a, b) => order[a.level] - order[b.level]).slice(0, 2);
   const t = sm.t, tot = sm.totToday, d = sm.today;
   const water = d.waterMl || 0;
-  const visiblePlan = showAllPlan ? plan : plan.slice(Math.max(0, nextIdx - 1), nextIdx + 4);
+  const visiblePlan = showAllPlan ? plan : plan.slice(nextIdx, nextIdx + 3).length ? plan.slice(nextIdx, nextIdx + 3) : plan.slice(-2);
 
   // la bannière se fie à la version réellement installée : après la mise à jour, l’ancien « disponible » enregistré ne compte plus
   const up = st.update?.available && N.installedVersion() && N.isNewer(st.update.latest, N.installedVersion()) ? st.update : null;
@@ -71,13 +71,10 @@ export function render(view, ctx) {
     ${sleepCard(st)}
     ${envCard(sm.env, st.location)}
 
-    <div class="tiles">
-      <button class="tile" data-act="photo"><span class="icon-badge" style="background:color-mix(in srgb,var(--c-food) 16%,transparent);color:var(--c-food)">${icon('camera')}</span>Photo repas</button>
-      <button class="tile" data-act="scan"><span class="icon-badge" style="background:color-mix(in srgb,var(--c-move) 16%,transparent);color:var(--c-move)">${icon('barcode')}</span>Scanner</button>
-      <button class="tile" data-act="snack"><span class="icon-badge" style="background:color-mix(in srgb,var(--c-mood) 16%,transparent);color:var(--c-mood)">${icon('apple')}</span>Grignotage</button>
-      <button class="tile" data-water aria-label="Eau : appui = +25 cL, appui long = −25 cL"><span class="icon-badge" style="background:color-mix(in srgb,var(--c-water) 16%,transparent);color:var(--c-water)">${icon('water')}</span><span id="water-v">${fmt(water / 10)} cL</span></button>
+    <div class="tiles two">
+      <button class="tile" data-act="photo"><span class="icon-badge" style="background:color-mix(in srgb,var(--c-food) 16%,transparent);color:var(--c-food)">${icon('camera')}</span><span>Repas<small>${fmt(tot.kcal)} / ${fmt(t.kcal)} kcal</small></span></button>
+      <button class="tile" data-water aria-label="Eau : appui = +25 cL, appui long = −25 cL"><span class="icon-badge" style="background:color-mix(in srgb,var(--c-water) 16%,transparent);color:var(--c-water)">${icon('water')}</span><span><span id="water-v">${fmt(water / 10)} cL</span><small>appui long : −25 cL</small></span></button>
     </div>
-
 
     <div class="card" id="plan">
       <div class="card-head"><h2>${icon('calendar', 18)} Plan du jour</h2><span class="row" style="gap:12px;flex-wrap:nowrap"><button class="link" data-add-step aria-label="Ajouter une étape">${icon('plus', 14)} Ajouter</button><button class="link" data-toggle-plan>${showAllPlan ? 'Réduire' : 'Tout voir'}</button></span></div>
@@ -87,13 +84,6 @@ export function render(view, ctx) {
           <div class="step-main"><div class="ttl">${esc(p.title)}${p.edited || p.custom ? ` <span class="edited-mark">${icon('pencil', 11)}</span>` : ''}</div>${p.note || p.text ? `<div class="txt one">${esc(p.note || p.text)}</div>` : ''}</div></li>`;
       }).join('')}</ul>
     </div>
-
-    <div class="card">
-      <div class="card-head"><h2>${icon('salad', 18)} Nutrition du jour</h2><button class="link" data-tab="nutrition">Détails</button></div>
-      ${meter('Calories', tot.kcal, t.kcal, 'kcal', 'var(--c-move)', true)}
-      ${meter('Protéines', tot.protein, t.protein, 'g', 'var(--c-sleep)')}
-    </div>
-
 
     ${ins.length ? `<div class="section-title">Ce que disent tes données</div>
     <div class="insights">${ins.map((i) => `<article class="insight ${i.level}"><h3><span style="color:var(--${i.level === 'bon' ? 'good' : i.level === 'alerte' ? 'bad' : 'warn'})">${icon(LEVEL_ICON[i.level], 18)}</span>${esc(i.title)}</h3><p>${esc(i.text.split(/(?<=\.)\s/)[0])}</p>${srcLinks(i.src)}</article>`).join('')}</div>` : ''}

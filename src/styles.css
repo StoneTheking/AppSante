@@ -618,3 +618,9 @@ span.qcam-side { background: none; }
 .score-row .sr-more { padding: 0 0 12px 32px; }
 .ai-opt { border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; margin-top: 10px; }
 .ai-opt b { display: flex; gap: 6px; align-items: center; font-size: 0.92rem; }
+.tiles.two { grid-template-columns: 1fr 1fr; }
+.tiles.two .tile { flex-direction: row; justify-content: flex-start; gap: 12px; padding: 14px; text-align: left; }
+.tiles.two .tile > span:last-child { display: flex; flex-direction: column; font-weight: 700; }
+.tiles.two .tile small { font-weight: 500; font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+.more-fields { margin-top: 10px; }
+.more-fields summary { cursor: pointer; padding: 6px 0; }
