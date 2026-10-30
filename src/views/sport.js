@@ -47,7 +47,6 @@ export function render(view, ctx) {
   const recent = [...st.workouts].sort((x, y) => y.start.localeCompare(x.start)).slice(0, 25);
 
   view.innerHTML = `
-    ${Diana.card('sport', st, sm)}
     ${cur ? `<section class="sleep-card" style="background:radial-gradient(120% 160% at 100% 0%,rgba(251,146,60,.28),rgba(251,146,60,0) 60%),#140f0b;border-color:rgba(251,146,60,.3)">
       <div class="between"><span class="tiny muted" style="font-weight:700;letter-spacing:.08em;text-transform:uppercase">Séance en cours</span>${icon(SP.activity(cur.type).icon, 18)}</div>
       <div class="big" id="chrono">00:00</div>
@@ -121,7 +120,7 @@ export function render(view, ctx) {
     $('#other', view).onclick = () => openWorkout(ctx, view, true);
   }
   $('#add', view).onclick = () => openWorkout(ctx, view, false);
-  Diana.bind(view, 'sport', st, sm);
+  Diana.context('sport', st, sm);
   $('#plan-week', view).onclick = () => planWeekInCalendar(adv.plan);
   $('#guided', view)?.addEventListener('click', () => openSession(ctx, view, { activity: adv.type, minutes: adv.minutes, intensity: adv.intensity, dayIndex: adv.plan.findIndex((d) => d.today) }));
   $$('[data-day]', view).forEach((r) => (r.onclick = () => {
@@ -423,7 +422,7 @@ function guided(ctx, view, session, activity, intensity) {
         <button class="btn" id="next" style="flex:2;background:var(--c-move);color:#1a0d02">${s.kind === 'reps' ? `${icon('check', 18)} Série faite` : i === steps.length - 1 ? 'Terminer' : `Passer ${icon('right', 18)}`}</button>
       </div>
       <button class="btn ghost block" id="finish" style="margin-top:10px">${icon('check', 18)} Terminer et enregistrer la séance</button>
-      <div class="gd-diana">${Diana.card('guided', store.get(), null, { step: s, i, n: steps.length })}</div>`;
+      ${Diana.inline('guided', store.get(), null, { step: s, i, n: steps.length })}`;
     // la barre avance depuis sa position précédente au lieu de repartir de zéro
     requestAnimationFrame(() => { const f = $('#gd-fill', el); if (f) f.style.width = `${pct}%`; });
     lastPct = pct;
@@ -431,6 +430,7 @@ function guided(ctx, view, session, activity, intensity) {
     $('#next', el).onclick = () => go(i + 1);
     $('#pause', el)?.addEventListener('click', () => { paused = !paused; draw(); });
     $('#finish', el).onclick = finish;
+    Diana.bindInline(el, 'guided', store.get(), null, { step: s, i, n: steps.length });
   };
   const fmtClock = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
   const go = (k) => {

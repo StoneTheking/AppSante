@@ -215,13 +215,6 @@ function quickCamera() {
   });
 }
 
-// Logo : trois anneaux (activité, sommeil, alimentation) autour d'un point, comme le score.
-export function logo(size = 40) {
-  const a = (r, deg) => { const x = 256 + r * Math.cos((deg * Math.PI) / 180), y = 256 + r * Math.sin((deg * Math.PI) / 180); return `M256 ${256 - r}A${r} ${r} 0 ${deg > 90 ? 1 : 0} 1 ${x.toFixed(1)} ${y.toFixed(1)}`; };
-  const rings = [[150, '#fb923c', 200], [108, '#818cf8', 140], [66, '#4ade80', 230]];
-  return `<svg width="${size}" height="${size}" viewBox="60 60 392 392" aria-hidden="true">${rings.map(([r, c, d]) => `<circle cx="256" cy="256" r="${r}" fill="none" stroke="${c}" stroke-opacity=".18" stroke-width="30"/><path d="${a(r, d)}" fill="none" stroke="${c}" stroke-width="30" stroke-linecap="round"/>`).join('')}<circle cx="256" cy="256" r="20" fill="#2dd4bf"/></svg>`;
-}
-
 // Visages 1 à 5 (plus rapide à remplir qu'une échelle chiffrée) ; onPick(valeur) à chaque choix.
 // Dessinés au trait comme les autres icônes (pas d'émojis) ; g = de 1 (mauvais) à 5 (très bien).
 const TONE = ['var(--bad)', 'var(--warn)', 'var(--text-2)', 'var(--primary)', 'var(--good)'];

@@ -19,10 +19,10 @@ let dayOffset = 0;
 let shownSeg = null;
 export function render(view, ctx) {
   const dsm = summary();
-  view.innerHTML = `${Diana.card('health', store.get(), dsm)}${segmented('hl', [['suivi', 'Suivi'], ['tendances', 'Tendances'], ['projection', 'Projection'], ['science', 'Science']], seg)}<div id="hl-body" class="${seg !== shownSeg ? 'view-enter' : ''}"></div>`;
+  view.innerHTML = `${segmented('hl', [['suivi', 'Suivi'], ['tendances', 'Tendances'], ['projection', 'Projection'], ['science', 'Science']], seg)}<div id="hl-body" class="${seg !== shownSeg ? 'view-enter' : ''}"></div>`;
   shownSeg = seg; // animations d'entrée seulement au changement d'onglet, pas à chaque mise à jour
-  $$('[data-seg="hl"]', view).forEach((b) => (b.onclick = () => { seg = b.dataset.v; render(view, ctx); }));
-  Diana.bind(view, 'health', store.get(), dsm);
+  $$('[data-seg="hl"]', view).forEach((b) => (b.onclick = () => { if (b.dataset.v === seg) return; seg = b.dataset.v; render(view, ctx); }));
+  Diana.context('health', store.get(), dsm);
   const body = $('#hl-body', view);
   ({ suivi: renderTrack, tendances: renderTrends, projection: renderFuture, science: renderScience })[seg](body, ctx);
   setTimeout(() => body.classList.remove('view-enter'), 1200);

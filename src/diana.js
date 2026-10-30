@@ -1,72 +1,76 @@
-// Coach Diana : petit smiley en 3D avec un bandeau éponge, qui encourage un peu partout dans l'appli.
+// Coach Diana : petit visage en 3D avec un bandeau de sport, posé au-dessus du menu, qui encourage partout dans l'appli.
 // Ses phrases dépendent de l'heure, de ce qui a déjà été fait dans la journée (repas, eau, pas, séance, nuit)
 // et de l'analyse des 7 derniers jours (score, pilier le plus faible).
 import * as store from './store.js';
 import * as S from './science.js';
 import * as G from './gamify.js';
 import * as SP from './sport.js';
+import { draw } from './diana3d.js';
 
-let uid = 0;
-
-// Visage en 3D (SVG) : sphère bleu nuit éclairée en haut à gauche (reflet, lumière de contour, ombre au sol),
-// yeux bombés, et bandeau de sport en éponge qui fait le tour du front, noué sur le côté.
+// ---------- Visage en 3D animé ----------
+// face(mood, size) renvoie un <canvas> ; il est animé automatiquement dès qu'il apparaît dans la page.
 // mood : happy | cheer (grand sourire) | proud (clin d'œil) | sleepy (yeux fermés) | oops (bouche hésitante)
 export function face(mood = 'happy', size = 56) {
-  const id = `dn${++uid}`;
-  const closed = (x) => mood === 'sleepy' || (mood === 'proud' && x > 50);
-  const eye = (x) => closed(x)
-    ? `<path d="M${x - 7} 56 q7 5 14 0" stroke="#0a1426" stroke-opacity=".5" stroke-width="3.4" fill="none" stroke-linecap="round" transform="translate(0 1)"/><path d="M${x - 7} 56 q7 5 14 0" stroke="#e3ecf8" stroke-width="3" fill="none" stroke-linecap="round"/>`
-    : `<ellipse cx="${x}" cy="56.5" rx="8.4" ry="9.4" fill="#06101f" opacity=".45"/>
-       <ellipse cx="${x}" cy="55" rx="8.2" ry="9.2" fill="url(#${id}e)"/>
-       <circle class="diana-pupil" cx="${x + 0.8}" cy="56" r="4.3" fill="url(#${id}p)"/>
-       <circle cx="${x + 2.4}" cy="53.6" r="1.6" fill="#fff"/>
-       <path d="M${x - 7.6} 51 q7.6 -5.2 15.2 0" stroke="#0b1830" stroke-opacity=".35" stroke-width="2.2" fill="none"/>`;
-  const smile = {
-    happy: 'M39 71 Q50 76.5 61 71',
-    proud: 'M38 69.5 Q50 78 62 69.5',
-    cheer: 'M37 68 Q50 82 63 68',
-    sleepy: 'M45 73 Q50 74.5 55 73',
-    oops: 'M40 74 Q45 70 50 73 T60 71.5',
-  }[mood] || 'M39 71 Q50 76.5 61 71';
-  const mouth = `<path d="${smile}" stroke="#06101f" stroke-opacity=".45" stroke-width="3.6" fill="none" stroke-linecap="round" transform="translate(0 1.2)"/><path d="${smile}" stroke="#e3ecf8" stroke-width="3" fill="none" stroke-linecap="round"/>`;
-  return `<svg class="diana-svg mood-${mood}" width="${size}" height="${size}" viewBox="0 0 100 100" aria-hidden="true">
-    <defs>
-      <radialGradient id="${id}b" cx="36%" cy="30%" r="78%"><stop offset="0" stop-color="#5d8fc8"/><stop offset=".32" stop-color="#2d5487"/><stop offset=".72" stop-color="#16294a"/><stop offset="1" stop-color="#0a1428"/></radialGradient>
-      <radialGradient id="${id}r" cx="50%" cy="50%" r="50%"><stop offset=".8" stop-color="#7fb2ee" stop-opacity="0"/><stop offset=".95" stop-color="#7fb2ee" stop-opacity=".1"/><stop offset="1" stop-color="#a9cdf5" stop-opacity=".42"/></radialGradient>
-      <radialGradient id="${id}rim" cx="72%" cy="86%" r="45%"><stop offset="0" stop-color="#8cc0ff" stop-opacity=".38"/><stop offset="1" stop-color="#8cc0ff" stop-opacity="0"/></radialGradient>
-      <radialGradient id="${id}e" cx="38%" cy="32%" r="75%"><stop offset="0" stop-color="#ffffff"/><stop offset=".6" stop-color="#dfe8f4"/><stop offset="1" stop-color="#9fb2c9"/></radialGradient>
-      <radialGradient id="${id}p" cx="38%" cy="35%" r="70%"><stop offset="0" stop-color="#7a8ca4"/><stop offset="1" stop-color="#2c3a4f"/></radialGradient>
-      <linearGradient id="${id}h" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c9d6e6"/><stop offset=".28" stop-color="#ffffff"/><stop offset=".7" stop-color="#e3eaf3"/><stop offset="1" stop-color="#9eb0c6"/></linearGradient>
-      <linearGradient id="${id}w" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#0b1830" stop-opacity=".55"/><stop offset=".22" stop-color="#0b1830" stop-opacity="0"/><stop offset=".78" stop-color="#0b1830" stop-opacity="0"/><stop offset="1" stop-color="#0b1830" stop-opacity=".55"/></linearGradient>
-      <pattern id="${id}t" width="2.4" height="2.4" patternUnits="userSpaceOnUse"><circle cx="1.2" cy="1.2" r=".55" fill="#7d90a8" opacity=".35"/></pattern>
-      <radialGradient id="${id}g" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#000" stop-opacity=".5"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
-      <clipPath id="${id}c"><circle cx="50" cy="52" r="38"/></clipPath>
-    </defs>
-    <ellipse class="diana-ground" cx="50" cy="96" rx="25" ry="3.6" fill="url(#${id}g)"/>
-    <circle class="diana-ring" cx="50" cy="52" r="46.5" fill="none" stroke="#8394ad" stroke-opacity=".45" stroke-width="1.4"/>
-    <g class="diana-head">
-      <path d="M86 33 C93 28 97 25 99.5 21 C98 28 95 33 90.5 37 Z" fill="url(#${id}h)"/>
-      <path d="M87 39 C94 41 97.5 45 99 50 C95 47.5 91.5 46 86.5 45 Z" fill="url(#${id}h)"/>
-      <path d="M86 33 C93 28 97 25 99.5 21 C98 28 95 33 90.5 37 Z M87 39 C94 41 97.5 45 99 50 C95 47.5 91.5 46 86.5 45 Z" fill="#0b1830" opacity=".25"/>
-      <circle cx="50" cy="52" r="38" fill="url(#${id}b)"/>
-      <circle cx="50" cy="52" r="38" fill="url(#${id}rim)"/>
-      <circle cx="50" cy="52" r="38" fill="url(#${id}r)"/>
-      <g clip-path="url(#${id}c)">
-        <path d="M8 44 Q50 25 92 44 L92 50 Q50 31 8 50 Z" fill="#050c18" opacity=".45"/>
-      </g>
-      <path d="M10.5 33.5 Q50 13 89.5 33.5 L90 45 Q50 25 10 45 Z" fill="url(#${id}h)"/>
-      <path d="M10.5 33.5 Q50 13 89.5 33.5 L90 45 Q50 25 10 45 Z" fill="url(#${id}t)"/>
-      <path d="M10.6 36.6 Q50 16.2 89.6 36.6" stroke="#38bdf8" stroke-width="1.5" fill="none"/>
-      <path d="M10.4 41.6 Q50 21.4 89.8 41.6" stroke="#38bdf8" stroke-width="1.5" fill="none"/>
-      <path d="M10.5 33.5 Q50 13 89.5 33.5 L90 45 Q50 25 10 45 Z" fill="url(#${id}w)"/>
-      <path d="M49 21.5 L45.5 28.6 H49.3 L47.6 34.6 L54.4 26.2 H50.4 L52.2 21.5 Z" fill="#0ea5e9" stroke="#fff" stroke-width=".5" stroke-linejoin="round"/>
-      <ellipse cx="87.6" cy="39.6" rx="3.6" ry="4.4" fill="url(#${id}h)" stroke="#8ea2bb" stroke-width=".6"/>
-      <g class="diana-eyes">${eye(36)}${eye(64)}</g>
-      <ellipse cx="25" cy="67" rx="5" ry="2.8" fill="#9cc4f2" opacity=".1"/><ellipse cx="75" cy="67" rx="5" ry="2.8" fill="#9cc4f2" opacity=".1"/>
-      ${mouth}
-      <ellipse cx="38" cy="18.5" rx="9" ry="3.2" transform="rotate(-14 38 18.5)" fill="#fff" opacity=".55"/>
-    </g>
-  </svg>`;
+  return `<canvas class="diana-orb" data-mood="${mood}" style="width:${size}px;height:${size}px" aria-hidden="true"></canvas>`;
+}
+
+const still = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+const orbs = new Set();
+let raf = 0, lastFrame = 0;
+
+// Une instance par canvas : pose de la tête, clignements, tour sur elle-même au toucher, bouche qui parle.
+function orbOf(cv) {
+  if (cv._orb) return cv._orb;
+  const dpr = Math.min(2.5, window.devicePixelRatio || 1);
+  const css = parseFloat(cv.style.width) || 56;
+  cv.width = cv.height = Math.round(css * dpr);
+  const o = { cv, buf: {}, mood: cv.dataset.mood || 'happy', t0: performance.now() / 1000 + Math.random() * 20, blinkAt: 2 + Math.random() * 3, spinAt: -9, talkUntil: 0, visible: true };
+  cv._orb = o;
+  orbs.add(o);
+  if ('IntersectionObserver' in window) new IntersectionObserver(([e]) => { o.visible = e.isIntersecting; if (o.visible) wake(); }).observe(cv);
+  render(o, performance.now() / 1000);
+  return o;
+}
+
+function render(o, now) {
+  const t = now - o.t0;
+  if (t > o.blinkAt + 0.18) o.blinkAt = t + 2.5 + Math.random() * 3.5;
+  const bt = (t - o.blinkAt) / 0.18;
+  const blink = still ? 0 : bt > 0 && bt < 1 ? Math.sin(Math.PI * bt) : 0;
+  const sp = (now - o.spinAt) / 1.1;
+  const spin = sp > 0 && sp < 1 ? 1 - Math.pow(1 - sp, 3) : 0;
+  const jump = sp > 0 && sp < 1 ? -0.07 * Math.sin(Math.PI * Math.min(1, sp * 1.6)) : 0;
+  const k = still ? 0.4 : 1;
+  const yaw = (0.34 * Math.sin(t * 0.5) + 0.08 * Math.sin(t * 1.27)) * k + spin * Math.PI * 2;
+  const talk = now < o.talkUntil ? 0.5 + 0.5 * Math.sin(now * 17) : 0;
+  draw(o.cv, {
+    yaw, pitch: (0.09 * Math.sin(t * 0.7 + 1)) * k, roll: 0.06 * Math.sin(t * 0.43 + 2) * k,
+    bob: still ? 0 : 0.018 * Math.sin(t * 1.8) + jump, blink, mood: o.mood, talk,
+    gaze: [Math.max(-1, Math.min(1, Math.sin(t * 0.5) * 1.2)), 0.2 * Math.sin(t * 0.33)], ring: t * 0.8,
+  }, o.buf);
+}
+
+function loop(ts) {
+  raf = 0;
+  if (document.hidden) return;
+  let any = false;
+  for (const o of orbs) {
+    if (!o.cv.isConnected) { orbs.delete(o); continue; }
+    if (o.visible) any = true;
+  }
+  if (!any || still) return;
+  if (ts - lastFrame > 30) { lastFrame = ts; for (const o of orbs) if (o.visible) render(o, ts / 1000); } // ~30 images/s suffisent
+  raf = requestAnimationFrame(loop);
+}
+function wake() {
+  if (!still) { raf ||= requestAnimationFrame(loop); return; }
+  for (const o of orbs) if (o.cv.isConnected) render(o, performance.now() / 1000); // mouvement réduit : une image fixe
+}
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', wake);
+  // Les visages ajoutés à la page s'animent tout seuls.
+  new MutationObserver(() => { document.querySelectorAll('canvas.diana-orb').forEach((cv) => { if (!cv._orb) orbOf(cv); }); wake(); })
+    .observe(document.documentElement, { childList: true, subtree: true });
 }
 
 const hm = (d = new Date()) => d.getHours() * 60 + d.getMinutes();
@@ -179,42 +183,93 @@ export function lines(where, st = store.get(), sm, extra = {}) {
   return out;
 }
 
-// Décalage choisi au toucher (une autre phrase à chaque appui).
-const turn = {};
+// ---------- Diana posée au-dessus du menu, sur tous les écrans ----------
+// Elle parle dans une bulle à l'ouverture de l'appli et quand on la touche, puis la bulle s'efface.
+let dock = null, ctxArgs = ['home'], turn = {}, hideT = 0, greeted = false, lastGreet = 0;
 
-// Bulle de Diana : visage + phrase. Toucher le visage ou la bulle = phrase suivante.
-export function card(where, st, sm, extra) {
-  const all = lines(where, st, sm, extra);
-  const [text, mood] = all[(turn[where] || 0) % all.length];
-  return `<div class="diana" data-diana="${where}" role="button" aria-label="Coach Diana : ${text.replace(/"/g, '&quot;')}">
-    <span class="diana-face">${face(mood, 60)}</span>
-    <div class="diana-bubble"><b>Coach Diana</b><span>${text}</span></div>
-  </div>`;
+export function mount(onOpenCoach) {
+  dock?.remove();
+  dock = document.createElement('div');
+  dock.className = 'diana-dock';
+  dock.innerHTML = `<div class="dd-bubble" role="status" aria-live="polite"><b>Coach Diana</b><span></span><button class="dd-chat" type="button">Discuter avec moi →</button></div>
+    <button class="dd-face" type="button" aria-label="Coach Diana : une nouvelle phrase">${face('happy', 58)}</button>`;
+  document.body.appendChild(dock);
+  dock.querySelector('.dd-face').onclick = () => { turn[ctxArgs[0]] = (turn[ctxArgs[0]] || 0) + 1; sayCurrent(true); };
+  dock.querySelector('.dd-bubble').onclick = (e) => { if (e.target.closest('.dd-chat')) { hide(); onOpenCoach?.(); } else hide(); };
 }
 
-export function bind(root, where, st, sm, extra) {
-  const el = root.querySelector(`[data-diana="${where}"]`);
+// Écran affiché : ses phrases (et dès la première fois, un petit bonjour).
+export function context(where, st, sm, extra) {
+  ctxArgs = [where, st, sm, extra];
+  if (!greeted) { greeted = true; greet(); }
+}
+
+// Onglet courant : Diana se cache sur l'écran de discussion (c'est déjà elle qui parle).
+export function setTab(tab) {
+  if (!dock) return;
+  dock.classList.toggle('off', tab === 'coach');
+  if (tab === 'coach') hide();
+}
+
+// Bonjour à l'ouverture (ou au retour dans l'appli après 10 min d'absence), quand aucune fenêtre n'est ouverte.
+export function greet(delay = 900, { again = false, tries = 6 } = {}) {
+  if (again && Date.now() - lastGreet < 10 * 60e3) return;
+  lastGreet = Date.now();
+  setTimeout(() => {
+    if (!dock || dock.classList.contains('off')) return;
+    if (document.querySelector('.sheet-root')) { if (tries) greet(1500, { tries: tries - 1 }); return; }
+    sayCurrent(false);
+  }, delay);
+}
+
+function sayCurrent(spin) {
+  const [where, st, sm, extra] = ctxArgs;
+  const all = lines(where, st || store.get(), sm, extra);
+  const [text, mood] = all[(turn[where] || 0) % all.length];
+  say(text, mood, { spin });
+}
+
+export function say(text, mood = 'happy', { ms, spin = false } = {}) {
+  if (!dock) return;
+  const bubble = dock.querySelector('.dd-bubble');
+  bubble.querySelector('span').textContent = text;
+  bubble.classList.remove('on'); void bubble.offsetWidth; bubble.classList.add('on');
+  const o = orbOf(dock.querySelector('canvas'));
+  o.mood = mood;
+  const now = performance.now() / 1000;
+  o.talkUntil = now + Math.min(2.2, 0.5 + text.length / 45);
+  if (spin) o.spinAt = now;
+  wake();
+  clearTimeout(hideT);
+  hideT = setTimeout(hide, ms || Math.min(8000, Math.max(3800, 1800 + text.length * 55)));
+}
+
+function hide() {
+  clearTimeout(hideT);
+  dock?.querySelector('.dd-bubble').classList.remove('on');
+  setTimeout(() => { const o = dock && orbOf(dock.querySelector('canvas')); if (o && !dock.querySelector('.dd-bubble.on')) o.mood = 'happy'; }, 400);
+}
+
+// Petite réaction de Diana (repas ajouté, séance terminée…).
+export function pop(text, mood = 'proud', ms) { say(text, mood, { ms, spin: true }); }
+
+// Version compacte dans le mode guidé du sport : hauteur fixe, une autre phrase au toucher.
+export function inline(where, st, sm, extra) {
+  const all = lines(where, st, sm, extra);
+  const [text, mood] = all[(turn[where] || 0) % all.length];
+  return `<div class="diana-inline" data-diana-inline="${where}">${face(mood, 40)}<span>${text}</span></div>`;
+}
+export function bindInline(root, where, st, sm, extra) {
+  const el = root.querySelector(`[data-diana-inline="${where}"]`);
   if (!el) return;
   el.onclick = () => {
     turn[where] = (turn[where] || 0) + 1;
-    const fresh = document.createElement('div');
-    fresh.innerHTML = card(where, st, sm, extra);
-    const n = fresh.firstElementChild;
-    n.classList.add('diana-pop');
-    el.replaceWith(n);
-    bind(n.parentElement, where, st, sm, extra);
+    const all = lines(where, st, sm, extra);
+    const [text, mood] = all[turn[where] % all.length];
+    el.querySelector('span').textContent = text;
+    const o = orbOf(el.querySelector('canvas'));
+    o.mood = mood; o.spinAt = performance.now() / 1000; wake();
   };
-}
-
-// Petite apparition de Diana en bas de l'écran (repas ajouté, séance terminée…).
-export function pop(text, mood = 'proud', ms = 3600) {
-  document.querySelector('.diana-float')?.remove();
-  const el = document.createElement('div');
-  el.className = 'diana-float';
-  el.innerHTML = `<span class="diana-face">${face(mood, 46)}</span><div class="diana-bubble"><b>Coach Diana</b><span>${text}</span></div>`;
-  el.onclick = () => el.remove();
-  document.body.appendChild(el);
-  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 350); }, ms);
 }
 
 // Réaction à un repas ajouté.

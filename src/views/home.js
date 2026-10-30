@@ -64,7 +64,6 @@ export function render(view, ctx) {
   const up = st.update?.available && N.installedVersion() && N.isNewer(st.update.latest, N.installedVersion()) ? st.update : null;
   view.innerHTML = `
     ${up ? `<div class="note" style="margin:4px 0 10px">${icon('download', 18)}<span style="flex:1"><b>Mise à jour ${esc(up.latest)} disponible</b><br><span class="tiny">Télécharge puis ouvre le fichier : elle s’installe par-dessus, tes données sont conservées.</span></span><button class="btn sm" data-update>Installer</button></div>` : ''}
-    ${Diana.card('home', st, sm)}
     ${hero(sm, st)}
     ${reviewCard(st)}
     ${questsCard(st)}
@@ -96,7 +95,7 @@ export function render(view, ctx) {
 `;
 
   $$('[data-act]', view).forEach((b) => (b.onclick = () => ctx.action(b.dataset.act)));
-  Diana.bind(view, 'home', st, sm);
+  Diana.context('home', st, sm);
   const wb = $('[data-water]', view);
   onTapHold(wb, () => addWater(wb, 250, ctx), () => addWater(wb, -250, ctx));
   $('.hero', view).onclick = (e) => { if (e.target.closest('[data-hero-style]')) return; openScore(sm); };

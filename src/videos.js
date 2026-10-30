@@ -1,5 +1,5 @@
-// Démonstrations vidéo : seulement pour les exercices où la technique compte (renforcement, yoga, gestes précis).
-// Pas de vidéo pour courir, marcher, pédaler, s'étirer simplement ou respirer.
+// Démonstrations vidéo : pour les exercices où la technique compte (renforcement, étirements, yoga, gestes précis).
+// Pas de vidéo pour courir, marcher, pédaler ou respirer.
 export const VIDEO_GROUPS = [
   ['Renforcement', [
     'Squat au poids du corps', 'Goblet squat avec un haltère', 'Squat à la barre ou presse à cuisses',
@@ -13,12 +13,14 @@ export const VIDEO_GROUPS = [
     'Planche', 'Planche latérale', 'Dead bug', 'Gainage avant puis latéral', 'Rotation du buste avec gainage',
   ]],
   ['Cardio et fractionné', ['Burpees', 'Mountain climbers', 'Squats sautés', 'Squats sautés réception amortie', 'Fentes sautées', 'Sprints navette 5-10-5', 'Split-step et déplacements latéraux']],
+  ['Étirements', ['Étirement des quadriceps (debout, talon vers la fesse)', 'Étirement des ischios (jambe tendue sur une marche)', 'Étirement des pectoraux contre un mur', 'Étirements des épaules au bord', 'Posture de l’enfant']],
   ['Yoga et mobilité', ['Chat-vache', 'Chien tête en bas', 'Fente basse (chaque côté)', 'Guerrier II (chaque côté)', 'Pigeon couché (chaque côté)', 'Torsion allongée (chaque côté)', 'Mobilité des hanches et chevilles']],
   ['Danse et natation', ['Pas de base (step-touch, grapevine, pas chassé)', '4 × 25 m éducatifs (battements, rattrapé)']],
 ];
 export const NEEDS_VIDEO = new Set(VIDEO_GROUPS.flatMap(([, xs]) => xs));
 
-// Vidéos choisies par défaut (sélectionnées sur YouTube : démonstration courte et claire, en français quand elle existe).
+// Vidéos choisies par défaut (sélectionnées sur YouTube : démonstration courte et claire, en français quand elle existe ;
+// moins d'une minute pour les étirements et le yoga).
 // L'utilisateur peut toujours en mettre une autre.
 export const DEFAULT_VIDEOS = {
   'Squat au poids du corps': 'https://youtu.be/EXFBExFRTBY',
@@ -58,13 +60,18 @@ export const DEFAULT_VIDEOS = {
   'Fentes sautées': 'https://youtu.be/XJAGPxkEMR4',
   'Sprints navette 5-10-5': 'https://youtu.be/z-wV9O8y-a0',
   'Split-step et déplacements latéraux': 'https://youtu.be/UtARjzWH5PQ',
-  'Chat-vache': 'https://youtu.be/VrQgO4APZ20',
-  'Chien tête en bas': 'https://youtu.be/dhhH0P7IFGw',
-  'Fente basse (chaque côté)': 'https://youtu.be/Gx_5WZ5o8C4',
+  'Chat-vache': 'https://youtu.be/SSDi30vN2hs',
+  'Chien tête en bas': 'https://youtu.be/fMFVpq9yaPs',
+  'Fente basse (chaque côté)': 'https://youtu.be/wq6lNl-aWWY',
   'Guerrier II (chaque côté)': 'https://youtu.be/Thx-FF5uayY',
   'Pigeon couché (chaque côté)': 'https://youtu.be/07Oz43jNleQ',
-  'Torsion allongée (chaque côté)': 'https://youtu.be/cvCPeN6XjHs',
-  'Mobilité des hanches et chevilles': 'https://youtu.be/MT3IFreUFzI',
+  'Torsion allongée (chaque côté)': 'https://youtu.be/kCbMifbaCDI',
+  'Mobilité des hanches et chevilles': 'https://youtu.be/_nqTQQcjDJw',
+  'Étirement des quadriceps (debout, talon vers la fesse)': 'https://youtu.be/wj5Yzbr4wf0',
+  'Étirement des ischios (jambe tendue sur une marche)': 'https://youtu.be/PC-KmNmLLVI',
+  'Étirement des pectoraux contre un mur': 'https://youtu.be/Nd-UfkipKkQ',
+  'Étirements des épaules au bord': 'https://youtu.be/UJwjAGZY8yo',
+  'Posture de l’enfant': 'https://youtu.be/dYI4BJ0teVU',
   'Pas de base (step-touch, grapevine, pas chassé)': 'https://youtu.be/WKyQn89mzZY',
   '4 × 25 m éducatifs (battements, rattrapé)': 'https://youtu.be/WzsenRF7G6w',
 };

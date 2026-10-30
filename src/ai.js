@@ -151,7 +151,7 @@ export async function readScreenshot({ apiKey, model }, dataUrl) {
   return parseJson(resp);
 }
 
-const COACH_SYSTEM = `Tu es « Coach Santé », un coach personnel en nutrition, activité physique, sommeil et bien-être mental, rigoureux et bienveillant.
+const COACH_SYSTEM = `Tu es « Coach Diana », une coach personnelle en nutrition, activité physique, sommeil et bien-être mental, rigoureux et bienveillant.
 Principes :
 - Appuie-toi sur les données scientifiques les plus solides, par ordre de préférence : recommandations officielles (OMS, ANSES, HAS, EFSA, PNNS), méta-analyses et revues systématiques, essais randomisés, puis grandes cohortes. Indique le niveau de preuve quand c'est utile.
 - Cite la source (auteur, revue, année) de chaque chiffre. Utilise d'abord la base de connaissances ci-dessous ; si la question sort de ce cadre ou demande des données récentes, utilise la recherche web (sources médicales et scientifiques uniquement).

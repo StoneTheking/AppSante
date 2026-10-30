@@ -72,38 +72,43 @@ export function packGrams(p) {
   return v > 0 && v < 20000 ? Math.round(v * 10) / 10 : null;
 }
 
-// Nom d'une unité à partir du libellé de portion (« 1 barre (18,5 g) ») ou du nom du produit.
-const UNIT_WORDS = [[/barre|bar\b|balisto|kit ?kat|twix|mars\b|snickers|bounty|lion\b|kinder bueno|granola/i, 'barre', 'barres'], [/biscuit|cookie|g[aâ]teau|madeleine|galette|sabl[ée]|petit beurre|prince|oreo/i, 'biscuit', 'biscuits'],
-  [/yaourt|yogourt|skyr|cr[eè]me dessert|compote|petit suisse|fromage blanc|danette|activia/i, 'pot', 'pots'], [/canette|soda|coca|cola|pepsi|fanta|sprite|orangina|ice tea|red bull|monster|bi[eè]re/i, 'canette', 'canettes'],
-  [/bouteille|eau |jus|smoothie|lait\b/i, 'bouteille', 'bouteilles'], [/tranche|jambon|pain de mie|brioche tranch/i, 'tranche', 'tranches'], [/sachet|paquet|chips/i, 'sachet', 'sachets'],
-  [/[œo]uf/i, 'œuf', 'œufs'], [/croissant|pain au chocolat|chocolatine|viennoiserie|muffin|donut|beignet/i, 'pièce', 'pièces']];
-const unitWord = (txt) => UNIT_WORDS.find(([re]) => re.test(txt || '')) || null;
+// Boissons vendues à l'unité (canette, petite bouteille) : la portion, c'est le contenant entier.
+const DRINK = /\b(sodas?|coca|cola|pepsi|fanta|sprite|orangina|ice ?tea|red ?bull|monster|bi[eè]res?|canettes?|jus|smoothies?|limonade|eau)\b/i;
+// Nombre d'unités écrit dans le nom ou la quantité : « 6 crêpes », « x9 », « 4 pots », « 12 biscuits ».
+const COUNTABLE = 'barres?|bars?|pi[eè]ces?|pots?|biscuits?|cookies?|sachets?|canettes?|bouteilles?|tranches?|portions?|parts?|unit[ée]s?|pcs|cr[eê]pes?|galettes?|gaufres?|madeleines?|muffins?|croissants?|pains?|briochettes?|yaourts?|[œo]eufs?|oeufs?|mini|doses?|capsules?|dosettes?|g[aâ]teaux?|donuts?|beignets?|cakes?|brownies?|tartelettes?|crackers?';
+const COUNT_RE = new RegExp(`(?:[x×]\\s*(\\d{1,2})\\b|\\b(\\d{1,2})\\s*(?:${COUNTABLE})\\b)`, 'i');
 
 // Portion typique quand l'emballage ne dit rien (estimation affichée comme telle).
-const TYPICAL = [[/chocolate-bars|cereal-bars|protein-bars|bars\b/, 30], [/yogurts|desserts|compotes/, 125], [/sodas|soft-drinks|energy-drinks|beers/, 330], [/biscuits|cookies/, 12],
-  [/breads|sliced/, 30], [/cheeses/, 30], [/crisps|chips/, 30], [/chocolates/, 20], [/candies|confectioneries/, 10], [/viennoiseries|pastries/, 60], [/eggs/, 55]];
+const TYPICAL = [[/chocolate-bars|cereal-bars|protein-bars|bars\b/, 30], [/crepes|galettes|pancakes/, 35], [/waffles|gaufres/, 25], [/madeleines/, 25], [/muffins/, 70],
+  [/yogurts|desserts|compotes/, 125], [/sodas|soft-drinks|energy-drinks|beers/, 330], [/biscuits|cookies/, 12], [/breads|sliced/, 30], [/cheeses/, 30], [/crisps|chips/, 30],
+  [/chocolates/, 20], [/candies|confectioneries/, 10], [/viennoiseries|pastries/, 60], [/eggs/, 55], [/cakes/, 40], [/breakfast-cereals|cereals/, 40], [/pizzas/, 200]];
 
-// Une unité du produit (1 barre, 1 pot, 1 canette…) : { g, one, many, est }.
-// Paquet multiple « 9 x 18,5 g » → 18,5 g ; sinon portion de l'emballage ; sinon paquet ÷ nombre d'unités ; sinon estimation.
+// Une portion du produit : { g, one, many, count?, est? } (toujours « portion », plus clair qu'un nom d'unité deviné).
+// Paquet multiple « 9 x 18,5 g » → 18,5 g ; sinon portion de l'emballage si elle est plausible ; sinon paquet ÷ nombre d'unités ;
+// sinon petit format individuel ou boisson à l'unité ; sinon estimation selon la catégorie.
 export function unitOf(p, pack, serving) {
   const q = String(p.quantity || '').toLowerCase().replace(/,/g, '.');
-  const w = unitWord(`${p.serving_size || ''} ${p.product_name_fr || p.product_name || ''}`) || unitWord((p.categories_tags || []).join(' '));
-  const [one, many] = w ? [w[1], w[2]] : ['portion', 'portions'];
+  const name = String(p.product_name_fr || p.product_name || '');
+  const cat = (p.categories_tags || []).join(' ');
+  const base = { one: 'portion', many: 'portions' };
   const conv = (v, u) => Number(v) * ({ kg: 1000, g: 1, l: 1000, cl: 10, ml: 1 }[u] || 1);
   const ok = (g) => g > 0 && g < 2000;
-  let m = q.match(/(\d+)\s*[x×]\s*(\d+(?:\.\d+)?)\s*(kg|g|cl|ml|l)\b/) || null;
-  if (m && Number(m[1]) > 1 && ok(conv(m[2], m[3]))) return { g: Math.round(conv(m[2], m[3]) * 10) / 10, one, many, count: Number(m[1]) };
-  m = q.match(/(\d+(?:\.\d+)?)\s*(kg|g|cl|ml|l)\s*[x×]\s*(\d+)\b/);
-  if (m && Number(m[3]) > 1 && ok(conv(m[1], m[2]))) return { g: Math.round(conv(m[1], m[2]) * 10) / 10, one, many, count: Number(m[3]) };
-  if (serving && ok(serving) && (!pack || serving < pack * 0.95)) return { g: Math.round(serving * 10) / 10, one, many };
-  m = q.match(/(?:[x×]\s*(\d+)\b|\b(\d+)\s*(?:barres|pi[eè]ces|pots|biscuits|sachets|canettes|bouteilles|tranches|portions|unit[ée]s|bars|pcs))/);
-  const count = m ? Number(m[1] || m[2]) : 0;
-  if (pack && count > 1 && ok(pack / count)) return { g: Math.round((pack / count) * 10) / 10, one, many, count };
-  if (pack && pack <= 80) return { g: pack, one, many }; // petit format individuel (barre, pot, sachet)
-  const cat = (p.categories_tags || []).join(' ');
+  const r = (g) => Math.round(g * 10) / 10;
   const typ = TYPICAL.find(([re]) => re.test(cat))?.[1];
-  if (typ) return { g: typ, one, many, est: true };
-  if (pack && pack <= 400 && w) return { g: pack, one, many };
+  let m = q.match(/(\d+)\s*[x×]\s*(\d+(?:\.\d+)?)\s*(kg|g|cl|ml|l)\b/);
+  if (m && Number(m[1]) > 1 && ok(conv(m[2], m[3]))) return { ...base, g: r(conv(m[2], m[3])), count: Number(m[1]) };
+  m = q.match(/(\d+(?:\.\d+)?)\s*(kg|g|cl|ml|l)\s*[x×]\s*(\d+)\b/);
+  if (m && Number(m[3]) > 1 && ok(conv(m[1], m[2]))) return { ...base, g: r(conv(m[1], m[2])), count: Number(m[3]) };
+  m = `${q} ${name.toLowerCase()}`.match(COUNT_RE);
+  const count = m ? Number(m[1] || m[2]) : 0;
+  // Portion de l'emballage, sauf si elle vaut (presque) tout le paquet alors qu'il contient plusieurs unités,
+  // ou si elle est sans rapport avec la portion habituelle de la catégorie (erreur de saisie fréquente).
+  const servingOk = serving && ok(serving) && (!pack || serving < pack * 0.95 || count <= 1) && !(typ && serving > typ * 5);
+  if (servingOk && !(count > 1 && pack && serving >= pack * 0.95)) return { ...base, g: r(serving) };
+  if (pack && count > 1 && ok(pack / count)) return { ...base, g: r(pack / count), count };
+  if (pack && pack <= 80) return { ...base, g: pack }; // petit format individuel (barre, pot, sachet)
+  if (pack && pack <= 500 && (DRINK.test(name) || /beverages|drinks|sodas/.test(cat)) && !/\b(sirop|concentr)/i.test(name)) return { ...base, g: pack };
+  if (typ) return { ...base, g: typ, est: true };
   return null;
 }
 

@@ -1,6 +1,7 @@
 // Premier lancement : présentation et profil en 5 étapes.
 import * as store from '../store.js';
-import { icon, esc, toast, logo, $, $$ } from '../ui.js';
+import { icon, esc, toast, $, $$ } from '../ui.js';
+import * as Diana from '../diana.js';
 import { sportPrefsHtml, bindSportPrefs, applySportPref, sportTimeHtml } from './sport.js';
 import { tastePanel } from './tastes.js';
 import { DEFAULT_WORK } from '../schedule.js';
@@ -14,7 +15,7 @@ export function render(root, done, dir) {
   document.body.classList.add('onb-mode');
   const p = { ...store.get().profile, ...draft };
   const steps = [
-    () => `<div class="logo">${logo(56)}</div>
+    () => `<div class="logo diana-logo">${Diana.face('cheer', 92)}</div>
       <h1>Ton coach santé,<br>fondé sur la science.</h1>
       <p class="lead">Diana Health croise ton sommeil, ton humeur, tes écrans, ton activité et ce que tu manges pour te dire quoi faire, et quand.</p>
       ${[['camera', 'var(--c-food)', 'Photo ou code-barres', 'Calories, Nutri-Score et additifs en un geste'],

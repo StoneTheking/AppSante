@@ -27,9 +27,9 @@ export function render(view, ctx) {
     <div class="coach-empty">
       <div class="coach-diana">${Diana.face('cheer', 84)}</div>
       <h2>Coach Diana</h2>
-      <p class="small muted">Il connaît ton profil, ton sommeil, ton humeur, ton temps d’écran, ton activité et tes repas. Il s’appuie sur une base de 60+ études et peut consulter PubMed, l’OMS, l’ANSES et les grandes revues médicales.</p>
+      <p class="small muted">Elle connaît ton profil, ton sommeil, ton humeur, ton temps d’écran, ton activité et tes repas. Elle s’appuie sur une base de 60+ études et peut consulter PubMed, l’OMS, l’ANSES et les grandes revues médicales.</p>
     </div>`}
-    ${!st.settings.apiKey ? `<div class="note warn">${icon('key', 18)}<span>Ajoute une clé IA dans <a href="#" data-profile>Profil</a> pour discuter avec le coach. Une clé Google Gemini est gratuite.</span></div>` : ''}
+    ${!st.settings.apiKey ? `<div class="note warn">${icon('key', 18)}<span>Ajoute une clé IA dans <a href="#" data-profile>Profil</a> pour discuter avec Diana. Une clé Google Gemini est gratuite.</span></div>` : ''}
     <div class="chat" id="chat">${chat.map((m) => `<div class="msg ${m.role}">${m.role === 'assistant' ? md(m.content) + sourcesHtml(m.sources) : esc(m.content)}</div>`).join('')}</div>
     ${!chat.length ? `<div class="stack" style="margin-top:8px">${QUICK.map(([ic, q]) => `<button class="suggest" style="width:100%;border:0;text-align:left" data-q="${esc(q)}"><span class="row" style="flex-wrap:nowrap"><span style="color:var(--primary)">${icon(ic, 18)}</span><span class="ttl">${esc(q)}</span></span>${icon('right', 16)}</button>`).join('')}</div>` : ''}
     <div style="height:90px"></div>

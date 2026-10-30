@@ -142,7 +142,7 @@ export function openScanner(ctx, slot = null) {
     try {
       const prod = await BC.lookup(code);
       if (!prod) { out.innerHTML = `<div class="note warn">${icon('info', 18)}<span>Produit ${esc(code)} introuvable dans Open Food Facts. Tape son nom dans le champ ci-dessus pour le chercher.</span></div>`; return; }
-      productCard(out, prod, BC.defaultGrams(prod), body, slot || C.currentSlot());
+      openProduct(out, prod, body, slot || C.currentSlot());
     } catch (e) {
       out.innerHTML = `<div class="note bad">${icon('alert', 18)}<span>${esc(e.message)}</span></div>`;
     }
@@ -175,7 +175,7 @@ function qtyChips(prod, grams) {
   return opts.length ? `<div class="chips" style="margin-top:8px;flex-wrap:wrap">${opts.map(([g, l]) => `<button class="chip ${Math.abs(grams - g) < 0.5 ? 'on' : ''}" data-por="${g}">${l}</button>`).join('')}</div>` : '';
 }
 
-// Quantité : en unités (barres, pots, canettes…) quand on connaît le poids d'une unité, sinon en grammes.
+// Quantité : en portions quand on connaît le poids d'une portion, sinon en grammes.
 const unitCount = (prod, grams) => Math.round((grams / prod.unit.g) * 4) / 4;
 const unitName = (u, n) => (n > 1 ? u.many : u.one);
 function qtyBlock(prod, grams, mode) {
@@ -188,7 +188,7 @@ function qtyBlock(prod, grams, mode) {
       <span class="muted" style="min-width:64px">${unitName(u, n)}</span>
     </div>
     <div class="chips" style="margin-top:8px;flex-wrap:wrap">${[0.5, 1, 2, 3].map((k) => `<button class="chip ${n === k ? 'on' : ''}" data-units="${k}">${k === 0.5 ? '½' : k} ${unitName(u, k)}</button>`).join('')}${u.count ? `<button class="chip ${n === u.count ? 'on' : ''}" data-units="${u.count}">Tout le paquet (${u.count})</button>` : ''}</div>
-    <p class="tiny muted" style="margin:6px 0 0">1 ${u.one} ≈ ${fmt(u.g, 1)} g${u.est ? ' (estimation)' : ''} · soit ${fmt(grams, 1)} g · <button class="link-btn" id="to-g">en grammes</button></p>`;
+    <p class="tiny muted" id="ug-line" style="margin:6px 0 0">1 ${u.one} ≈ ${fmt(u.g, 1)} g${u.est ? ' (estimation)' : ''} · <button class="link-btn" id="ug-edit">modifier</button> · soit ${fmt(grams, 1)} g · <button class="link-btn" id="to-g">en grammes</button></p>`;
   }
   return `<label class="lbl">Quantité consommée</label>
     <div class="row" style="flex-wrap:nowrap">
@@ -197,6 +197,13 @@ function qtyBlock(prod, grams, mode) {
     </div>
     ${qtyChips(prod, grams)}
     ${u ? `<p class="tiny muted" style="margin:6px 0 0"><button class="link-btn" id="to-u">Compter en ${u.many} plutôt qu’en grammes</button></p>` : ''}`;
+}
+
+// Ouvre la fiche d'un produit avec la portion retenue pour lui (si on l'a déjà corrigée).
+function openProduct(out, prod, body, slot, back = null) {
+  const saved = prod.code && store.get().portions?.[prod.code];
+  if (saved) prod = { ...prod, unit: { one: 'portion', many: 'portions', ...prod.unit, g: saved, est: false } };
+  productCard(out, prod, BC.defaultGrams(prod), body, slot, back);
 }
 
 function productCard(out, prod, grams, body, slot, back = null, mode = prod.unit ? 'unit' : 'g') {
@@ -242,6 +249,22 @@ function productCard(out, prod, grams, body, slot, back = null, mode = prod.unit
   $$('[data-units]', out).forEach((b) => (b.onclick = () => setUnits(Number(b.dataset.units))));
   $('#to-g', out)?.addEventListener('click', () => redo(grams, 'g'));
   $('#to-u', out)?.addEventListener('click', () => redo(Math.max(1, unitCount(prod, grams)) * prod.unit.g, 'unit'));
+  // Poids d'une portion corrigé à la main : retenu pour ce produit.
+  $('#ug-edit', out)?.addEventListener('click', () => {
+    const line = $('#ug-line', out);
+    line.innerHTML = `<span class="row" style="flex-wrap:nowrap;gap:6px">1 portion = <input id="ug" type="number" inputmode="decimal" value="${prod.unit.g}" style="width:80px;padding:6px 8px"> g <button class="btn sm" id="ug-ok">OK</button></span>`;
+    const inp = $('#ug', out); inp.focus(); inp.select();
+    const save = () => {
+      const gr = Number(String(inp.value).replace(',', '.'));
+      if (!(gr > 0 && gr < 3000)) return;
+      if (prod.code) store.update((st) => { (st.portions ||= {})[prod.code] = gr; });
+      const n = unitCount(prod, grams);
+      prod = { ...prod, unit: { ...prod.unit, g: gr, est: false } };
+      redo(n * gr);
+    };
+    $('#ug-ok', out).onclick = save;
+    inp.onkeydown = (e) => { if (e.key === 'Enter') save(); };
+  });
   if (back) $('#back', out).onclick = back;
   $$('[data-por]', out).forEach((b) => (b.onclick = () => redo(Number(b.dataset.por))));
   $('#add', out).onclick = () => {
@@ -304,10 +327,16 @@ export function openProductSearch(ctx, slot = null, q0 = '') {
   $('#pgo', body).onclick = () => { clearTimeout(timer); run(); };
   res.onclick = (e) => {
     const b = e.target.closest('[data-pi]'); if (!b) return;
-    const p = list[Number(b.dataset.pi)];
+    const hit = list[Number(b.dataset.pi)];
     res.hidden = true; $('#pq', body).parentElement.hidden = true;
-    productCard(det, p, BC.defaultGrams(p), body, slot || C.currentSlot(), showList);
     body.scrollTop = 0;
+    // La recherche ne renvoie pas toujours la portion ni toutes les valeurs : on lit la fiche complète du produit.
+    det.innerHTML = '<div class="empty"><span class="spinner"></span><p>Ouverture de la fiche…</p></div>';
+    const open = (p) => { if (!res.hidden) return; openProduct(det, p, body, slot || C.currentSlot(), showList); };
+    if (!hit.code) return open(hit);
+    Promise.race([BC.lookup(hit.code), new Promise((r) => setTimeout(() => r(null), 6000))])
+      .then((full) => open(full && !full.missing ? { ...full, image: full.image || hit.image } : hit))
+      .catch(() => open(hit));
   };
   if (q0) run(); else setTimeout(() => $('#pq', body).focus(), 300);
 }

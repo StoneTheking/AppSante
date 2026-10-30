@@ -27,10 +27,10 @@ const badge = (v) => (v ? `<span class="badge ${v}">${VERDICT[v]}</span>` : '');
 let shownSeg = null;
 export function render(view, ctx) {
   const dsm = summary();
-  view.innerHTML = `${Diana.card('nutrition', store.get(), dsm)}${segmented('nut', [['jour', 'Jour'], ['historique', 'Historique'], ['menus', 'Menus'], ['courses', 'Courses']], seg)}<div id="nut-body" class="${seg !== shownSeg ? 'view-enter' : ''}"></div>`;
+  view.innerHTML = `${segmented('nut', [['jour', 'Jour'], ['historique', 'Historique'], ['menus', 'Menus'], ['courses', 'Courses']], seg)}<div id="nut-body" class="${seg !== shownSeg ? 'view-enter' : ''}"></div>`;
   shownSeg = seg; // animations d'entrée seulement au changement d'onglet, pas à chaque mise à jour
-  $$('[data-seg="nut"]', view).forEach((b) => (b.onclick = () => { seg = b.dataset.v; render(view, ctx); }));
-  Diana.bind(view, 'nutrition', store.get(), dsm);
+  $$('[data-seg="nut"]', view).forEach((b) => (b.onclick = () => { if (b.dataset.v === seg) return; seg = b.dataset.v; render(view, ctx); }));
+  Diana.context('nutrition', store.get(), dsm);
   const body = $('#nut-body', view);
   ({ jour: renderDay, historique: renderHistory, menus: renderMenus, courses: renderShop })[seg](body, ctx, view);
   setTimeout(() => body.classList.remove('view-enter'), 1200);

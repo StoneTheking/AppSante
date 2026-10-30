@@ -15,6 +15,7 @@ import * as Onboarding from './views/onboarding.js';
 import * as A from './views/actions.js';
 import * as P from './views/progress.js';
 import * as G from './gamify.js';
+import * as Diana from './diana.js';
 
 const VIEWS = { home: Home, nutrition: Nutrition, sport: Sport, health: Health, coach: Coach, profile: Profile };
 const TITLES = { nutrition: 'Nutrition', sport: 'Sport', health: 'Santé', coach: 'Coach', profile: 'Profil' };
@@ -73,11 +74,13 @@ function shell() {
       <button data-tab="sport"><span class="pill">${icon('dumbbell', 22)}</span>Sport</button>
       <button data-tab="health"><span class="pill">${icon('heart', 22)}</span>Santé</button>
     </nav>`;
-  $$('.nav [data-tab]').forEach((b) => (b.onclick = () => go(b.dataset.tab)));
+  // Onglet déjà ouvert : on remonte simplement en haut, sans rejouer l'animation d'entrée.
+  $$('.nav [data-tab]').forEach((b) => (b.onclick = () => (b.dataset.tab === tab ? window.scrollTo({ top: 0, behavior: 'smooth' }) : go(b.dataset.tab))));
   $('#fab').onclick = () => A.openAddMenu(ctx);
-  $('#avatar').onclick = () => go('profile');
-  $('#coach-btn').onclick = () => go('coach');
+  $('#avatar').onclick = () => tab !== 'profile' && go('profile');
+  $('#coach-btn').onclick = () => tab !== 'coach' && go('coach');
   $('#streak-btn').onclick = () => P.openProgress();
+  Diana.mount(() => go('coach'));
   $('#view').addEventListener('click', (e) => {
     const t = e.target.closest('[data-tab]');
     if (t) go(t.dataset.tab);
@@ -92,6 +95,7 @@ function renderView(after, animate = false) {
   $('#date').textContent = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
   $('#avatar').innerHTML = profile.name ? esc(profile.name[0].toUpperCase()) : icon('user', 20);
   $$('.nav [data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+  Diana.setTab(tab);
   const view = $('#view');
   view.className = animate ? 'view-enter' : '';
   if (animate) void view.offsetWidth;
@@ -188,7 +192,7 @@ async function autoSync() {
   if (['home', 'health'].includes(tab)) renderView();
 }
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && store.get().onboarded) { onForeground(); refreshReminders(); askMoodToday(); }
+  if (document.visibilityState === 'visible' && store.get().onboarded) { onForeground(); refreshReminders(); askMoodToday(); Diana.greet(1200, { again: true }); }
 });
 
 // Humeur : demandée une fois par jour à la première ouverture (après 7 h, hors nuit en cours).

@@ -371,6 +371,7 @@ details > summary::-webkit-details-marker { display: none; }
   .onb { padding-top: calc(14px + env(safe-area-inset-top)); padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
   .onb .logo { width: 60px; height: 60px; border-radius: 20px; margin: 8px 0 10px; }
   .onb .logo svg { width: 42px; height: 42px; }
+  .onb .logo.diana-logo canvas { width: 64px !important; height: 64px !important; }
   .onb h1 { font-size: 1.45rem; margin: 4px 0; }
   .onb .lead { font-size: 0.92rem; }
   .onb .feature { margin: 8px 0; }
@@ -637,32 +638,21 @@ span.qcam-side { background: none; }
 .gd-ctrl .btn { height: 52px; white-space: nowrap; overflow: hidden; }
 
 /* Coach Diana */
-.diana { display: flex; align-items: center; gap: 10px; margin: 2px 0 12px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-.diana-face { flex: none; display: grid; place-items: center; }
-.diana-svg { overflow: visible; filter: drop-shadow(0 4px 10px rgba(47, 86, 132, .45)); }
-.diana-ring { animation: diana-ring 3.2s ease-in-out infinite; transform-origin: 50px 50px; }
-.diana-head { animation: diana-bob 3.2s ease-in-out infinite; transform-origin: 50px 90px; }
-.diana-ground { animation: diana-ground 3.2s ease-in-out infinite; transform-origin: 50px 96px; }
-.diana-eyes { animation: diana-blink 5s infinite; transform-box: fill-box; transform-origin: center; }
-.mood-sleepy .diana-eyes { animation: none; }
-.diana-bubble { position: relative; flex: 1; min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 9px 12px; font-size: .86rem; line-height: 1.4; }
-.diana-bubble::before { content: ''; position: absolute; left: -7px; top: 50%; width: 12px; height: 12px; background: var(--card); border-left: 1px solid var(--line); border-bottom: 1px solid var(--line); transform: translateY(-50%) rotate(45deg); }
-.diana-bubble b { display: block; font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; color: #7fa3cc; margin-bottom: 1px; }
-.diana-pop .diana-bubble { animation: diana-in .3s ease-out; }
-.diana-pop .diana-head { animation: diana-jump .5s ease-out, diana-bob 3.2s ease-in-out .5s infinite; }
-.diana-float { position: fixed; left: 12px; right: 12px; bottom: calc(86px + env(safe-area-inset-bottom)); z-index: 80; display: flex; align-items: center; gap: 10px; animation: diana-up .35s cubic-bezier(.2, .9, .3, 1.3); max-width: 520px; margin: 0 auto; }
-.diana-float .diana-bubble { box-shadow: 0 10px 30px rgba(0, 0, 0, .25); }
-.diana-float.out { transition: opacity .3s, transform .3s; opacity: 0; transform: translateY(16px); }
-.diana-float .diana-head { animation: diana-jump .6s ease-out .1s, diana-bob 3.2s ease-in-out .7s infinite; }
-.gd-diana { margin: 12px 0 0; }
-.gd-diana .diana-bubble { font-size: .82rem; }
-@keyframes diana-bob { 0%, 100% { transform: translateY(0) rotate(-1.5deg); } 50% { transform: translateY(-3px) rotate(1.5deg); } }
-@keyframes diana-ground { 0%, 100% { transform: scaleX(1); opacity: 1; } 50% { transform: scaleX(.85); opacity: .65; } }
-@keyframes diana-ring { 0%, 100% { transform: scale(1); opacity: .9; } 50% { transform: scale(1.04); opacity: .45; } }
-@keyframes diana-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.1); } }
-@keyframes diana-jump { 0% { transform: translateY(0) scale(1); } 35% { transform: translateY(-9px) scale(1.06, .95); } 70% { transform: translateY(0) scale(.97, 1.04); } 100% { transform: none; } }
-@keyframes diana-in { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
-@keyframes diana-up { from { opacity: 0; transform: translateY(24px) scale(.96); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .diana-head, .diana-ring, .diana-ground, .diana-eyes, .diana-float, .diana-pop .diana-bubble { animation: none !important; } }
+/* Coach Diana : posée au-dessus du menu, bulle qui apparaît puis s'efface (rien ne bouge dans la page) */
+.diana-orb { display: block; filter: drop-shadow(0 6px 12px rgba(10, 30, 70, .5)); }
+.diana-dock { position: fixed; z-index: 35; right: max(14px, calc((100vw - 560px) / 2 + 2px)); bottom: calc(10px + var(--nav-h) + 8px + env(safe-area-inset-bottom)); width: 58px; height: 58px; pointer-events: none; transition: opacity .25s, transform .25s; }
+.diana-dock.off { opacity: 0; transform: translateY(12px) scale(.8); }
+.diana-dock.off * { pointer-events: none !important; }
+.dd-face { pointer-events: auto; width: 58px; height: 58px; padding: 0; border: 0; background: radial-gradient(circle, color-mix(in srgb, var(--bg) 70%, transparent) 50%, transparent 71%); border-radius: 50%; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.dd-face:active { transform: scale(.94); }
+.dd-bubble { position: absolute; right: 64px; bottom: 8px; width: max-content; max-width: min(270px, calc(100vw - 104px)); background: var(--card); border: 1px solid var(--line); border-radius: 18px 18px 6px 18px; padding: 9px 13px 10px; font-size: .86rem; line-height: 1.4; box-shadow: 0 12px 32px rgba(0, 0, 0, .3); opacity: 0; transform: translateX(10px) scale(.92); transform-origin: right bottom; transition: opacity .3s, transform .3s; pointer-events: none; }
+.dd-bubble.on { opacity: 1; transform: none; pointer-events: auto; transition: opacity .25s, transform .35s cubic-bezier(.2, .9, .3, 1.3); }
+.dd-bubble b { display: block; font-size: .66rem; letter-spacing: .06em; text-transform: uppercase; color: #7fa3cc; margin-bottom: 1px; }
+.dd-chat { display: block; margin-top: 5px; padding: 0; border: 0; background: none; color: var(--primary); font: inherit; font-size: .76rem; font-weight: 700; cursor: pointer; }
+.diana-inline { display: flex; align-items: center; gap: 10px; margin-top: 12px; height: 52px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.diana-inline canvas { flex: none; }
+.diana-inline span { flex: 1; min-width: 0; font-size: .84rem; line-height: 1.35; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+@media (prefers-reduced-motion: reduce) { .dd-bubble, .dd-bubble.on, .diana-dock { transition: none; } }
+.onb .logo.diana-logo { background: none; border: 0; box-shadow: none; width: auto; height: auto; }
 .coach-diana { display: grid; place-items: center; margin: 0 auto 6px; }
 .link-btn { background: none; border: 0; padding: 0; font: inherit; color: var(--primary); font-weight: 650; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
