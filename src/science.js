@@ -96,6 +96,9 @@ export const SOURCES = {
   depner2019: { t: 'Depner et al. – Rattraper son sommeil le week-end ne corrige pas les effets métaboliques du manque de sommeil (Curr Biol 2019)', u: 'https://doi.org/10.1016/j.cub.2019.01.069' },
   wittmann2006: { t: 'Wittmann et al. – Le « décalage horaire social » entre semaine et week-end (Chronobiol Int 2006)', u: 'https://doi.org/10.1080/07420520500545979' },
   roenneberg2012: { t: 'Roenneberg et al. – Le décalage horaire social est associé au surpoids (Curr Biol 2012)', u: 'https://doi.org/10.1016/j.cub.2012.03.038' },
+  ding2025: { t: 'Ding et al. – Pas quotidiens et santé, méta-analyse dose-réponse : 7000 pas/j suffisent pour l’essentiel du bénéfice (Lancet Public Health 2025)', u: 'https://pubmed.ncbi.nlm.nih.gov/?term=Ding+daily+steps+health+outcomes+dose-response+Lancet+Public+Health+2025' },
+  pieh2025: { t: 'Pieh et al. – Réduire son temps d’écran à moins de 2 h/j pendant 3 semaines améliore humeur, stress et sommeil (essai contrôlé, BMC Med 2025)', u: 'https://pubmed.ncbi.nlm.nih.gov/?term=Pieh+smartphone+screen+time+reduction+randomized+BMC+Medicine+2025' },
+  castelo2025: { t: 'Castelo et al. – Bloquer l’internet mobile 2 semaines améliore attention et bien-être (essai contrôlé, PNAS Nexus 2025)', u: 'https://pubmed.ncbi.nlm.nih.gov/?term=Castelo+blocking+mobile+internet+smartphones+PNAS+Nexus+2025' },
   borg1982: { t: 'Borg – Échelles d’effort perçu et leur lien avec l’intensité réelle (Med Sci Sports Exerc 1982)', u: 'https://pubmed.ncbi.nlm.nih.gov/7154893/' },
   helgerud2007: { t: 'Helgerud et al. – Intervalles 4 × 4 min à 90–95 % FCmax : meilleur gain de VO2max (Med Sci Sports Exerc 2007)', u: 'https://doi.org/10.1249/mss.0b013e3180304570' },
   gibala2012: { t: 'Gibala et al. – Fractionné court (10 × 1 min) : adaptations comparables à l’endurance (J Physiol 2012)', u: 'https://doi.org/10.1113/jphysiol.2011.224725' },
@@ -391,6 +394,7 @@ export function weightCurve(weight, kcalBalance, years = 5, step = 30) {
 // Bibliothèque : principaux résultats chiffrés, par thème. Utilisée par l'écran « Science » et le coach IA.
 export const EVIDENCE = [
   { theme: 'Activité physique', icon: 'steps', color: 'var(--c-move)', facts: [
+    ['Environ 7000 pas par jour apportent l’essentiel du bénéfice : −47 % de mortalité par rapport à 2000 pas.', ['ding2025']],
     ['150–300 min/semaine d’activité modérée (ou 75–150 min intense) + 2 séances de renforcement : la base recommandée.', ['who2020']],
     ['Chaque +1000 pas/jour ≈ −15 % de mortalité toutes causes ; bénéfice maximal vers 6000–8000 pas (≥ 60 ans) et 8000–10 000 pas (< 60 ans).', ['banach2023', 'paluch2022']],
     ['≈ 9800 pas/jour, surtout à cadence soutenue, sont associés à un risque de démence divisé par deux.', ['delpozo2022']],
@@ -415,6 +419,9 @@ export const EVIDENCE = [
     ['7–9 h par nuit chez l’adulte (7–8 h après 65 ans).', ['watson2015']],
     ['Dormir < 6 h : +12 % de mortalité ; > 9 h : association à +30 % (souvent signe d’une maladie sous-jacente).', ['cappuccio2010']],
     ['La régularité des horaires prédit mieux la mortalité que la durée de sommeil.', ['windred2024']],
+    ['La dette de sommeil s’accumule : 6 h par nuit pendant 2 semaines dégradent l’attention autant qu’une nuit blanche, sans qu’on s’en rende compte.', ['vandongen2003']],
+    ['Rattraper le week-end ne corrige pas les effets du manque de sommeil sur la glycémie et le poids.', ['depner2019']],
+    ['Décaler ses horaires de plus d’1 h le week-end (« décalage horaire social ») est associé à plus de surpoids.', ['wittmann2006', 'roenneberg2012']],
     ['Le manque de sommeil fait manger ~385 kcal de plus par jour ; allonger son sommeil réduit l’apport d’environ 270 kcal/j.', ['alkhatib2017', 'tasali2022']],
     ['Caféine : 6 h avant le coucher, elle retire encore ~1 h de sommeil ; arrêter ~8 h avant pour un café.', ['drake2013', 'gardiner2023']],
     ['L’alcool accélère l’endormissement mais fragmente la seconde moitié de nuit et réduit le sommeil paradoxal.', ['ebrahim2013']],
@@ -487,6 +494,8 @@ export const EVIDENCE = [
   ] },
   { theme: 'Écrans & santé mentale', icon: 'phone', color: 'var(--c-screen)', facts: [
     ['Limiter les réseaux sociaux à 30 min/jour pendant 3 semaines réduit solitude et symptômes dépressifs (essai contrôlé).', ['hunt2018']],
+    ['Passer sous 2 h d’écran par jour pendant 3 semaines améliore humeur, stress et sommeil (essai contrôlé).', ['pieh2025']],
+    ['Couper l’internet mobile 2 semaines améliore l’attention, l’humeur et le bien-être (essai contrôlé).', ['castelo2025']],
     ['L’arrivée de Facebook dans les universités américaines a fait augmenter la dépression et l’anxiété des étudiants.', ['braghieri2022']],
     ['120 min/semaine passées dans la nature sont associées à une meilleure santé et un meilleur bien-être.', ['white2019']],
     ['Des liens sociaux solides augmentent de 50 % les chances de survie, autant qu’arrêter de fumer.', ['holtlunstad2010']],

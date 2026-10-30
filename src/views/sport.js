@@ -260,11 +260,13 @@ export function openSession(ctx, view, { activity, minutes, intensity, dayIndex 
       </div>`).join('')}
       ${hidden.size ? `<details class="small" style="margin:8px 0"><summary class="muted">${hidden.size} exercice${hidden.size > 1 ? 's' : ''} retiré${hidden.size > 1 ? 's' : ''}</summary>${[...hidden].map((l) => `<div class="between" style="padding:6px 0;border-top:1px solid var(--line)"><span class="small">${esc(l)}</span><button class="btn sm soft" data-unhide-ex="${esc(l)}">Rétablir</button></div>`).join('')}</details>` : ''}
       ${srcLinks([...session.src, ...(ad.note ? ['foster2001', 'greig2020'] : [])])}
-      <button class="btn block" id="start-guided" style="margin-top:12px">${icon('zap', 18)} Lancer le mode guidé</button>`;
+      <button class="btn block" id="start-guided" style="margin-top:12px">${icon('zap', 18)} Lancer le mode guidé</button>
+      <button class="btn ghost block" id="vid-list" style="margin-top:8px">${icon('video', 18)} Choisir les vidéos des exercices</button>`;
     $$('[data-min]', el).forEach((b) => (b.onclick = () => { chosen = Number(b.dataset.min); draw(); }));
     $$('[data-vid]', el).forEach((b) => (b.onclick = () => openVideoPicker(b.dataset.vid, draw)));
     $$('[data-hide-ex]', el).forEach((b) => (b.onclick = () => { setEx(b.dataset.hideEx, { hidden: true }); toast('Exercice retiré : il ne te sera plus proposé', 1800); draw(); }));
     $$('[data-unhide-ex]', el).forEach((b) => (b.onclick = () => { setEx(b.dataset.unhideEx, { hidden: null }); draw(); }));
+    $('#vid-list', el).onclick = () => openVideoList(draw);
     $('#start-guided', el).onclick = () => { body.close(); setTimeout(() => guided(ctx, view, session, activity, intensity), 250); };
   };
   draw();

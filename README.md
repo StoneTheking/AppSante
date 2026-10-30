@@ -34,7 +34,11 @@ Application Android native **et** application web installable, qui croise **somm
 - une semaine de sport calée sur **ton temps dispo** et ton format préféré (séances courtes et fréquentes ou quelques grosses séances) ;
 - un plan du jour **organisé autour de tes horaires de travail**, dont chaque étape se modifie (nom, heure, note, jours) et dont les rappels suivent tes changements ;
 - des **niveaux** qui montent avec les journées validées et redescendent avec les journées ratées ;
-- une appli **utilisable sans clé API** : menus composés sur le téléphone, ajout rapide des repas ; la clé (payante à l'usage, distincte de l'abonnement Claude Pro) active l'analyse photo, les recettes et le coach IA.
+- une appli **utilisable sans clé API** : menus composés sur le téléphone, ajout rapide des repas ; la clé (payante à l'usage, distincte de l'abonnement Claude Pro) active l'analyse photo, les recettes et le coach IA ;
+- une **IA gratuite possible** : une clé Google Gemini (aistudio.google.com, sans carte bancaire) marche comme une clé Claude ;
+- la **recherche de produits par nom** (Open Food Facts) quand on n'a pas l'emballage, avec toutes les valeurs nutritives ;
+- un **bilan sommeil de la semaine** : heures dormies, heures conseillées pour ton âge, dette de sommeil et décalage horaire social ;
+- des **vidéos de démonstration** seulement pour les exercices techniques, à choisir une par une ou à importer d'une liste (`docs/videos-exercices.txt`).
 
 Tout repose sur une **bibliothèque de 115 publications** (OMS, Lancet, BMJ, JAMA, NEJM, Nature…) consultable dans l'appli (Santé → Science) et dans `src/science.js`. Chaque DOI a été vérifié auprès de Crossref.
 
