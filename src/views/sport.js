@@ -7,6 +7,7 @@ import * as W from '../workouts.js';
 import * as SC from '../schedule.js';
 import * as N from '../native.js';
 import * as X3 from '../exercise3d.js';
+import * as XP from '../exphotos.js';
 import { summary } from '../context.js';
 import * as Diana from '../diana.js';
 import { icon, esc, fmt, donut, sheet, toast, undoToast, srcLinks, $, $$ } from '../ui.js';
@@ -236,9 +237,30 @@ export function openVideoList(done) {
 
 const equip = (st) => st.profile.equipment || 'aucun';
 
-// Démonstration animée en 3D (mannequin Diana) : on peut la faire tourner au doigt.
-const animHtml = (label, big = false) => (X3.hasAnim(label) ? `<div class="ex3d${big ? ' big' : ''}" data-anim="${esc(label)}" data-noswipe><canvas aria-label="Démonstration animée : ${esc(label)}"></canvas><div class="ex3d-cue"></div><span class="ex3d-hint">${icon('refresh', 11)} glisse pour tourner</span></div>` : '');
+// Démonstration d'un exercice : photos réelles en fondu (Free Exercise DB) et/ou mannequin 3D de Diana
+// qu'on fait tourner au doigt. Le mode choisi (Photos ou 3D) est retenu pour toutes les démonstrations.
+const demoMode = () => (store.get().settings.demoMode === '3d' ? '3d' : 'photo');
+const hasDemo = (label) => X3.hasAnim(label) || XP.hasPhotos(label);
+const animHtml = (label, big = false) => {
+  const a3 = X3.hasAnim(label), ph = XP.hasPhotos(label);
+  if (!a3 && !ph) return '';
+  const mode = a3 && ph ? demoMode() : ph ? 'photo' : '3d';
+  const [u0, u1] = XP.photoUrls(label);
+  return `<div class="demo mode-${mode}${big ? ' big' : ''}" data-demo data-noswipe>
+    ${ph ? `<div class="exph" data-photos role="img" aria-label="Démonstration en photos : ${esc(label)}"><img src="${u0}" alt="" loading="lazy" decoding="async"><img class="b" src="${u1}" alt="" loading="lazy" decoding="async"><span class="exph-src">Free Exercise DB</span></div>` : ''}
+    ${a3 ? `<div class="ex3d" data-anim="${esc(label)}"><canvas aria-label="Démonstration animée : ${esc(label)}"></canvas><div class="ex3d-cue"></div><span class="ex3d-hint">${icon('refresh', 11)} glisse pour tourner</span></div>` : ''}
+    ${a3 && ph ? `<div class="demo-tabs"><button data-demo-mode="photo">Photos</button><button data-demo-mode="3d">3D</button></div>` : ''}
+  </div>`;
+};
 function mountAnims(root) {
+  $$('[data-photos] img', root).forEach((img) => { img.onerror ||= () => XP.fallback(img); });
+  $$('[data-demo-mode]', root).forEach((b) => (b.onclick = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const m = b.dataset.demoMode;
+    store.update((s) => { s.settings.demoMode = m; });
+    $$('[data-demo]', document).forEach((d) => { if (d.querySelector('[data-demo-mode]')) d.className = d.className.replace(/mode-\w+/, 'mode-' + m); });
+    mountAnims(root);
+  }));
   $$('[data-anim]', root).forEach((box) => {
     if (box.dataset.on || !box.offsetParent) return;
     box.dataset.on = '1';
@@ -270,7 +292,7 @@ export function openSession(ctx, view, { activity, minutes, intensity, dayIndex 
       ${session.blocks.map((b) => `<div class="card" style="margin:12px 0;padding:14px">
         <div class="between"><b>${esc(b.title)}</b><span class="tiny muted">${W.minutesOf([b])} min</span></div>
         ${b.note ? `<p class="tiny muted" style="margin:4px 0 6px">${esc(b.note)}</p>` : ''}
-        ${b.items.map((it) => `<details style="padding:8px 0;border-top:1px solid var(--line)"><summary><span class="small" style="font-weight:600">${esc(it.label)}${X3.hasAnim(it.label) ? ` <span class="ex3d-tag">3D</span>` : W.hasTuto(it) || exCustom()[it.label]?.video ? ` <span style="color:var(--c-move);vertical-align:-2px">${icon('video', 13)}</span>` : ''}</span><span class="tiny muted" style="white-space:nowrap;margin-left:8px">${it.sets && !b.circuit ? `${it.sets} × ` : ''}${it.kind === 'reps' ? `${esc(String(it.reps))}${String(it.reps).includes('m') ? '' : ' rép.'}` : it.seconds ? fmtDur(it.seconds) : ''}${it.rest && !b.circuit ? ` · repos ${it.rest} s` : ''}</span></summary>${animHtml(it.label)}${it.detail ? `<p class="tiny muted" style="margin:6px 0 0">${esc(it.detail)}</p>` : ''}<div class="ex-actions">${W.hasTuto(it) || exCustom()[it.label]?.video ? `<a class="tuto" href="${esc(videoFor(it.label))}" target="_blank" rel="noopener">▶ ${exCustom()[it.label]?.video ? 'Ma vidéo' : X3.hasAnim(it.label) ? 'Vidéo' : 'Voir la démo'}</a><button class="link tiny" data-vid="${esc(it.label)}">${icon('pencil', 12)} Changer</button>` : ''}<button class="link tiny" data-hide-ex="${esc(it.label)}" style="color:var(--bad)">${icon('trash', 12)} Retirer</button></div></details>`).join('')}
+        ${b.items.map((it) => `<details style="padding:8px 0;border-top:1px solid var(--line)"><summary><span class="small" style="font-weight:600">${esc(it.label)}${hasDemo(it.label) ? ` <span class="ex3d-tag">démo</span>` : W.hasTuto(it) || exCustom()[it.label]?.video ? ` <span style="color:var(--c-move);vertical-align:-2px">${icon('video', 13)}</span>` : ''}</span><span class="tiny muted" style="white-space:nowrap;margin-left:8px">${it.sets && !b.circuit ? `${it.sets} × ` : ''}${it.kind === 'reps' ? `${esc(String(it.reps))}${String(it.reps).includes('m') ? '' : ' rép.'}` : it.seconds ? fmtDur(it.seconds) : ''}${it.rest && !b.circuit ? ` · repos ${it.rest} s` : ''}</span></summary>${animHtml(it.label)}${it.detail ? `<p class="tiny muted" style="margin:6px 0 0">${esc(it.detail)}</p>` : ''}<div class="ex-actions">${W.hasTuto(it) || exCustom()[it.label]?.video ? `<a class="tuto" href="${esc(videoFor(it.label))}" target="_blank" rel="noopener">▶ ${exCustom()[it.label]?.video ? 'Ma vidéo' : hasDemo(it.label) ? 'Vidéo' : 'Voir la démo'}</a><button class="link tiny" data-vid="${esc(it.label)}">${icon('pencil', 12)} Changer</button>` : ''}<button class="link tiny" data-hide-ex="${esc(it.label)}" style="color:var(--bad)">${icon('trash', 12)} Retirer</button></div></details>`).join('')}
       </div>`).join('')}
       ${hidden.size ? `<details class="small" style="margin:8px 0"><summary class="muted">${hidden.size} exercice${hidden.size > 1 ? 's' : ''} retiré${hidden.size > 1 ? 's' : ''}</summary>${[...hidden].map((l) => `<div class="between" style="padding:6px 0;border-top:1px solid var(--line)"><span class="small">${esc(l)}</span><button class="btn sm soft" data-unhide-ex="${esc(l)}">Rétablir</button></div>`).join('')}</details>` : ''}
       ${srcLinks([...session.src, ...(ad.note ? ['foster2001', 'greig2020'] : [])])}
@@ -427,7 +449,7 @@ function guided(ctx, view, session, activity, intensity) {
       ${animHtml(s.isRest ? next?.label || '' : s.label, true)}
       <!-- zones de hauteur fixe : les boutons restent au même endroit quel que soit l'exercice -->
       <p class="small muted gd-detail">${esc(s.detail || '')}</p>
-      <p class="gd-tuto">${!s.isRest && (W.hasTuto(s) || exCustom()[s.label]?.video) ? `<a class="tuto" href="${esc(videoFor(s.label))}" target="_blank" rel="noopener">▶ ${exCustom()[s.label]?.video ? 'Ma vidéo' : X3.hasAnim(s.label) ? 'Voir en vidéo' : 'Voir la démo'}</a>` : ''}</p>
+      <p class="gd-tuto">${!s.isRest && (W.hasTuto(s) || exCustom()[s.label]?.video) ? `<a class="tuto" href="${esc(videoFor(s.label))}" target="_blank" rel="noopener">▶ ${exCustom()[s.label]?.video ? 'Ma vidéo' : hasDemo(s.label) ? 'Voir en vidéo' : 'Voir la démo'}</a>` : ''}</p>
       <p class="tiny muted gd-next">${next && !s.isRest ? `Ensuite : ${esc(next.label)}` : ''}</p>
       <div class="row gd-ctrl">
         <button class="btn ghost" id="prev" ${i === 0 ? 'disabled' : ''} aria-label="Précédent">${icon('left', 18)}</button>

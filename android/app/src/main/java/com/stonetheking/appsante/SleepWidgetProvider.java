@@ -142,7 +142,9 @@ public class SleepWidgetProvider extends AppWidgetProvider {
             v.setChronometer(R.id.widget_chrono, base, null, true);
             v.setTextViewText(R.id.widget_subtitle, "Depuis " + hhmm(since) + " · s’arrête au déverrouillage");
             v.setTextViewText(R.id.widget_action, context.getString(R.string.widget_action_wake));
-            v.setImageViewResource(R.id.widget_icon, R.drawable.ic_widget_sun);
+            v.setImageViewResource(R.id.widget_icon, R.drawable.ic_w_sun);
+            v.setInt(R.id.widget_icon, "setBackgroundResource", R.drawable.widget_badge_sun);
+            v.setInt(R.id.widget_action, "setBackgroundResource", R.drawable.widget_pill_sleep);
         } else {
             v.setInt(R.id.widget_root, "setBackgroundResource", R.drawable.widget_bg);
             v.setTextViewText(R.id.widget_kicker, context.getString(R.string.widget_kicker_day));
@@ -153,7 +155,9 @@ public class SleepWidgetProvider extends AppWidgetProvider {
             v.setTextViewText(R.id.widget_title, context.getString(R.string.widget_go_to_bed));
             v.setTextViewText(R.id.widget_subtitle, target != null ? "Coucher visé " + target : context.getString(R.string.widget_tap_hint));
             v.setTextViewText(R.id.widget_action, context.getString(R.string.widget_action_sleep));
-            v.setImageViewResource(R.id.widget_icon, R.drawable.ic_widget_moon);
+            v.setImageViewResource(R.id.widget_icon, R.drawable.ic_w_moon);
+            v.setInt(R.id.widget_icon, "setBackgroundResource", R.drawable.widget_badge_sleep);
+            v.setInt(R.id.widget_action, "setBackgroundResource", R.drawable.widget_pill_sleep);
         }
         Intent i = new Intent(context, SleepWidgetProvider.class).setAction(ACTION_TOGGLE);
         PendingIntent pi = PendingIntent.getBroadcast(context, 0, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);

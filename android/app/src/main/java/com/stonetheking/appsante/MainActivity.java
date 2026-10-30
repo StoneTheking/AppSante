@@ -34,11 +34,17 @@ public class MainActivity extends BridgeActivity {
         if (requestCode == UsageStatsPlugin.HEALTH_REQUEST) UsageStatsPlugin.onHealthResult();
     }
 
-    /** Widget « Photo du repas » : l'application ouvre la caméra dès qu'elle reçoit l'événement. */
+    /** Widgets « Photo ou code-barres » et « Quêtes du jour » : l'application agit dès qu'elle reçoit l'événement. */
     private void handle(Intent intent) {
-        if (intent != null && PhotoWidgetProvider.ACTION_PHOTO.equals(intent.getAction())) {
-            SleepWidgetProvider.addEvent(this, "photo", System.currentTimeMillis(), null);
-            intent.setAction(Intent.ACTION_MAIN); // pas de nouvelle photo à la rotation de l'écran
-        }
+        if (intent == null || intent.getAction() == null) return;
+        String a = intent.getAction();
+        long now = System.currentTimeMillis();
+        if (PhotoWidgetProvider.ACTION_PHOTO.equals(a)) SleepWidgetProvider.addEvent(this, "photo", now, null);
+        else if (PhotoWidgetProvider.ACTION_SCAN.equals(a)) SleepWidgetProvider.addEvent(this, "scan", now, null);
+        else if (QuestsWidgetProvider.ACTION_QUEST.equals(a)) {
+            String q = intent.getStringExtra("quest");
+            SleepWidgetProvider.addEvent(this, "quest", now, q != null ? q : "home");
+        } else return;
+        intent.setAction(Intent.ACTION_MAIN); // pas de nouvelle action à la rotation de l'écran
     }
 }

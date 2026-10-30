@@ -184,6 +184,8 @@ export function walkMinutes(samples) {
   return Math.round(m);
 }
 
+const todayStart = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
+
 // Lit les N derniers jours depuis Health Connect : { days: { 'AAAA-MM-JJ': {...} }, workouts: [...] }.
 export async function syncHealth(days = 7) {
   const { H } = await health();
@@ -210,7 +212,15 @@ export async function syncHealth(days = 7) {
     safe(H.queryAggregated({ dataType: 'distance', ...range, bucket: 'day', aggregation: 'sum' })),
     safe(H.queryAggregated({ dataType: 'calories', ...range, bucket: 'day', aggregation: 'sum' })),
     safe(H.queryAggregated({ dataType: 'heartRate', ...range, bucket: 'day', aggregation: ['average', 'min', 'max'] })),
-    safe(H.readSamples({ dataType: 'steps', ...range, limit: 5000 })),
+    // Samsung Health écrit des relevés à la minute : plus de 5 000 en une semaine. Lus du plus ancien au plus récent,
+    // une limite trop basse coupait la journée en cours (il ne restait que le total « prioritaire » du capteur du téléphone).
+    safe(Promise.all([
+      H.readSamples({ dataType: 'steps', ...range, limit: 30000 }),
+      H.readSamples({ dataType: 'steps', startDate: todayStart().toISOString(), endDate: end.toISOString(), limit: 10000 }),
+    ]).then(([all, today]) => {
+      const t0 = todayStart().getTime();
+      return { samples: [...(all?.samples || []).filter((x) => new Date(x.startDate).getTime() < t0), ...(today?.samples || [])] };
+    })),
     safe(H.readSamples({ dataType: 'totalCalories', ...range, limit: 2000 })),
     safe(H.readSamples({ dataType: 'flightsClimbed', ...range, limit: 2000 })),
     safe(H.readSamples({ dataType: 'oxygenSaturation', ...range, limit: 500 })),
@@ -262,11 +272,16 @@ export async function syncHealth(days = 7) {
     source: w.sourceName ? `Health Connect · ${w.sourceName}` : 'Health Connect',
   }));
   const tk = localKey(new Date());
-  const srcToday = [...new Set((stepRecs?.samples || []).filter((x) => localKey(new Date(x.startDate)) === tk).map((x) => x.sourceName || x.sourceId).filter(Boolean))];
+  const recsToday = (stepRecs?.samples || []).filter((x) => localKey(new Date(x.startDate)) === tk);
+  const srcToday = [...new Set(recsToday.map((x) => x.sourceName || x.sourceId).filter(Boolean))];
+  // pas du jour par application (Samsung Health, capteur du téléphone…) : on garde la plus complète, le détail est affiché
+  const bySrc = {};
+  for (const x of recsToday) { const k = x.sourceId || x.sourceName || '?'; (bySrc[k] ||= { name: x.sourceName || k, steps: 0 }).steps += x.value || 0; }
+  const perSource = Object.values(bySrc).map((x) => ({ name: x.name, steps: Math.round(x.steps) })).sort((a, b) => b.steps - a.steps);
   const lastRec = (stepRecs?.samples || []).reduce((a, x) => (x.endDate > a ? x.endDate : a), '');
   // premier relevé du jour : montre si Samsung Health n'a envoyé qu'une partie de la journée
   const firstRec = (stepRecs?.samples || []).filter((x) => localKey(new Date(x.startDate)) === tk && x.value > 0).reduce((a, x) => (!a || x.startDate < a ? x.startDate : a), '');
-  const report = { at: Date.now(), todaySteps: out[tk]?.steps ?? 0, records: stepRecs?.samples?.length ?? null, sources: srcToday, firstStep: firstRec || null, lastStep: lastRec || null, errors };
+  const report = { at: Date.now(), todaySteps: out[tk]?.steps ?? 0, records: stepRecs?.samples?.length ?? null, sources: srcToday, perSource, aggregated: Math.round(steps?.samples?.find((x) => localKey(new Date(x.startDate)) === tk)?.value || 0), firstStep: firstRec || null, lastStep: lastRec || null, errors };
   return { days: out, workouts: sessions, report };
 }
 
@@ -298,6 +313,8 @@ const SleepWidget = registerPlugin('SleepWidget');
 export const takeWidgetEvents = () => (isNative ? SleepWidget.takeEvents().then((r) => r.events || []).catch(() => []) : Promise.resolve([]));
 export const setWidgetState = (sleeping, since, target) => (isNative ? SleepWidget.setState({ sleeping, since: since ? new Date(since).getTime() : Date.now(), ...(target ? { target } : {}) }).catch(() => {}) : Promise.resolve());
 export const pinSleepWidget = () => (isNative ? SleepWidget.pin().then((r) => r.requested).catch(() => false) : Promise.resolve(false));
+export const pinQuestsWidget = () => (isNative ? SleepWidget.pin({ kind: 'quests' }).then((r) => r.requested).catch(() => false) : Promise.resolve(false));
+export const setQuestsWidget = (data) => (isNative ? SleepWidget.setQuests({ data: JSON.stringify(data) }).catch(() => {}) : Promise.resolve());
 export const pinPhotoWidget = () => (isNative ? SleepWidget.pin({ kind: 'photo' }).then((r) => r.requested).catch(() => false) : Promise.resolve(false));
 
 // ---------- Détection du réveil ----------

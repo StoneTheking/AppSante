@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Bouton secondaire / message : fond « card-2 » de l'appli. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#FF151C27" />
+    <corners android:radius="16dp" />
+</shape>

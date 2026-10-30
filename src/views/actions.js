@@ -73,6 +73,9 @@ export async function openPhoto(ctx, fromGallery = false, slot = null) {
   processPendingPhotos();
   const [file] = await pickImage({ camera: !fromGallery });
   if (!file) return;
+  // Un emballage photographié de près : on lit son code-barres (Open Food Facts, plus précis que l'IA).
+  const code = await BC.detectInImage(file);
+  if (code) { navigator.vibrate?.(60); return openScanner(ctx, slot, code); }
   const dataUrl = await compressImage(file, 1024, 0.8); // assez net pour l'IA, plus rapide à envoyer
   const body = sheet(`<img class="preview" src="${dataUrl}" alt=""><div id="res" style="margin-top:14px">
       <label class="lbl">Une précision ? (facultatif)</label><input id="note" placeholder="ex. sauce à la crème, moitié mangée…">
@@ -194,7 +197,7 @@ function showResult(res, p, body) {
 }
 
 // ---------- Scanner code-barres ----------
-export function openScanner(ctx, slot = null) {
+export function openScanner(ctx, slot = null, code0 = null) {
   let stop = () => {};
   const body = sheet(`
     <div class="scanner"><video muted playsinline poster="${BLANK}"></video><div class="frame"></div><div class="laser"></div></div>
@@ -222,6 +225,7 @@ export function openScanner(ctx, slot = null) {
   };
   $('#code', body).onkeydown = (e) => { if (e.key === 'Enter') $('#lookup', body).click(); };
   $('#to-manual', body).onclick = () => { body.close(); setTimeout(() => openManual(ctx), 250); };
+  if (code0) { toast('Code-barres reconnu sur la photo', 1400); return show(code0); }
   releaseCamera();
   BC.startScanner($('video', body), show).then((s) => (stop = s)).catch(() => {
     $('.scanner', body).innerHTML = `<div class="empty" style="color:#fff">${icon('camera', 28)}<p>Caméra indisponible. Autorise l’accès à la caméra ou saisis le code.</p></div>`;

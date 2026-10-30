@@ -44,6 +44,17 @@ public class SleepWidgetPlugin extends Plugin {
         call.resolve();
     }
 
+    /** État des quêtes du jour pour le widget (JSON préparé par l'application). */
+    @PluginMethod
+    public void setQuests(PluginCall call) {
+        String data = call.getString("data");
+        if (data != null) {
+            getContext().getSharedPreferences(QuestsWidgetProvider.PREFS, Context.MODE_PRIVATE).edit().putString("data", data).apply();
+            QuestsWidgetProvider.refresh(getContext());
+        }
+        call.resolve();
+    }
+
     /** Heure de la prochaine alarme programmée dans l'application Horloge (ou null). */
     @PluginMethod
     public void nextAlarm(PluginCall call) {
@@ -61,7 +72,8 @@ public class SleepWidgetPlugin extends Plugin {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             AppWidgetManager m = getContext().getSystemService(AppWidgetManager.class);
             if (m != null && m.isRequestPinAppWidgetSupported()) {
-                Class<?> cls = "photo".equals(call.getString("kind")) ? PhotoWidgetProvider.class : SleepWidgetProvider.class;
+                String kind = call.getString("kind");
+                Class<?> cls = "photo".equals(kind) ? PhotoWidgetProvider.class : "quests".equals(kind) ? QuestsWidgetProvider.class : SleepWidgetProvider.class;
                 m.requestPinAppWidget(new ComponentName(getContext(), cls), null, null);
                 r.put("requested", true);
                 call.resolve(r);

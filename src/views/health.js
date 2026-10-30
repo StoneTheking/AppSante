@@ -129,8 +129,12 @@ function hcReportLine(r) {
   const txt = r.todaySteps
     ? `Aujourd’hui : <b>${fmt(r.todaySteps)} pas</b> reçus${r.sources?.length ? ` de ${esc(r.sources.join(', '))}` : ''}${r.firstStep && r.lastStep ? ` (relevés de ${hm(r.firstStep)} à ${hm(r.lastStep)})` : r.lastStep ? ` (dernier relevé ${hm(r.lastStep)})` : ''}.${r.firstStep && new Date(r.firstStep).getHours() >= 10 ? ` <span style="color:var(--warn)">Rien avant ${hm(r.firstStep)} : Samsung Health n’a pas transmis le début de journée à Health Connect.</span>` : ''}`
     : `<span style="color:var(--warn)">Aucun pas reçu de Health Connect aujourd’hui.</span> Dans Samsung Health → Paramètres → Health Connect, autorise l’<b>écriture</b> des pas ; Samsung Health les envoie ensuite toutes les quelques minutes à quelques heures.`;
+  const SRC = { 'com.sec.android.app.shealth': 'Samsung Health', 'com.google.android.apps.fitness': 'Google Fit', 'com.google.android.apps.healthdata': 'capteur du téléphone', android: 'capteur du téléphone' };
+  const per = (r.perSource || []).length > 1 || (r.aggregated && r.aggregated !== r.todaySteps)
+    ? ` <span style="display:block;margin-top:2px">Par source : ${(r.perSource || []).map((x) => `${esc(SRC[x.name] || x.name)} ${fmt(x.steps)}`).join(' · ')}${r.aggregated ? ` · total Santé Connect ${fmt(r.aggregated)}` : ''}. On garde la plus complète.</span>`
+    : '';
   const phone = r.phoneSteps != null ? ` Podomètre du téléphone : <b>${fmt(r.phoneSteps)} pas</b>${r.phoneSteps > (r.todaySteps || 0) ? ' (utilisé, plus complet)' : ''}.` : '';
-  return `<div style="margin:-2px 0 6px"><div class="between" style="gap:8px;align-items:flex-start"><span class="tiny muted">${txt}${phone} Synchro ${hm(r.at)}.</span>${btn}</div>
+  return `<div style="margin:-2px 0 6px"><div class="between" style="gap:8px;align-items:flex-start"><span class="tiny muted">${txt}${per}${phone} Synchro ${hm(r.at)}.</span>${btn}</div>
     ${errs.length ? `<details class="tiny muted"><summary>${errs.length} donnée(s) non lue(s) : ${esc(errs.map(([k]) => k).join(', '))}</summary>${errs.map(([k, v]) => `${esc(k)} : ${esc(v)}`).join('<br>')}</details>` : ''}</div>`;
 }
 
@@ -181,7 +185,6 @@ function renderTrack(el, ctx) {
   const kg = st.profile.weight || 70;
   const due = E.weighDue(st);
   el.innerHTML = `
-    ${sourcesCard(st)}
     ${dayOffset === 0 ? sleepWeekCard(st) : ''}
     <div class="card">
       <div class="between">
@@ -249,10 +252,9 @@ function renderTrack(el, ctx) {
   $('#next', el).onclick = () => { if (dayOffset < 0) { dayOffset++; re(); } };
   $('#add-stool', el).onclick = () => ctx.action('stool');
   $$('[data-stool-del]', el).forEach((b) => (b.onclick = () => { const undo = store.removing((s) => { s.stools = s.stools.filter((x) => x.id !== b.dataset.stoolDel); }); re(); undoToast('Entrée supprimée', undo); }));
-  bindSources(el, re, key);
 }
 
-// Pas, Health Connect, podomètre, temps d’écran : dans Santé et dans Profil → Données du téléphone.
+// Pas, Health Connect, podomètre, temps d’écran : dans Profil → Données du téléphone.
 export function bindSources(el, re, key = store.today()) {
   if (N.isNative) {
     $('#hc', el)?.addEventListener('click', async () => {

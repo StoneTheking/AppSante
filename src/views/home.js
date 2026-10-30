@@ -187,7 +187,9 @@ export function openScore(sm) {
       <span class="sr-bar"><i style="width:${r.v ?? 0}%;background:${c}"></i></span>
       <b style="color:${r.v == null ? 'var(--muted)' : c}">${r.v ?? '–'}</b></summary>
       <div class="sr-more"><p class="small" style="margin:0">${esc(r.what)}</p><p class="tiny muted" style="margin:4px 0 0">${esc(r.how)}</p>${r.v != null && r.v < 80 && r !== focus ? `<p class="tiny" style="color:var(--primary);font-weight:650;margin:4px 0 0">→ ${esc(r.tip)}</p>` : ''}${srcLinks(r.src)}</div></details>`; }).join('')}</div>
-    <p class="tiny muted" style="margin-top:12px">Touche un pilier pour le détail. 80 et plus : excellent · 65–79 : bon · 50–64 : à améliorer. L’humeur est suivie mais ne compte pas : elle découle des autres piliers.</p>`, { title: 'Hygiène de vie', full: true });
+    ${(sm.scoreInfo?.penalties || []).map((p) => `<div class="note warn" style="margin-top:10px">${icon('alert', 18)}<span><b>${esc(p.label)} : −${p.pts} points</b> sur le total.${srcLinks(p.src)}</span></div>`).join('')}
+    <p class="tiny muted" style="margin-top:12px">Touche un pilier pour le détail. Sommeil, activité et alimentation comptent à parts égales, comme dans le score Life’s Essential 8 de l’American Heart Association ; les écrans un peu moins. Un pilier noté moins de 4 jours sur 7 pèse moins. Tabac et alcool retirent des points. 80 et plus : excellent · 65–79 : bon · 50–64 : à améliorer. L’humeur est suivie mais ne compte pas : elle découle des autres piliers.</p>
+    ${srcLinks(['lloydjones2022', 'li2018'])}`, { title: 'Hygiène de vie', full: true });
 }
 
 function envCard(env, location) {

@@ -248,6 +248,20 @@ async function getDetector() {
   return detectorPromise;
 }
 
+// Code-barres visible sur une photo (Blob/File ou image) : le premier lu, sinon null. Ne lève jamais d'erreur.
+export async function detectInImage(src) {
+  try {
+    const detector = await getDetector();
+    const img = src instanceof Blob ? await createImageBitmap(src) : src;
+    const codes = await detector.detect(img);
+    img.close?.();
+    const v = codes.find((c) => /^\d{8,14}$/.test(c.rawValue || ''))?.rawValue;
+    return v || null;
+  } catch {
+    return null;
+  }
+}
+
 // Démarre la caméra dans <video> et appelle onCode(code) au premier code lu. Renvoie stop().
 export async function startScanner(video, onCode) {
   const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } }, audio: false });

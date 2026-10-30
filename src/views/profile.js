@@ -100,7 +100,7 @@ export function render(view, ctx) {
     </div>` },
     { id: 'look', icon: 'palette', label: 'Apparence', sub: 'Thème, widgets', html: `<div class="card">
       <div class="seg">${[['dark', 'Sombre'], ['light', 'Clair'], ['auto', 'Système']].map(([v, l]) => `<button data-theme-pick="${v}" class="${st.settings.theme === v ? 'on' : ''}">${l}</button>`).join('')}</div>
-      ${N.isNative ? `<button class="btn ghost block" id="pin-widget" style="margin-top:10px">${icon('moon', 18)} Ajouter le widget « Je vais dormir »</button><button class="btn ghost block" id="pin-photo" style="margin-top:8px">${icon('camera', 18)} Ajouter le widget « Photo du repas »</button>` : '<p class="tiny muted" style="margin:10px 0 0">Raccourci : appui long sur l’icône Diana Health → « Je vais dormir ».</p>'}
+      ${N.isNative ? `<button class="btn ghost block" id="pin-widget" style="margin-top:10px">${icon('moon', 18)} Ajouter le widget « Je vais dormir »</button><button class="btn ghost block" id="pin-photo" style="margin-top:8px">${icon('camera', 18)} Ajouter le widget « Photo ou code-barres »</button><button class="btn ghost block" id="pin-quests" style="margin-top:8px">${icon('target', 18)} Ajouter le widget « Quêtes du jour »</button>` : '<p class="tiny muted" style="margin:10px 0 0">Raccourci : appui long sur l’icône Diana Health → « Je vais dormir ».</p>'}
     </div>` },
     { id: 'ai', icon: 'sparkles', label: 'Intelligence artificielle', sub: 'Clé, modèle, vitesse', html: `<div class="card">
       <p class="small" style="margin-top:0">Pour l’analyse photo, les recettes et le coach. Sans clé, l’appli marche quand même (menus, scanner, recherche de produits, plan, sport).</p>
@@ -210,6 +210,7 @@ export function render(view, ctx) {
   $('#add-member', view).onclick = () => openMember(() => render(view, ctx));
   $$('[data-theme-pick]', view).forEach((b) => (b.onclick = () => { store.update((s) => (s.settings.theme = b.dataset.themePick)); applyTheme(); render(view, ctx); }));
   $('#pin-photo', view)?.addEventListener('click', async () => { const r = await N.pinPhotoWidget(); toast(r ? 'Confirme l’ajout du widget' : 'Appui long sur l’écran d’accueil → Widgets → Diana Health'); });
+  $('#pin-quests', view)?.addEventListener('click', async () => { ctx.syncQuests?.(true); const r = await N.pinQuestsWidget(); toast(r ? 'Confirme l’ajout du widget' : 'Appui long sur l’écran d’accueil → Widgets → Diana Health'); });
   $('#pin-widget', view)?.addEventListener('click', async () => { const r = await N.pinSleepWidget(); toast(r ? 'Confirme l’ajout du widget' : 'Appui long sur l’écran d’accueil → Widgets → Diana Health'); });
   const setLoc = async (loc) => {
     store.update((s) => { s.location = loc; s.env = null; });

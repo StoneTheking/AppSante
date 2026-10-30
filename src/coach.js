@@ -47,6 +47,8 @@ export function summarize({ profile, days, meals, weights, env, household = [], 
     sleepH: avg(week.map(sleepH)),
     sleepQ: avg(week.map((k) => d(k).sleepQuality)),
     bedVar: S.bedtimeVariability(week.map((k) => d(k).bed)),
+    wakeVar: S.wakeVariability(week.map((k) => d(k).wake)),
+    nights: week.map(sleepH).filter((h) => h > 0),
     modMin: sum(week.map((k) => d(k).modMin)),
     vigMin: sum(week.map((k) => d(k).vigMin)),
     strength: week.filter((k) => (d(k).strengthMin || 0) > 0).length,
@@ -63,17 +65,35 @@ export function summarize({ profile, days, meals, weights, env, household = [], 
     loggedDays: week.filter((k) => Object.keys(d(k)).length > 0).length,
   };
 
+  const need = S.sleepNeed(profile);
   const scores = {
-    sommeil: S.sleepScore(w.sleepH, w.sleepQ, w.bedVar),
-    activite: w.steps == null && !w.modMin && !w.vigMin && !w.strength ? null : S.activityScore({ steps: w.steps, modMin: w.modMin / 7, vigMin: w.vigMin / 7, strengthMin: w.strength >= 2 ? 1 : 0 }, t),
+    sommeil: S.sleepScore(w.nights, w.sleepQ, w.bedVar, { need, wakeVar: w.wakeVar }),
+    activite: w.steps == null && !w.modMin && !w.vigMin && !w.strength ? null : S.activityScore({ steps: w.steps, modMin: w.modMin / 7, vigMin: w.vigMin / 7, strengthMin: Math.min(1, w.strength / 2) }, t),
     alimentation: dietAvg != null ? Math.round(dietAvg) : null,
     humeur: S.moodScore({ mood: w.mood, energy: w.energy, stress: w.stress }),
     numerique: S.digitalScore({ screenMin: w.screenMin, socialMin: w.socialMin, phoneInBed: w.phoneInBedDays >= 3, unlocks: w.unlocks }),
   };
-  const weights_ = SCORE_WEIGHTS;
+  // Jours de données par pilier : un pilier mesuré 1 jour sur 7 pèse moins qu'un pilier suivi toute la semaine.
+  const coverage = {
+    sommeil: w.nights.length,
+    activite: week.filter((k) => d(k).steps > 0 || d(k).modMin || d(k).vigMin || d(k).strengthMin).length,
+    alimentation: dietDays.length,
+    numerique: week.filter((k) => d(k).screenMin != null).length,
+  };
+  const penalties = [];
+  if (profile.smoker) penalties.push({ k: 'tabac', label: 'Tabac', pts: 15, src: ['jha2013', 'lloydjones2022'] });
+  // Repères Santé publique France : 10 verres/sem max, pas plus de 2 par jour ; pas de seuil sans risque (GBD 2018).
+  const alc = w.alcohol || 0;
+  if (alc > 2) penalties.push({ k: 'alcool', label: `Alcool (${S.round(alc, 1).toLocaleString('fr-FR')} verres)`, pts: Math.round(Math.min(15, alc - 2 + 1.5 * Math.max(0, alc - 10))), src: ['gbd2018alcohol', 'li2018'] });
   let num = 0, den = 0;
-  for (const [k, v] of Object.entries(scores)) if (v != null) { num += v * weights_[k]; den += weights_[k]; }
-  scores.global = den ? Math.round(num / den) : null;
+  for (const [k, v] of Object.entries(scores)) {
+    if (v == null || !SCORE_WEIGHTS[k]) continue;
+    const wk = SCORE_WEIGHTS[k] * (0.4 + 0.6 * Math.min(1, (coverage[k] ?? 7) / 4));
+    num += v * wk; den += wk;
+  }
+  const penalty = penalties.reduce((a, x) => a + x.pts, 0);
+  scores.global = den ? Math.round(S.clamp(num / den - penalty, 0, 100)) : null;
+  const scoreInfo = { coverage, penalties, need };
 
   const bmiV = S.bmi(latestWeight, profile.height);
   const body = {
@@ -103,7 +123,7 @@ export function summarize({ profile, days, meals, weights, env, household = [], 
   const sportToday = weekPlan(profile, workouts, new Date(), days).find((x) => x.today) || null;
   const workoutsToday = workouts.filter((x) => x.date === todayKey);
   const sun = { ...sunTimes(new Date(), location || PARIS), approx: !location };
-  return { sun, busy, usualHour: usualHour(workouts), env: envFresh, mealsToday: mealsOf(todayKey), sportToday, sportFeedback, workoutsToday, household, stools, lateMeals, t, p, body, today, todayKey, lastNight, totToday, w, scores, dietAvg, kcalAvg, dietDaysCount: dietDays.length, ctx };
+  return { sun, busy, usualHour: usualHour(workouts), env: envFresh, mealsToday: mealsOf(todayKey), sportToday, sportFeedback, workoutsToday, household, stools, lateMeals, t, p, body, today, todayKey, lastNight, totToday, w, scores, scoreInfo, dietAvg, kcalAvg, dietDaysCount: dietDays.length, ctx };
 }
 
 // ---------- Activité physique recommandée ----------
@@ -366,13 +386,18 @@ const hmDur = (h) => { const m = Math.round(h * 60); return m >= 60 ? `${Math.fl
 
 // ---------- Score d'hygiène de vie expliqué ----------
 // L’humeur est suivie mais ne compte pas : on ne la commande pas directement, on agit sur ce qui la fait bouger.
-export const SCORE_WEIGHTS = { sommeil: 0.3, activite: 0.3, alimentation: 0.25, humeur: 0, numerique: 0.15 };
+// Poids inspirés de Life's Essential 8 (AHA 2022) : alimentation, activité et sommeil à parts égales ;
+// les écrans pèsent moins (preuves plus récentes, effet en partie via le sommeil et la sédentarité).
+// Le tabac et l'alcool retirent des points au total (Li 2018 : ce sont deux des 5 habitudes qui comptent le plus).
+export const SCORE_WEIGHTS = { sommeil: 0.28, activite: 0.28, alimentation: 0.28, humeur: 0, numerique: 0.16 };
 export const scoreWord = (v) => (v == null ? ['Pas de données', 'var(--muted)'] : v >= 80 ? ['Excellent', 'var(--good)'] : v >= 65 ? ['Bon', 'var(--good)'] : v >= 50 ? ['À améliorer', 'var(--warn)'] : ['Faible', 'var(--bad)']);
+const need = (sm) => sm.scoreInfo?.need || { min: 7, max: 9 };
+const short = (sm) => (sm.w.nights || []).filter((h) => h < need(sm).min - 0.25).length;
 export function scoreBreakdown(sm) {
   const { w, t, scores } = sm;
   const r = (x, d = 0) => (x == null ? '—' : S.round(x, d).toLocaleString('fr-FR'));
   return [
-    { k: 'sommeil', what: w.sleepH != null ? `${hmDur(w.sleepH)} par nuit en moyenne${w.bedVar != null ? `, coucher ±${Math.round(w.bedVar)} min` : ''}${w.sleepQ ? `, qualité ${r(w.sleepQ, 1)}/5` : ''}` : 'Continue à noter ton sommeil chaque nuit', how: 'Durée (7–9 h), qualité ressentie et régularité de l’heure de coucher.', tip: w.sleepH != null && w.sleepH < 7 ? 'Avance ton coucher de 20 min.' : 'Garde la même heure de coucher, week-end compris.', src: ['watson2015', 'windred2024'] },
+    { k: 'sommeil', what: w.sleepH != null ? `${hmDur(w.sleepH)} par nuit en moyenne sur ${w.nights.length} nuit(s)${short(sm) ? `, dont ${short(sm)} sous ${need(sm).min} h` : ''}${w.bedVar != null ? `, coucher ±${Math.round(w.bedVar)} min` : ''}${w.wakeVar != null ? `, lever ±${Math.round(w.wakeVar)} min` : ''}${w.sleepQ ? `, qualité ${r(w.sleepQ, 1)}/5` : ''}` : 'Continue à noter ton sommeil chaque nuit', how: `Chaque nuit est notée face à ton besoin (${need(sm).min}–${need(sm).max} h) : 1 h de moins = 60/100, 2 h = 30/100 ; une nuit courte n’est pas rattrapée par une longue. Durée 50 %, régularité des heures de coucher et de lever 30 % (±30 min = parfait, ±2 h = 0), qualité ressentie 20 %.`, tip: w.sleepH != null && w.sleepH < need(sm).min ? 'Avance ton coucher de 20 min.' : 'Garde les mêmes heures de coucher et de lever, week-end compris.', src: ['watson2015', 'hirshkowitz2015', 'windred2024', 'buysse2014'] },
     { k: 'activite', what: w.steps != null || w.modMin ? `${r(w.steps)} pas/j, ${Math.round(w.modMin + 2 * w.vigMin)} min d’activité/sem, ${w.strength} séance(s) de renfo` : 'Synchronise tes pas ou note une séance', how: `Pas (objectif ${t.steps}/j), 150 min d’activité modérée par semaine, 2 séances de renforcement.`, tip: (w.steps || 0) < t.steps ? 'Ajoute une marche de 15 min après le déjeuner.' : 'Ajoute une séance de renforcement.', src: ['paluch2022', 'who2020'] },
     { k: 'alimentation', what: sm.dietDaysCount ? `${sm.dietDaysCount} jour(s) de repas notés sur 14` : 'Photographie tes repas', how: 'Fibres, fruits & légumes, protéines, sucres, graisses saturées, sel et part d’ultra-transformés.', tip: 'Une portion de légumes en plus à chaque repas.', src: ['gbd2019', 'lane2024'] },
     { k: 'humeur', what: w.mood != null ? `humeur ${r(w.mood, 1)}/5, énergie ${r(w.energy, 1)}/5, stress ${r(w.stress, 1)}/5` : 'Réponds à la question du jour', how: 'Moyenne de ton humeur, ton énergie et ton stress déclarés chaque jour.', tip: '15 min dehors à la lumière du jour.', src: ['noetel2024', 'burns2023'] },

@@ -672,10 +672,11 @@ span.qcam-side { background: none; }
 
 .streak-btn svg { color: #fb923c; fill: color-mix(in srgb, #fb923c 35%, transparent); flex-shrink: 0; }
 .streak-btn.cold svg { color: var(--muted); fill: none; }
-.swipe-l { animation: swipeL .32s cubic-bezier(.2, .8, .2, 1); }
-.swipe-r { animation: swipeR .32s cubic-bezier(.2, .8, .2, 1); }
-@keyframes swipeL { from { transform: translateX(36px); } }
-@keyframes swipeR { from { transform: translateX(-36px); } }
+.swipe-l { animation: swipeL .26s cubic-bezier(.2, .8, .2, 1); }
+.swipe-r { animation: swipeR .26s cubic-bezier(.2, .8, .2, 1); }
+@keyframes swipeL { from { transform: translate3d(70px, 0, 0); opacity: 0; } }
+@keyframes swipeR { from { transform: translate3d(-70px, 0, 0); opacity: 0; } }
+#view.dragging, #view.swipe-l, #view.swipe-r { will-change: transform, opacity; }
 @media (prefers-reduced-motion: reduce) { .swipe-l, .swipe-r { animation: none; } }
 
 /* Tirer pour actualiser (accueil) */
@@ -717,8 +718,24 @@ span.qcam-side { background: none; }
 }
 
 /* ---------- Démonstrations 3D des exercices ---------- */
+/* Démonstrations : photos réelles en fondu (départ ↔ arrivée, au rythme d'une répétition) ou mannequin 3D */
+.demo { position: relative; margin: 8px 0 4px; }
+.demo .ex3d { margin: 0; }
+.demo.big .ex3d, .demo.big .exph { height: min(34vh, 280px); }
+.demo.mode-photo .ex3d, .demo.mode-3d .exph { display: none; }
+.exph { position: relative; height: 210px; border-radius: 16px; overflow: hidden; background: #fff; border: 1px solid var(--line-2); }
+.exph img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.exph img.b { animation: exflip 2.6s ease-in-out infinite; }
+@keyframes exflip { 0%, 30% { opacity: 0; } 45%, 80% { opacity: 1; } 95%, 100% { opacity: 0; } }
+.exph.off { display: none; }
+.exph-src { position: absolute; right: 8px; bottom: 6px; font-size: .62rem; font-weight: 600; color: #475569; background: rgba(255, 255, 255, .85); padding: 1px 6px; border-radius: 6px; }
+.demo-tabs { position: absolute; left: 8px; bottom: 8px; display: flex; gap: 2px; padding: 2px; border-radius: 10px; background: rgba(7, 9, 13, .72); backdrop-filter: blur(6px); }
+.demo-tabs button { border: 0; background: none; color: #c4ccd8; font-size: .7rem; font-weight: 700; padding: 4px 9px; border-radius: 8px; }
+.demo.mode-photo [data-demo-mode="photo"], .demo.mode-3d [data-demo-mode="3d"] { background: var(--primary); color: var(--on-primary); }
+@media (prefers-reduced-motion: reduce) { .exph img.b { animation-duration: 6s; } }
 .ex3d { position: relative; height: 210px; margin: 8px 0 4px; border-radius: 16px; overflow: hidden; background: radial-gradient(120% 90% at 50% 20%, #14284a 0%, #0a1426 60%, #060c18 100%); border: 1px solid rgba(90, 215, 255, .22); touch-action: pan-y; }
 .ex3d.big { height: min(34vh, 280px); margin: 4px 0 8px; }
+.demo.big { margin: 4px 0 8px; }
 .ex3d canvas { width: 100%; height: 100%; display: block; cursor: grab; }
 .ex3d-cue { position: absolute; left: 10px; right: 10px; top: 8px; color: #d6f6ff; font-size: .8rem; font-weight: 650; text-align: center; text-shadow: 0 1px 6px #000; pointer-events: none; }
 .ex3d-cue.in { animation: cueIn .35s ease; }

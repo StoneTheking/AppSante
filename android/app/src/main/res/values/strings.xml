@@ -12,9 +12,14 @@
     <string name="widget_kicker_night">Nuit en cours</string>
     <string name="widget_action_sleep">Dormir</string>
     <string name="widget_action_wake">Réveil</string>
-    <string name="widget_photo_label">Repas</string>
-    <string name="widget_photo_name">Photo du repas</string>
-    <string name="widget_photo_description">Photographie ton repas en un geste</string>
+    <string name="widget_photo_label">Photo</string>
+    <string name="widget_scan_label">Code-barres</string>
+    <string name="widget_photo_kicker">Ajouter un repas</string>
+    <string name="widget_photo_name">Photo ou code-barres</string>
+    <string name="widget_photo_description">Photographie ton repas ou scanne un produit en un geste</string>
+    <string name="widget_quests_name">Quêtes du jour</string>
+    <string name="widget_quests_description">Tes 5 quêtes du jour et ta série, d’un coup d’œil</string>
+    <string name="widget_quests_empty">Ouvre Diana Health pour lancer ta journée</string>
     <string name="sleep_channel">Nuit en cours</string>
     <string name="widget_description">Note ton heure de coucher et de réveil en un geste</string>
 </resources>

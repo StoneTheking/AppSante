@@ -91,6 +91,10 @@ export const SOURCES = {
   milanovic2016: { t: 'Milanović et al. – Le fractionné (HIIT) améliore davantage la VO2max que l’endurance continue (Sports Med 2016)', u: 'https://doi.org/10.1007/s40279-015-0365-0' },
   knaier2021: { t: 'Knaier et al. – Force et endurance maximales en fin d’après-midi et le soir, méta-analyse (Med Sci Sports Exerc 2021)', u: 'https://doi.org/10.1249/MSS.0000000000002773' },
   bruggisser2023: { t: 'Bruggisser et al. – Pas de meilleur moment universel pour s’entraîner : la régularité prime (Sports Med Open 2023)', u: 'https://doi.org/10.1186/s40798-023-00577-5' },
+  buysse2014: { t: 'Buysse – Santé du sommeil : régularité, satisfaction, horaires, durée (« RU-SATED », Sleep 2014)', u: 'https://doi.org/10.5665/sleep.3298' },
+  lloydjones2022: { t: 'Lloyd-Jones et al. – Life’s Essential 8 : alimentation, activité, tabac et sommeil à poids égal (Circulation 2022)', u: 'https://doi.org/10.1161/CIR.0000000000001078' },
+  li2018: { t: 'Li et al. – 5 habitudes saines = 12 à 14 ans d’espérance de vie en plus (Circulation 2018)', u: 'https://doi.org/10.1161/CIRCULATIONAHA.117.032047' },
+  jha2013: { t: 'Jha et al. – Le tabac fait perdre plus de 10 ans de vie (NEJM 2013)', u: 'https://doi.org/10.1056/NEJMsa1211128' },
   hirshkowitz2015: { t: 'Hirshkowitz et al. – Durées de sommeil recommandées selon l’âge, National Sleep Foundation (Sleep Health 2015)', u: 'https://doi.org/10.1016/j.sleh.2014.12.010' },
   vandongen2003: { t: 'Van Dongen et al. – La dette de sommeil s’accumule : 6 h par nuit pendant 2 semaines = une nuit blanche pour l’attention (Sleep 2003)', u: 'https://doi.org/10.1093/sleep/26.2.117' },
   depner2019: { t: 'Depner et al. – Rattraper son sommeil le week-end ne corrige pas les effets métaboliques du manque de sommeil (Curr Biol 2019)', u: 'https://doi.org/10.1016/j.cub.2019.01.069' },
@@ -267,21 +271,50 @@ export function socialJetlag(days, keys, workDays = [1, 2, 3, 4, 5]) {
 }
 
 // ---------- Scores 0–100 ----------
-export function sleepScore(hours, quality, variability) {
-  if (hours == null) return null;
-  let s = 100;
-  if (hours < 7) s -= (7 - hours) * 22;
-  if (hours > 9) s -= (hours - 9) * 15;
-  if (quality) s -= (5 - quality) * 6;
-  if (variability != null && variability > 30) s -= Math.min(20, (variability - 30) / 3);
-  return Math.round(clamp(s, 0, 100));
+// Score d'une nuit selon sa durée face au besoin (Watson 2015, Hirshkowitz 2015).
+// Dans la plage recommandée = 100 ; 1 h de moins = 60 ; 2 h = 30 ; 3 h = 0 (Cappuccio 2010 : < 6 h → +12 % de mortalité).
+// Au-delà du maximum, pénalité plus douce (le sommeil long est surtout un marqueur, pas une cause).
+export function nightDurationScore(hours, need = { min: 7, max: 9 }) {
+  if (!hours) return null;
+  const lack = need.min - hours;
+  if (lack > 0) return Math.round(clamp(lack <= 1 ? 100 - 40 * lack : 60 - 30 * (lack - 1), 0, 100));
+  const extra = hours - need.max;
+  return Math.round(extra > 0 ? Math.max(40, 100 - 20 * extra) : 100);
+}
+
+// Score de sommeil de la semaine (cadre « RU-SATED », Buysse 2014) :
+//  durée 50 % — moyenne des scores nuit par nuit (une nuit de 4 h n'est pas compensée par une de 10 h) ;
+//  régularité 30 % — écart-type des heures de coucher et de lever (Windred 2024 : prédit mieux la mortalité que la durée) ;
+//  qualité ressentie 20 %.
+// hours : une durée (h) ou la liste des nuits de la semaine. Les parts absentes sont redistribuées.
+export function sleepScore(hours, quality, variability, { need, wakeVar } = {}) {
+  const nights = (Array.isArray(hours) ? hours : [hours]).filter((h) => h > 0);
+  if (!nights.length) return null;
+  const n = need || { min: 7, max: 9 };
+  const dur = nights.reduce((a, h) => a + nightDurationScore(h, n), 0) / nights.length;
+  const sds = [variability, wakeVar].filter((x) => x != null);
+  const sd = sds.length ? sds.reduce((a, b) => a + b, 0) / sds.length : null;
+  // ±30 min ou moins = très régulier ; ±2 h = très irrégulier
+  const reg = sd == null ? null : clamp(100 - ((sd - 30) / 90) * 100, 0, 100);
+  const q = quality ? ((quality - 1) / 4) * 100 : null;
+  const parts = [[dur, 0.5], [reg, 0.3], [q, 0.2]].filter(([v]) => v != null);
+  const den = parts.reduce((a, [, w]) => a + w, 0);
+  return Math.round(clamp(parts.reduce((a, [v, w]) => a + v * w, 0) / den, 0, 100));
+}
+
+// Écart-type de l'heure de lever (min).
+export function wakeVariability(wakes) {
+  const xs = wakes.filter(Boolean).map((hhmm) => { const [h, m] = hhmm.split(':').map(Number); return ((h + 12) % 24) * 60 + m; }); // centré sur midi → pas de saut à minuit
+  if (xs.length < 3) return null;
+  const m = xs.reduce((a, b) => a + b, 0) / xs.length;
+  return Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / xs.length);
 }
 
 export function activityScore({ steps, modMin, vigMin, strengthMin }, t) {
   if (steps == null && modMin == null && vigMin == null) return null;
   const stepPart = clamp((steps || 0) / t.steps, 0, 1.2) * 55;
-  const minPart = clamp(((modMin || 0) + 2 * (vigMin || 0)) / 30, 0, 1.2) * 35; // ~150/sem ≈ 22-30/j
-  const strPart = strengthMin ? 10 : 0;
+  const minPart = clamp(((modMin || 0) + 2 * (vigMin || 0)) / (150 / 7), 0, 1.2) * 35; // OMS : 150 min/sem ≈ 21 min/j
+  const strPart = clamp(strengthMin || 0, 0, 1) * 10; // 1 = 2 séances/sem (OMS), 0,5 = une seule
   return Math.round(clamp(stepPart + minPart + strPart, 0, 100));
 }
 
