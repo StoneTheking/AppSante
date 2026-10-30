@@ -10,19 +10,24 @@ const UsageStats = registerPlugin('UsageStats');
 
 const HEALTH_READ = ['steps', 'sleep', 'heartRate', 'restingHeartRate', 'heartRateVariability', 'weight', 'calories', 'workouts'];
 
+// Une promesse du plugin qui ne revient jamais ne doit pas bloquer l'écran (« Connexion… » à l'infini).
+const timeout = (p, ms, msg) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error(msg)), ms))]);
+
+// Attention : le plugin Capacitor est un Proxy qui répond à toutes les propriétés, y compris « then ».
+// Le renvoyer tel quel depuis une fonction async le ferait passer pour une promesse : JavaScript appellerait
+// une méthode native « then » inexistante et l'attente ne finirait jamais. On l'enveloppe donc dans un objet.
+const healthMod = () => timeout(import('@capgo/capacitor-health'), 8000, 'Le module Health Connect ne se charge pas');
 async function health() {
-  const { Health } = await import('@capgo/capacitor-health');
-  return Health;
+  const { Health } = await healthMod();
+  return { H: Health };
 }
 
 export async function healthStatus() {
   if (!isNative) return { available: false, reason: 'web' };
-  const H = await health();
+  const { H } = await health();
   return H.isAvailable();
 }
 
-// Une promesse du plugin qui ne revient jamais ne doit pas bloquer l'écran (« Connexion… » à l'infini).
-const timeout = (p, ms, msg) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error(msg)), ms))]);
 
 // Autorisations Android correspondant aux types lus (voir HealthDataType.kt du plugin).
 const HEALTH_PERMS = ['STEPS', 'SLEEP', 'HEART_RATE', 'RESTING_HEART_RATE', 'HEART_RATE_VARIABILITY', 'WEIGHT', 'ACTIVE_CALORIES_BURNED', 'EXERCISE']
@@ -52,7 +57,7 @@ export async function connectHealth(onStep = () => {}) {
   const t0 = Date.now(), log = [];
   const step = (m) => { log.push(`${((Date.now() - t0) / 1000).toFixed(1)} s ${m}`); onStep(m); };
   const fail = (m) => { const e = new Error(m); e.log = log; return e; };
-  const H = await health();
+  const { H } = await health();
   step('Vérification de Health Connect…');
   const a = await timeout(H.isAvailable(), 5000, 'Health Connect ne répond pas').catch((e) => { throw fail(e.message); });
   log.push(`disponible : ${a.available} ${a.reason || ''}`);
@@ -90,7 +95,7 @@ export async function connectHealth(onStep = () => {}) {
   return { readAuthorized: granted, log };
 }
 
-export const openHealthSettings = async () => (await health()).openHealthConnectSettings();
+export const openHealthSettings = async () => (await health()).H.openHealthConnectSettings();
 // Page « Autorisations » de Diana Health dans Health Connect (repli : réglages de Health Connect, puis Play Store).
 export const openHealthPermissions = () => UsageStats.openHealthPermissions().then((r) => r.opened);
 const healthInfo = () => timeout(UsageStats.healthInfo(), 3000, '').catch(() => ({}));
@@ -98,14 +103,20 @@ const healthInfo = () => timeout(UsageStats.healthInfo(), 3000, '').catch(() => 
 // État détaillé de Health Connect pour expliquer ce qui bloque.
 export async function healthDiagnose() {
   if (!isNative) return { ok: false, reason: 'web' };
+  const t0 = Date.now(), log = [];
+  const step = (m) => log.push(`${((Date.now() - t0) / 1000).toFixed(1)} s ${m}`);
   const info = await healthInfo();
+  step(`infos téléphone : ${info.sdk ? `API ${info.sdk}` : 'non lues'}`);
   try {
-    const H = await health();
+    const { H } = await health();
+    step('module Health Connect chargé');
     const a = await timeout(H.isAvailable(), 5000, 'Health Connect ne répond pas (disponibilité)');
-    if (!a.available) return { ok: false, reason: /update/i.test(a.reason || '') ? 'update' : 'unavailable', detail: a.reason || '', info };
+    step(`disponible : ${a.available} ${a.reason || ''}`);
+    if (!a.available) return { ok: false, reason: /update/i.test(a.reason || '') ? 'update' : 'unavailable', detail: a.reason || '', info, log };
     const granted = await grantedTypes(H);
-    return { ok: granted.length > 0, reason: granted.length ? 'ok' : 'denied', granted, steps: granted.includes('steps'), info };
-  } catch (e) { return { ok: false, reason: 'error', detail: e.message || String(e), info }; }
+    step(`accès accordés : ${granted.join(', ') || 'aucun'}`);
+    return { ok: granted.length > 0, reason: granted.length ? 'ok' : 'denied', granted, steps: granted.includes('steps'), info, log };
+  } catch (e) { step(`erreur : ${e.message || e}`); return { ok: false, reason: 'error', detail: e.message || String(e), info, log }; }
 }
 
 // ---------- Podomètre intégré (repli sans Health Connect) ----------
@@ -143,7 +154,7 @@ const mapWorkout = (t) => WORKOUT_MAP.find(([re]) => re.test(t))?.[1] || 'autre'
 
 // Lit les N derniers jours depuis Health Connect : { days: { 'AAAA-MM-JJ': {...} }, workouts: [...] }.
 export async function syncHealth(days = 7) {
-  const H = await health();
+  const { H } = await health();
   const end = new Date();
   const start = new Date();
   start.setHours(0, 0, 0, 0);

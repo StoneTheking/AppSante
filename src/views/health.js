@@ -38,7 +38,7 @@ export async function syncAll({ silent = false } = {}) {
   if (!N.isNative) return results;
   let hcSteps = false;
   try {
-    const diag = await N.healthDiagnose();
+    const diag = await Promise.race([N.healthDiagnose(), new Promise((r) => setTimeout(() => r({ ok: false, reason: 'error', detail: 'La vérification de Health Connect ne répond pas (plus de 25 s).' }), 25000))]);
     store.update((s) => { s.healthDiag = { ...diag, at: Date.now() }; });
     if (diag.ok) {
       const h = await N.syncHealth(7);
@@ -183,11 +183,13 @@ function renderTrack(el, ctx) {
     $('#hc', el)?.addEventListener('click', async () => {
       const res = $('#sync-res', el);
       res.innerHTML = '<span class="spinner"></span> Vérification de Health Connect…';
-      const d0 = await N.healthDiagnose(); // toujours un état frais (pas celui de la dernière ouverture)
+      // toujours un état frais (pas celui de la dernière ouverture) ; jamais plus de 25 s d'attente
+      const d0 = await Promise.race([N.healthDiagnose().catch((e) => ({ ok: false, reason: 'error', detail: e.message || String(e) })),
+        new Promise((r) => setTimeout(() => r({ ok: false, reason: 'error', detail: 'La vérification de Health Connect ne répond pas (plus de 25 s).' }), 25000))]);
       store.update((s) => { s.healthDiag = { ...d0, at: Date.now() }; });
       if (['unavailable', 'update'].includes(d0.reason)) { res.innerHTML = ''; return openHealthHelp(d0, re); }
       if (!d0.ok) {
-        try { await N.connectHealth((m) => { res.innerHTML = `<span class="spinner"></span> ${m}`; }); } catch (e) { res.innerHTML = ''; return openHealthHelp({ ...d0, reason: d0.reason === 'error' ? 'error' : 'denied', detail: e.message, log: e.log }, re); }
+        try { await N.connectHealth((m) => { res.innerHTML = `<span class="spinner"></span> ${m}`; }); } catch (e) { res.innerHTML = ''; return openHealthHelp({ ...d0, reason: d0.reason === 'error' ? 'error' : 'denied', detail: e.message, log: [...(d0.log || []), ...(e.log || [])] }, re); }
       }
       res.innerHTML = '<span class="spinner"></span> Synchronisation…';
       const timedOut = await Promise.race([syncAll().then(() => false), new Promise((r) => setTimeout(() => r(true), 20000))]);
