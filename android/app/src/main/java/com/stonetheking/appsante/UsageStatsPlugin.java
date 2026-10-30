@@ -119,6 +119,34 @@ public class UsageStatsPlugin extends Plugin {
         }
     }
 
+    // Health Connect : ouvre directement la fenêtre d'autorisation, sans attendre son résultat.
+    // L'appli vérifie les accès accordés au retour (visibilitychange), ce qui évite les attentes sans fin
+    // quand le résultat de l'activité se perd (activité recréée, lanceur non rappelé).
+    @PluginMethod
+    public void requestHealth(PluginCall call) {
+        JSArray arr = call.getArray("permissions");
+        Set<String> perms = new HashSet<>();
+        try { for (int i = 0; i < arr.length(); i++) perms.add(arr.getString(i)); } catch (Exception e) { call.reject("Liste d'autorisations invalide"); return; }
+        Intent intent;
+        try {
+            intent = androidx.health.connect.client.PermissionController.createRequestPermissionResultContract()
+                .createIntent(getContext(), perms);
+        } catch (Throwable e) { call.reject("Health Connect indisponible : " + e.getMessage()); return; }
+        final Intent launch = intent;
+        getActivity().runOnUiThread(() -> {
+            try {
+                // startActivityForResult (et non startActivity) : Health Connect identifie l'appli demandeuse par l'appelant
+                getActivity().startActivityForResult(launch, 7311);
+                JSObject r = new JSObject();
+                r.put("launched", true);
+                r.put("action", String.valueOf(launch.getAction()));
+                call.resolve(r);
+            } catch (Throwable e) {
+                call.reject("La fenêtre d'autorisation ne s'ouvre pas : " + e.getMessage());
+            }
+        });
+    }
+
     // Informations utiles au diagnostic de Health Connect (version d'Android, profil géré, application installée).
     @PluginMethod
     public void healthInfo(PluginCall call) {

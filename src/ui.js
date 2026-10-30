@@ -4,7 +4,7 @@ import {
   Droplet, Coffee, Dumbbell, Apple, Salad, ChefHat, ShoppingCart, CalendarDays, TrendingUp, Bell, Sparkles, ChevronLeft,
   ChevronRight, Check, X, Trash2, RefreshCw, Download, Upload, Settings, Activity, Brain, Bed, Clock, Scale, Wine, Info,
   TriangleAlert, CircleCheck, Send, Zap, BookOpen, Share2, Leaf, Watch, Link, ListChecks, Pencil, Image as ImageIcon, Lightbulb, Target,
-  Sunrise, Bike, Copy, ArrowRight, KeyRound, Shield, Star, Users, MapPin, Receipt, Palette, Briefcase, CirclePlay, EyeOff,
+  Sunrise, Bike, Copy, ArrowRight, KeyRound, Shield, Star, Users, MapPin, Receipt, Palette, Briefcase, CirclePlay, EyeOff, Search,
 } from 'lucide';
 import * as S from './science.js';
 
@@ -16,7 +16,7 @@ const ICONS = {
   settings: Settings, activity: Activity, brain: Brain, bed: Bed, clock: Clock, scale: Scale, wine: Wine, info: Info, alert: TriangleAlert,
   ok: CircleCheck, send: Send, zap: Zap, book: BookOpen, share: Share2, leaf: Leaf, watch: Watch, link: Link, list: ListChecks,
   pencil: Pencil, image: ImageIcon, bulb: Lightbulb, target: Target, sunrise: Sunrise, bike: Bike, copy: Copy, arrow: ArrowRight,
-  key: KeyRound, shield: Shield, star: Star, users: Users, pin: MapPin, receipt: Receipt, palette: Palette, work: Briefcase, video: CirclePlay, hide: EyeOff,
+  key: KeyRound, shield: Shield, star: Star, users: Users, pin: MapPin, receipt: Receipt, palette: Palette, work: Briefcase, video: CirclePlay, hide: EyeOff, search: Search,
 };
 
 const attrs = (o) => Object.entries(o).map(([k, v]) => `${k}="${v}"`).join(' ');
@@ -88,6 +88,8 @@ export function sheet(html, { title = '', onClose, full = false } = {}) {
     </section>`;
   document.body.appendChild(root);
   requestAnimationFrame(() => root.classList.add('open'));
+  // une fois ouverte, la feuille ne rejoue plus ses animations d'entrée quand son contenu est redessiné
+  setTimeout(() => root.classList.add('settled'), 1000);
   const close = () => {
     root.classList.remove('open');
     setTimeout(() => root.remove(), 250);

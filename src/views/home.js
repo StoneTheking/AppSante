@@ -1,5 +1,6 @@
 // Accueil : score, prochaine étape, actions rapides, plan de la journée, nutrition, analyses.
 import * as store from '../store.js';
+import * as S from '../science.js';
 import * as C from '../coach.js';
 import { summary, taste, refreshReminders } from '../context.js';
 import * as SL from '../sleep.js';
@@ -137,13 +138,16 @@ function sleepCard(st) {
     </section>`;
   }
   const h = new Date().getHours();
-  if (h >= 6 && h < 19) return `<div class="card next"><span class="icon-badge" style="background:color-mix(in srgb,var(--c-sleep) 16%,transparent);color:var(--c-sleep)">${icon('moon')}</span><div><div class="ttl">Je vais dormir</div><div class="tiny muted">Coucher visé ${esc(p.bedTime)}</div></div><div class="row" style="flex-wrap:nowrap;gap:6px"><button class="icon-btn" data-sleep-info aria-label="Bien dormir">${icon('info', 16)}</button><button class="btn sm" style="background:var(--c-sleep);color:#0b0f24" data-sleep aria-label="Je vais dormir">${icon('moon', 16)}</button></div></div>`;
+  const wk = S.sleepWeek(st.days, p, Array.from({ length: 7 }, (_, i) => store.dayKey(i - 6)));
+  const debtTxt = wk.noted >= 2 ? (wk.debt > 60 ? ` · ${fmtMin(wk.debt)} de retard cette semaine` : ' · semaine : besoin couvert') : '';
+  if (h >= 6 && h < 19) return `<div class="card next"><span class="icon-badge" style="background:color-mix(in srgb,var(--c-sleep) 16%,transparent);color:var(--c-sleep)">${icon('moon')}</span><div><div class="ttl">Je vais dormir</div><div class="tiny muted">Coucher visé ${esc(p.bedTime)}${debtTxt}</div></div><div class="row" style="flex-wrap:nowrap;gap:6px"><button class="icon-btn" data-sleep-info aria-label="Bien dormir">${icon('info', 16)}</button><button class="btn sm" style="background:var(--c-sleep);color:#0b0f24" data-sleep aria-label="Je vais dormir">${icon('moon', 16)}</button></div></div>`;
   const toTarget = SL.minutesToTarget(p.bedTime);
   const reg = SL.regularity();
   const status = toTarget > 30 ? `Coucher visé à ${esc(p.bedTime)}, dans ${Math.floor(toTarget / 60) ? Math.floor(toTarget / 60) + ' h ' : ''}${toTarget % 60} min.` : toTarget >= -30 ? `C’est l’heure visée (${esc(p.bedTime)}) : parfait pour la régularité.` : `${Math.abs(toTarget)} min après ton heure visée (${esc(p.bedTime)}).`;
   return `<section class="sleep-card">
     <div class="between"><span class="tiny muted" style="font-weight:700;letter-spacing:.08em;text-transform:uppercase">Sommeil</span>${reg != null ? `<span class="tiny muted">régularité ±${Math.round(reg)} min</span>` : ''}</div>
     <div style="font-size:1.15rem;font-weight:700;margin:6px 0 2px">${status}</div>
+    ${debtTxt ? `<div class="small muted">${debtTxt.slice(3).replace(/^./, (c) => c.toUpperCase())}${wk.debt > 60 ? ' : ce soir, couche-toi un peu plus tôt.' : '.'}</div>` : ''}
     <div class="sleep-row" style="margin-top:14px"><button class="btn" style="flex:1" data-sleep>${icon('moon', 18)} Je vais dormir</button><button class="btn ghost info" data-sleep-info aria-label="Les meilleures conditions pour dormir">${icon('info', 18)}</button></div>
   </section>`;
 }
@@ -169,20 +173,23 @@ function addWater(btn, ml, ctx) {
 }
 
 // Explication du score d'hygiène de vie : piliers, poids, données utilisées, action prioritaire.
+// Détail du score : une ligne par pilier, le détail s'ouvre au toucher.
 export function openScore(sm) {
   const rows = C.scoreBreakdown(sm);
   const g = sm.scores.global;
   const [word, col] = C.scoreWord(g);
+  const counted = rows.filter((r) => r.weight && r.v != null).sort((a, b) => a.v - b.v);
+  const focus = counted[0]?.v < 80 ? counted[0] : null;
   sheet(`
-    <div class="between" style="align-items:center"><div><div style="font-size:2.6rem;font-weight:800;line-height:1">${g ?? '–'}<small style="font-size:1rem;color:var(--muted)">/100</small></div><span class="score-word" style="background:color-mix(in srgb,${col} 18%,transparent);color:${col}">${word}</span></div>
-      <p class="small muted" style="max-width:60%;margin:0">Moyenne pondérée de 4 piliers sur les 7 derniers jours (l’humeur est suivie à part : elle découle des autres). Plus de 80 : excellent · 65–79 : bon · 50–64 : à améliorer.</p></div>
-    ${rows.map((r) => { const [w, c] = C.scoreWord(r.v); return `<div class="pillar">
-      <div class="between"><b>${icon(DOMAIN[r.k].icon, 16)} ${DOMAIN[r.k].label} <span class="tiny muted">· ${r.weight ? `compte pour ${Math.round(r.weight * 100)} %` : 'suivie, ne compte pas'}</span></b><span style="font-weight:800;color:${c}">${r.v ?? '–'}</span></div>
-      <div class="bar-mini"><div style="width:${r.v ?? 0}%;background:${c}"></div></div>
-      <div class="small" style="margin-top:6px">${esc(r.what)}</div>
-      <div class="tiny muted">${esc(r.how)}</div>
-      ${r.v != null && r.v < 80 ? `<div class="tiny" style="color:var(--primary);font-weight:650;margin-top:4px">→ ${esc(r.tip)}</div>` : ''}
-      ${srcLinks(r.src)}</div>`; }).join('')}`, { title: 'Ton score d’hygiène de vie', full: true });
+    <div class="score-top"><div class="score-big" style="color:${col}">${g ?? '–'}</div><div><span class="score-word" style="background:color-mix(in srgb,${col} 18%,transparent);color:${col}">${word}</span><div class="tiny muted" style="margin-top:4px">sur 100 · 7 derniers jours</div></div></div>
+    ${focus ? `<div class="note" style="margin:12px 0 4px">${icon('target', 18)}<span><b>Priorité : ${esc(DOMAIN[focus.k].label.toLowerCase())}.</b> ${esc(focus.tip)}</span></div>` : ''}
+    <div class="score-rows">${rows.map((r) => { const [, c] = C.scoreWord(r.v); return `<details class="score-row"><summary>
+      <span class="sr-ic" style="color:${DOMAIN[r.k].color || 'var(--text-2)'}">${icon(DOMAIN[r.k].icon, 16)}</span>
+      <span class="sr-l">${DOMAIN[r.k].label}<small>${r.weight ? `${Math.round(r.weight * 100)} %` : 'hors score'}</small></span>
+      <span class="sr-bar"><i style="width:${r.v ?? 0}%;background:${c}"></i></span>
+      <b style="color:${r.v == null ? 'var(--muted)' : c}">${r.v ?? '–'}</b></summary>
+      <div class="sr-more"><p class="small" style="margin:0">${esc(r.what)}</p><p class="tiny muted" style="margin:4px 0 0">${esc(r.how)}</p>${r.v != null && r.v < 80 && r !== focus ? `<p class="tiny" style="color:var(--primary);font-weight:650;margin:4px 0 0">→ ${esc(r.tip)}</p>` : ''}${srcLinks(r.src)}</div></details>`; }).join('')}</div>
+    <p class="tiny muted" style="margin-top:12px">Touche un pilier pour le détail. 80 et plus : excellent · 65–79 : bon · 50–64 : à améliorer. L’humeur est suivie mais ne compte pas : elle découle des autres piliers.</p>`, { title: 'Hygiène de vie', full: true });
 }
 
 function envCard(env, location) {
@@ -219,7 +226,7 @@ function hero(sm, st) {
       <div class="hero-bars">${keys.map((k) => `<div class="hb"><span>${icon(DOMAIN[k].icon, 13)} ${DOMAIN[k].label}</span><div class="bar-mini"><div style="width:${sm.scores[k] ?? 0}%;background:${DOMAIN[k].color}"></div></div><b>${sm.scores[k] ?? '–'}</b></div>`).join('')}</div>`;
   }
   return `<section class="hero hero-${style}">
-    <div class="hero-kicker"><span>Hygiène de vie · 7 jours</span><span class="row" style="gap:10px;flex-wrap:nowrap"><button class="hero-style" data-hero-style aria-label="Changer de présentation">${icon('palette', 13)}</button><span class="tapme">${icon('info', 13)} comprendre</span></span></div>
+    <div class="hero-kicker"><span style="white-space:nowrap">Hygiène de vie · 7 j</span><span class="row" style="gap:10px;flex-wrap:nowrap"><button class="hero-style" data-hero-style aria-label="Changer de présentation">${icon('palette', 13)}</button><span class="tapme" aria-label="Comprendre le score">${icon('info', 15)}</span></span></div>
     ${main}
     <div class="verdict">${icon('sparkles', 15)}<span>${esc(headline(sm, st.profile))}</span></div>
   </section>`;

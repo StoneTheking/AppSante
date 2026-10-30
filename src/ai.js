@@ -1,6 +1,8 @@
-// Intégration Claude : analyse de photos de repas, lecture de captures d'écran, coach conversationnel.
-// La clé API est stockée uniquement sur l'appareil et envoyée directement à l'API Anthropic.
+// Intégration IA : analyse de photos de repas, lecture de captures d'écran, coach conversationnel.
+// Claude (clé Anthropic, payante à l'usage) ou Google Gemini (clé gratuite) : la clé est stockée sur l'appareil
+// et envoyée directement au fournisseur choisi.
 import { SOURCES, EVIDENCE_TEXT, evidenceText } from './science.js';
+import { geminiClient, isGeminiKey, GeminiError } from './gemini.js';
 
 const FOOD_EVIDENCE = evidenceText(['Alimentation', 'Horaires des repas']);
 
@@ -13,8 +15,11 @@ export const MODELS = [
   { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5 (le plus économique)' },
 ];
 
+export const provider = (apiKey) => (!apiKey ? null : isGeminiKey(apiKey) ? 'gemini' : 'claude');
+
 async function client(apiKey) {
-  if (!apiKey) throw new Error('Ajoute ta clé API Anthropic dans Profil → Intelligence artificielle pour utiliser cette fonction.');
+  if (!apiKey) throw new Error('Ajoute une clé IA dans Profil → Intelligence artificielle (une clé Google Gemini est gratuite).');
+  if (isGeminiKey(apiKey)) return geminiClient(apiKey);
   Anthropic ||= (await import('@anthropic-ai/sdk')).default;
   return new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
 }
@@ -25,7 +30,7 @@ function fallbackParams(model) {
 }
 
 export function friendlyError(e) {
-  if (!Anthropic) return e?.message || String(e);
+  if (e instanceof GeminiError || !Anthropic) return e?.message || String(e);
   if (e instanceof Anthropic.AuthenticationError) return 'Clé API invalide. Vérifie-la dans Profil.';
   if (e instanceof Anthropic.PermissionDeniedError) return 'Cette clé n’a pas accès à ce modèle.';
   if (e instanceof Anthropic.RateLimitError) return 'Trop de requêtes, réessaie dans une minute.';

@@ -42,7 +42,8 @@ export function summarize({ profile, days, meals, weights, env, household = [], 
   const p = { ...profile, weight: latestWeight };
 
   const w = {
-    steps: avg(week.map((k) => d(k).steps)),
+    // journée en cours comptée seulement le soir (à 8 h, 0 pas ne dit rien) ; 0 pas du podomètre = pas de relevé
+    steps: avg(week.filter((k) => k !== todayKey || new Date().getHours() >= 20).map((k) => (d(k).steps === 0 && d(k).stepsSource === 'téléphone' ? null : d(k).steps))),
     sleepH: avg(week.map(sleepH)),
     sleepQ: avg(week.map((k) => d(k).sleepQuality)),
     bedVar: S.bedtimeVariability(week.map((k) => d(k).bed)),

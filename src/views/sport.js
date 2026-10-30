@@ -1,4 +1,5 @@
 // Sport : recommandation du jour, chronomètre, semaine type, historique des séances.
+import * as V from '../videos.js';
 import * as store from '../store.js';
 import * as C from '../coach.js';
 import * as SP from '../sport.js';
@@ -71,7 +72,7 @@ export function render(view, ctx) {
       </div>
       <div style="height:10px"></div>
       ${adv.why.slice(0, 1).map((w) => `<div class="small" style="margin:6px 0;color:var(--text-2)">• ${esc(w)}</div>`).join('')}
-      ${srcLinks([...adv.src, 'sorensen2020', 'knaier2021', 'bruggisser2023', ...(adv.ad?.note ? ['foster2001', 'greig2020'] : [])])}
+      ${srcLinks([...adv.src, 'borg1982', 'knaier2021', 'bruggisser2023', ...(adv.ad?.note ? ['foster2001', 'greig2020'] : [])])}
       ${cur ? '' : `<button class="btn block" id="guided" style="margin-top:12px">${icon('list', 18)} Voir la séance et ses exercices</button>
       <div class="grid2" style="margin-top:8px"><button class="btn ghost" id="go">${icon('zap', 18)} Chrono seul</button><button class="btn ghost" id="other">${icon('plus', 18)} Autre séance</button></div>`}
     </div>
@@ -176,7 +177,7 @@ const level = (st) => st.profile.fitnessLevel || 'debutant';
 // Exercices personnalisés : { [libellé]: { video: url, hidden: true } }
 const exCustom = () => store.get().exerciseCustom || {};
 const hiddenEx = () => new Set(Object.entries(exCustom()).filter(([, v]) => v.hidden).map(([k]) => k));
-const videoFor = (label) => exCustom()[label]?.video || W.tutoUrl(label);
+const videoFor = (label) => exCustom()[label]?.video || V.DEFAULT_VIDEOS[label] || W.tutoUrl(label);
 const setEx = (label, patch) => store.update((s) => { s.exerciseCustom = s.exerciseCustom || {}; const v = { ...(s.exerciseCustom[label] || {}), ...patch }; for (const k of Object.keys(v)) if (v[k] == null) delete v[k]; if (Object.keys(v).length) s.exerciseCustom[label] = v; else delete s.exerciseCustom[label]; });
 
 // Choisir sa propre vidéo pour un exercice (lien copié depuis YouTube ou ailleurs).
@@ -204,6 +205,32 @@ function openVideoPicker(label, done) {
   };
   $('#reset', body)?.addEventListener('click', () => { setEx(label, { video: null }); body.close(); });
 }
+// Toutes les vidéos d'exercices au même endroit, avec import d'une liste « Exercice | lien ».
+export function openVideoList(done) {
+  const body = sheet('<div id="vl"></div>', { title: 'Vidéos des exercices', full: true, onClose: done });
+  const el = $('#vl', body);
+  const draw = () => {
+    const c = exCustom();
+    const n = [...V.NEEDS_VIDEO].filter((l) => c[l]?.video).length;
+    el.innerHTML = `<p class="small muted" style="margin-top:0">Une vidéo n’est proposée que pour les exercices où la technique compte. Sans vidéo choisie, l’appli ouvre une recherche YouTube. <b>${n}/${V.NEEDS_VIDEO.size}</b> choisies.</p>
+      <details class="card" style="padding:12px;margin-bottom:12px"><summary class="small" style="font-weight:600">${icon('upload', 14)} Importer une liste (Exercice | lien)</summary>
+        <p class="tiny muted">Colle ici le contenu du fichier « videos-exercices.txt » une fois rempli.</p>
+        <textarea id="imp" rows="5" placeholder="Pompes | https://youtu.be/…"></textarea>
+        <button class="btn sm block" id="imp-ok" style="margin-top:8px">Importer</button></details>
+      ${V.VIDEO_GROUPS.map(([g, xs]) => `<h3 style="font-size:.9rem;margin:14px 0 4px">${esc(g)}</h3>${xs.map((l) => `<button class="list-item vid-row" data-vl="${esc(l)}"><span class="icon-badge" style="color:${c[l]?.video ? 'var(--good)' : 'var(--muted)'}">${icon(c[l]?.video ? 'video' : 'search', 16)}</span><span class="small" style="text-align:left">${esc(l)}</span><span class="tiny muted">${c[l]?.video ? 'ma vidéo' : 'recherche'}</span></button>`).join('')}`).join('')}`;
+    $$('[data-vl]', el).forEach((b) => (b.onclick = () => openVideoPicker(b.dataset.vl, draw)));
+    $('#imp-ok', el).onclick = () => {
+      const m = V.parseVideoList($('#imp', el).value);
+      const k = Object.keys(m).length;
+      if (!k) return toast('Aucune ligne « Exercice | https://… » reconnue');
+      Object.entries(m).forEach(([l, u]) => setEx(l, { video: u }));
+      toast(`${k} vidéo${k > 1 ? 's' : ''} importée${k > 1 ? 's' : ''} 🎬`);
+      draw();
+    };
+  };
+  draw();
+}
+
 const equip = (st) => st.profile.equipment || 'aucun';
 const fmtDur = (sec) => (sec >= 60 ? `${Math.floor(sec / 60)} min${sec % 60 ? ` ${sec % 60} s` : ''}` : `${sec} s`);
 
@@ -229,7 +256,7 @@ export function openSession(ctx, view, { activity, minutes, intensity, dayIndex 
       ${session.blocks.map((b) => `<div class="card" style="margin:12px 0;padding:14px">
         <div class="between"><b>${esc(b.title)}</b><span class="tiny muted">${W.minutesOf([b])} min</span></div>
         ${b.note ? `<p class="tiny muted" style="margin:4px 0 6px">${esc(b.note)}</p>` : ''}
-        ${b.items.map((it) => `<details style="padding:8px 0;border-top:1px solid var(--line)"><summary><span class="small" style="font-weight:600">${esc(it.label)}</span><span class="tiny muted" style="white-space:nowrap;margin-left:8px">${it.sets && !b.circuit ? `${it.sets} × ` : ''}${it.kind === 'reps' ? `${esc(String(it.reps))}${String(it.reps).includes('m') ? '' : ' rép.'}` : it.seconds ? fmtDur(it.seconds) : ''}${it.rest && !b.circuit ? ` · repos ${it.rest} s` : ''}</span></summary>${it.detail ? `<p class="tiny muted" style="margin:6px 0 0">${esc(it.detail)}</p>` : ''}<div class="ex-actions">${W.hasTuto(it) || exCustom()[it.label]?.video ? `<a class="tuto" href="${esc(videoFor(it.label))}" target="_blank" rel="noopener">▶ ${exCustom()[it.label]?.video ? 'Ma vidéo' : 'Tutos vidéo'}</a><button class="link tiny" data-vid="${esc(it.label)}">${icon('pencil', 12)} ${exCustom()[it.label]?.video ? 'Changer' : 'Choisir ma vidéo'}</button>` : ''}<button class="link tiny" data-hide-ex="${esc(it.label)}" style="color:var(--bad)">${icon('trash', 12)} Retirer</button></div></details>`).join('')}
+        ${b.items.map((it) => `<details style="padding:8px 0;border-top:1px solid var(--line)"><summary><span class="small" style="font-weight:600">${esc(it.label)}${W.hasTuto(it) || exCustom()[it.label]?.video ? ` <span style="color:var(--c-move);vertical-align:-2px">${icon('video', 13)}</span>` : ''}</span><span class="tiny muted" style="white-space:nowrap;margin-left:8px">${it.sets && !b.circuit ? `${it.sets} × ` : ''}${it.kind === 'reps' ? `${esc(String(it.reps))}${String(it.reps).includes('m') ? '' : ' rép.'}` : it.seconds ? fmtDur(it.seconds) : ''}${it.rest && !b.circuit ? ` · repos ${it.rest} s` : ''}</span></summary>${it.detail ? `<p class="tiny muted" style="margin:6px 0 0">${esc(it.detail)}</p>` : ''}<div class="ex-actions">${W.hasTuto(it) || exCustom()[it.label]?.video ? `<a class="tuto" href="${esc(videoFor(it.label))}" target="_blank" rel="noopener">▶ ${exCustom()[it.label]?.video ? 'Ma vidéo' : 'Tutos vidéo'}</a><button class="link tiny" data-vid="${esc(it.label)}">${icon('pencil', 12)} ${exCustom()[it.label]?.video ? 'Changer' : 'Choisir ma vidéo'}</button>` : ''}<button class="link tiny" data-hide-ex="${esc(it.label)}" style="color:var(--bad)">${icon('trash', 12)} Retirer</button></div></details>`).join('')}
       </div>`).join('')}
       ${hidden.size ? `<details class="small" style="margin:8px 0"><summary class="muted">${hidden.size} exercice${hidden.size > 1 ? 's' : ''} retiré${hidden.size > 1 ? 's' : ''}</summary>${[...hidden].map((l) => `<div class="between" style="padding:6px 0;border-top:1px solid var(--line)"><span class="small">${esc(l)}</span><button class="btn sm soft" data-unhide-ex="${esc(l)}">Rétablir</button></div>`).join('')}</details>` : ''}
       ${srcLinks([...session.src, ...(ad.note ? ['foster2001', 'greig2020'] : [])])}
@@ -335,7 +362,9 @@ export function openMySports(done) {
       ${sportTimeHtml(p, 'data-sp')}
       <label class="lbl">Matériel</label>
       <div class="seg">${[['aucun', 'Sans matériel'], ['halteres', 'Haltères'], ['salle', 'Salle']].map(([v, l]) => `<button data-equip="${v}" class="${(p.equipment || 'aucun') === v ? 'on' : ''}">${l}</button>`).join('')}</div>
-      <button class="btn block" id="ok" style="margin-top:16px">${icon('check', 18)} Terminé</button>`;
+      <button class="btn ghost block" id="vids" style="margin-top:16px">${icon('video', 18)} Vidéos des exercices</button>
+      <button class="btn block" id="ok" style="margin-top:8px">${icon('check', 18)} Terminé</button>`;
+    $('#vids', el).onclick = () => openVideoList();
     bindSportPrefs(el, (id, v) => store.update((s) => { Object.assign(s.profile, applySportPref(s.profile, id, v)); }));
     $$('[data-sp]', el).forEach((b) => (b.onclick = () => { store.update((s) => { s.profile[b.dataset.sp] = b.dataset.sp === 'sportMinutes' ? Number(b.dataset.v) : b.dataset.v; }); draw(); }));
     $$('[data-equip]', el).forEach((b) => (b.onclick = () => { store.update((s) => { s.profile.equipment = b.dataset.equip; }); draw(); }));
@@ -347,7 +376,7 @@ export function openMySports(done) {
 // Mode guidé : une étape à la fois, minuteur pour les exercices chronométrés et les repos.
 function guided(ctx, view, session, activity, intensity) {
   const steps = W.flatten(session);
-  let i = 0, left = 0, paused = false, tick = null;
+  let i = 0, left = 0, paused = false, tick = null, lastPct = 0;
   if (!store.get().workoutNow) SP.startWorkout(activity, intensity);
   // écran allumé pendant la séance (repris au retour dans l'appli)
   let lock = null;
@@ -370,7 +399,7 @@ function guided(ctx, view, session, activity, intensity) {
     const next = steps[i + 1];
     const pct = Math.round((i / steps.length) * 100);
     el.innerHTML = `
-      <div class="meter" style="margin-top:0"><div class="between tiny muted"><span>${esc(s.block)}</span><span>étape ${i + 1}/${steps.length}</span></div><div class="track"><div class="fill" style="width:${pct}%;background:var(--c-move)"></div></div></div>
+      <div class="meter" style="margin-top:0"><div class="between tiny muted"><span>${esc(s.block)}</span><span>étape ${i + 1}/${steps.length}</span></div><div class="track"><div class="fill" id="gd-fill" style="width:${lastPct}%;background:var(--c-move);animation:none"></div></div></div>
       <div style="text-align:center;padding:18px 0 8px">
         ${s.isRest ? '' : s.sets > 1 ? `<div class="tiny muted" style="font-weight:700;letter-spacing:.08em;text-transform:uppercase">${s.block.startsWith('Circuit') ? 'Tour' : 'Série'} ${s.set} / ${s.sets}</div>` : ''}
         <div style="font-size:1.35rem;font-weight:750;margin:6px 0">${esc(s.label)}</div>
@@ -385,6 +414,9 @@ function guided(ctx, view, session, activity, intensity) {
         <button class="btn" id="next" style="flex:2;background:var(--c-move);color:#1a0d02">${s.kind === 'reps' ? `${icon('check', 18)} Série faite` : i === steps.length - 1 ? 'Terminer' : `Passer ${icon('right', 18)}`}</button>
       </div>
       <button class="btn ghost block" id="finish" style="margin-top:10px">${icon('check', 18)} Terminer et enregistrer la séance</button>`;
+    // la barre avance depuis sa position précédente au lieu de repartir de zéro
+    requestAnimationFrame(() => { const f = $('#gd-fill', el); if (f) f.style.width = `${pct}%`; });
+    lastPct = pct;
     $('#prev', el).onclick = () => go(i - 1);
     $('#next', el).onclick = () => go(i + 1);
     $('#pause', el)?.addEventListener('click', () => { paused = !paused; draw(); });

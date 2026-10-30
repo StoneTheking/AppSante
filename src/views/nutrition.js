@@ -23,8 +23,10 @@ const SLOT_LABEL = { ...P.SLOT_LABEL, grignotage: 'Grignotage' };
 const verdictOf = (q) => (q >= 70 ? 'bon' : q >= 45 ? 'moyen' : 'a_limiter');
 const badge = (v) => (v ? `<span class="badge ${v}">${VERDICT[v]}</span>` : '');
 
+let shownSeg = null;
 export function render(view, ctx) {
-  view.innerHTML = `${segmented('nut', [['jour', 'Jour'], ['historique', 'Historique'], ['menus', 'Menus'], ['courses', 'Courses']], seg)}<div id="nut-body" class="view-enter"></div>`;
+  view.innerHTML = `${segmented('nut', [['jour', 'Jour'], ['historique', 'Historique'], ['menus', 'Menus'], ['courses', 'Courses']], seg)}<div id="nut-body" class="${seg !== shownSeg ? 'view-enter' : ''}"></div>`;
+  shownSeg = seg; // animations d'entrée seulement au changement d'onglet, pas à chaque mise à jour
   $$('[data-seg="nut"]', view).forEach((b) => (b.onclick = () => { seg = b.dataset.v; render(view, ctx); }));
   const body = $('#nut-body', view);
   ({ jour: renderDay, historique: renderHistory, menus: renderMenus, courses: renderShop })[seg](body, ctx, view);
@@ -238,7 +240,7 @@ export function openRecipe(m) {
         <ol class="small" style="padding-left:20px;line-height:1.6">${x.steps.map((s) => `<li>${esc(s.replace(/^\d+[.)]\s*/, ''))}</li>`).join('')}</ol>
         ${x.tip ? `<div class="note">${icon('bulb', 18)}<span>${esc(x.tip)}</span></div>` : ''}
         <button class="btn soft block" id="to-shop" style="margin-top:10px">${icon('cart', 18)} Ajouter les ingrédients aux courses</button>`
-      : `<button class="btn block" id="ask" style="margin-top:14px">${icon('sparkles', 18)} Obtenir la recette</button>${!st.settings.apiKey ? `<div class="note warn" style="margin-top:10px">${icon('key', 18)}<span>Ajoute ta clé API dans Profil pour obtenir les recettes.</span></div>` : ''}`}`;
+      : `<button class="btn block" id="ask" style="margin-top:14px">${icon('sparkles', 18)} Obtenir la recette</button>${!st.settings.apiKey ? `<div class="note warn" style="margin-top:10px">${icon('key', 18)}<span>Ajoute une clé IA dans Profil pour obtenir les recettes (gratuite avec Google Gemini).</span></div>` : ''}`}`;
     $('#ask', el)?.addEventListener('click', async () => {
       el.innerHTML = `<div class="empty"><span class="spinner"></span><p>Le coach écrit la recette…</p></div>`;
       try {
@@ -299,7 +301,7 @@ function openAiPlanner(done, { pantryFirst = store.get().pantry.length > 0, scop
     <label class="lbl">Temps de cuisine max par repas</label><select id="time"><option value="15">15 min</option><option value="30" selected>30 min</option><option value="45">45 min</option><option value="60">1 h</option></select>
     ${st.pantry.length ? `<label class="between" style="margin-top:14px;flex-wrap:nowrap"><span class="small">Cuisiner d’abord ce que j’ai déjà (${st.pantry.length} produits)</span><span class="switch"><input type="checkbox" id="pf" ${pantryFirst ? 'checked' : ''}><span></span></span></label>` : ''}
     <label class="lbl">Envies, contraintes (facultatif)</label><textarea id="wish" placeholder="ex. batch cooking le dimanche, pas de poisson le lundi…"></textarea>
-    ${!st.settings.apiKey ? `<div class="note" style="margin-top:12px">${icon('key', 18)}<span>Sans clé API, les menus sont composés sur ton téléphone à partir de plats équilibrés (tes goûts et allergies sont respectés ; budget, temps et envies ne sont pas pris en compte). Avec une clé API, le coach IA les personnalise entièrement.</span></div>` : ''}
+    ${!st.settings.apiKey ? `<div class="note" style="margin-top:12px">${icon('key', 18)}<span>Sans clé API, les menus sont composés sur ton téléphone à partir de plats équilibrés (tes goûts et allergies sont respectés ; budget, temps et envies ne sont pas pris en compte). Avec une clé IA (gratuite avec Google Gemini, voir Profil), le coach les personnalise entièrement.</span></div>` : ''}
     <button class="btn block" id="go" style="margin-top:16px">${icon('sparkles', 18)} <span id="go-l">${sc === 'day' ? 'Créer le menu du jour' : 'Créer mes menus'}</span></button>
     <div id="st" style="margin-top:12px"></div>`, { title: 'Mes menus' });
   $$('[data-sc]', body).forEach((b) => (b.onclick = () => {

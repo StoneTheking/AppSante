@@ -1,3 +1,5 @@
+import { NEEDS_VIDEO } from './videos.js';
+
 // Séances détaillées : bibliothèque d'exercices et générateur selon activité, niveau, matériel, objectif et durée.
 // Repères : ACSM 2009 (séries, répétitions, repos), Schoenfeld 2016/2017 (fréquence, volume),
 // Helgerud 2007 et Gibala 2012 (fractionné), Soligard 2008 et Lauersen 2014 (échauffement, prévention).
@@ -106,9 +108,9 @@ function intervalSession({ level, equipment, activity, minutes, zones }) {
   }
   const mode = activity === 'velo' ? 'pédalage' : activity === 'natation' ? 'nage' : 'course';
   if (level === 'debutant') {
-    return [warm, block('10 × 1 minute', [step(`1 min ${mode} rapide (FC ${zones.vig[0]}–${zones.vig[1]})`, 60, 'Effort soutenu mais contrôlé.', { sets: 10, rest: 60 })], '1 min de récupération très facile entre chaque. Format court validé pour débuter (Gibala).'), cool];
+    return [warm, block('10 × 1 minute', [step(`1 min ${mode} rapide`, 60, 'Effort 7–8 sur 10, soutenu mais contrôlé.', { sets: 10, rest: 60 })], '1 min de récupération très facile entre chaque. Format court validé pour débuter (Gibala).'), cool];
   }
-  return [warm, block('4 × 4 minutes', [step(`4 min ${mode} à 90–95 % de ta FC max (${Math.round(zones.max * 0.9)}–${Math.round(zones.max * 0.95)} bpm)`, 240, 'Allure difficile mais tenable 4 minutes ; tu ne peux pas parler.', { sets: 4, rest: 180 })], '3 min de récupération active (trottinement ou pédalage léger) entre les intervalles (protocole Helgerud).'), cool];
+  return [warm, block('4 × 4 minutes', [step(`4 min ${mode} très soutenu`, 240, 'Effort 8–9 sur 10 : difficile mais tenable 4 minutes.', { sets: 4, rest: 180 })], '3 min de récupération active (trottinement ou pédalage léger) entre les intervalles (protocole Helgerud).'), cool];
 }
 
 function enduranceSession({ level, activity, minutes, zones, intensity }) {
@@ -116,7 +118,7 @@ function enduranceSession({ level, activity, minutes, zones, intensity }) {
   const z = intensity === 'intense' ? zones.vig : zones.mod;
   if (activity === 'course' && level === 'debutant') {
     const reps2 = Math.max(4, Math.round(main / 3));
-    return [block('Échauffement', [step('Marche rapide', 300)]), block(`Course-marche × ${reps2}`, [step('1 min 30 de course très facile', 90, 'Tu dois pouvoir parler. Si tu es essoufflé, ralentis.', { sets: reps2, rest: 90 })], 'Alterne avec 1 min 30 de marche. Progression : +30 s de course par semaine.'), block('Retour au calme', COOLDOWN.map(([l, s]) => step(l, s)))];
+    return [block('Échauffement', [step('Marche rapide', 300)]), block(`Course-marche × ${reps2}`, [step('1 min 30 de course très facile', 90, 'Effort 4–5 sur 10. Si tu es essoufflé, ralentis.', { sets: reps2, rest: 90 })], 'Alterne avec 1 min 30 de marche. Progression : +30 s de course par semaine.'), block('Retour au calme', COOLDOWN.map(([l, s]) => step(l, s)))];
   }
   if (activity === 'natation') {
     const reps2 = level === 'debutant' ? 8 : level === 'avance' ? 10 : 6;
@@ -124,7 +126,7 @@ function enduranceSession({ level, activity, minutes, zones, intensity }) {
     return [block('Échauffement', [step('200 m nage libre facile (mélange de nages)', 300), step('4 × 25 m éducatifs (battements, rattrapé)', 180)]), block(`${reps2} × ${dist} m`, [reps(`${dist} m crawl ou brasse, allure régulière`, `${dist} m`, 'Respiration régulière, allonge la coulée.', { sets: reps2, rest: 30 })], '30 s de repos au bord entre chaque.'), block('Retour au calme', [step('100 m dos crawlé ou brasse lente', 180), step('Étirements des épaules au bord', 120)])];
   }
   const label = { course: 'Course', velo: 'Vélo', marche: 'Marche rapide', randonnee: 'Randonnée' }[activity] || 'Activité';
-  const items = [step(`${label} à allure ${intensity === 'intense' ? 'soutenue' : 'modérée'} (FC ${z[0]}–${z[1]} bpm)`, main * 60, intensity === 'intense' ? 'Tu ne peux dire que quelques mots.' : 'Tu peux parler mais pas chanter.')];
+  const items = [step(`${label} à allure ${intensity === 'intense' ? 'soutenue' : 'modérée'}`, main * 60, intensity === 'intense' ? 'Effort 7–8 sur 10.' : 'Effort 5–6 sur 10 : respiration plus rapide mais régulière.')];
   if (level !== 'debutant' && ['course', 'velo'].includes(activity) && main >= 25) items.splice(1, 0, step('Option : 3 × 3 min un peu plus vite au milieu de la séance', 0, 'Récupère 2 min entre chaque, toujours en mouvement.'));
   return [block('Échauffement', [step(`${label} très facile`, 300), step('Mobilité des hanches et chevilles', 60)]), block('Corps de séance', items), block('Retour au calme', COOLDOWN.map(([l, s]) => step(l, s)))];
 }
@@ -172,8 +174,8 @@ function sportSession({ activity, minutes }) {
 
 // Lien vers des tutoriels vidéo YouTube pour un exercice (recherche, donc toujours à jour).
 export const tutoUrl = (label) => `https://www.youtube.com/results?search_query=${encodeURIComponent(`${label.replace(/\(.*?\)/g, '').trim()} tuto exercice`)}`;
-const NO_TUTO = /^(Marche|Footing|Pédalage|Allure|Course|Vélo|Randonnée|Respiration|Repos|Récupération|Activité|Jeu|Match|Danse$|Option)/;
-export const hasTuto = (it) => !NO_TUTO.test(it.label);
+// vidéo seulement là où la technique compte (voir videos.js)
+export const hasTuto = (it) => NEEDS_VIDEO.has(it.label);
 
 // Point d'entrée : construit la séance du jour (ou d'un jour de la semaine type).
 // hidden : libellés d'exercices que l'utilisateur a retirés.
@@ -192,7 +194,7 @@ export function buildSession({ activity, minutes = 30, intensity = 'moderee', le
   } else if (['course', 'velo', 'natation', 'marche', 'randonnee'].includes(activity)) {
     blocks = intensity === 'intense' && activity !== 'marche' ? intervalSession({ level, equipment: 'salle', activity, minutes, zones }) : enduranceSession({ level, activity, minutes, zones, intensity });
     title = { course: 'Course à pied', velo: 'Vélo', natation: 'Natation', marche: 'Marche rapide', randonnee: 'Randonnée' }[activity];
-    src = ['who2020', 'tanaka2001', 'sorensen2020'];
+    src = ['who2020', 'borg1982'];
   } else if (activity === 'yoga') {
     blocks = yogaSession({ minutes });
     title = 'Mobilité & yoga';

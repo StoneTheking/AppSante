@@ -114,10 +114,16 @@ export function render(view, ctx) {
 
     <div class="section-title">Intelligence artificielle</div>
     <div class="card">
-      <p class="small muted" style="margin-top:0">Clé à créer sur <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> (stockée sur ce téléphone). L’API se paie à l’usage, à part de l’abonnement Claude Pro : environ 1 centime par photo de repas. Sans clé, l’appli marche quand même (menus, scanner, plan, sport) ; seules l’analyse photo, les recettes et le coach IA en ont besoin.</p>
-      <label class="lbl">Clé API</label><input id="key" type="password" autocomplete="off" placeholder="sk-ant-…" value="${esc(st.settings.apiKey)}">
-      <label class="between" style="flex-wrap:nowrap;margin-top:14px"><span><b class="small">Recherche scientifique en ligne</b><div class="tiny muted">Le coach peut consulter PubMed, Cochrane, OMS, ANSES, Lancet, BMJ… (coût API légèrement supérieur)</div></span><span class="switch"><input type="checkbox" id="web" ${st.settings.webSearch ? 'checked' : ''}><span></span></span></label>
-      <label class="lbl">Modèle</label><select id="model">${AI.MODELS.map((m) => `<option value="${m.id}" ${st.settings.model === m.id ? 'selected' : ''}>${m.label}</option>`).join('')}</select>
+      <p class="small" style="margin-top:0">Pour l’analyse photo, les recettes et le coach. Sans clé, l’appli marche quand même (menus, scanner, recherche de produits, plan, sport).</p>
+      <div class="ai-opt"><b>${icon('sparkles', 16)} Gratuit : Google Gemini</b>
+        <ol class="small" style="padding-left:18px;margin:6px 0;line-height:1.6"><li>Ouvre <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> avec ton compte Google</li><li>Touche <b>Create API key</b> (aucune carte bancaire)</li><li>Copie la clé (elle commence par <b>AIza</b>) et colle-la ci-dessous</li></ol>
+        <p class="tiny muted" style="margin:0">Quota gratuit largement suffisant pour un usage perso. En gratuit, Google peut utiliser les échanges pour améliorer ses modèles.</p></div>
+      <div class="ai-opt"><b>${icon('key', 16)} Payant à l’usage : Claude</b>
+        <p class="tiny muted" style="margin:4px 0 0">Clé sur <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> (commence par sk-ant-), environ 1 centime par photo. L’abonnement Claude Pro ne donne pas accès à l’API et ne peut pas être branché à une appli.</p></div>
+      <label class="lbl">Clé API</label><input id="key" type="password" autocomplete="off" placeholder="AIza… (Gemini) ou sk-ant-… (Claude)" value="${esc(st.settings.apiKey)}">
+      <p class="tiny" id="key-kind" style="margin:6px 0 0;color:var(--good)">${AI.provider(st.settings.apiKey) === 'gemini' ? '✓ Clé Google Gemini (gratuite)' : AI.provider(st.settings.apiKey) === 'claude' ? '✓ Clé Claude' : ''}</p>
+      <label class="between" style="flex-wrap:nowrap;margin-top:14px"><span><b class="small">Recherche scientifique en ligne</b><div class="tiny muted">Le coach peut consulter PubMed, Cochrane, OMS, ANSES, Lancet, BMJ…</div></span><span class="switch"><input type="checkbox" id="web" ${st.settings.webSearch ? 'checked' : ''}><span></span></span></label>
+      <div ${AI.provider(st.settings.apiKey) === 'gemini' ? 'hidden' : ''}><label class="lbl">Modèle Claude</label><select id="model">${AI.MODELS.map((m) => `<option value="${m.id}" ${st.settings.model === m.id ? 'selected' : ''}>${m.label}</option>`).join('')}</select></div>
     </div>
 
     <div class="section-title">Mes données</div>
@@ -199,7 +205,12 @@ export function render(view, ctx) {
       $$('[data-place]', res).forEach((b) => (b.onclick = () => setLoc(list[Number(b.dataset.place)])));
     } catch (e) { res.innerHTML = `<p class="small muted">${esc(e.message)}</p>`; }
   });
-  $('#key', view).onchange = (e) => { store.update((s) => (s.settings.apiKey = e.target.value.trim())); toast('Clé enregistrée'); };
+  $('#key', view).onchange = (e) => {
+    const k = e.target.value.trim();
+    store.update((s) => (s.settings.apiKey = k));
+    toast(!k ? 'Clé retirée' : AI.provider(k) === 'gemini' ? 'Clé Gemini enregistrée ✅' : k.startsWith('sk-ant-') ? 'Clé Claude enregistrée ✅' : 'Clé enregistrée (format inattendu : vérifie-la)');
+    render(view, ctx);
+  };
   $('#web', view).onchange = (e) => store.update((s) => (s.settings.webSearch = e.target.checked));
   $('#model', view).onchange = (e) => store.update((s) => (s.settings.model = e.target.value));
   $('#exp', view).onclick = async () => {

@@ -45,6 +45,7 @@ const ctx = {
   action(a) {
     if (a === 'photo') A.openPhoto(ctx);
     else if (a === 'scan') A.openScanner(ctx);
+    else if (a === 'product') A.openProductSearch(ctx);
     else if (a === 'checkin') A.openCheckin(ctx);
     else if (a === 'manual') A.openManual(ctx);
     else if (a === 'sleep') A.openSleep(ctx);
@@ -175,6 +176,7 @@ async function onForeground() {
   if (store.get().env?.fetched !== before && tab === 'home') renderView();
   if (events.length && ['home', 'health'].includes(tab)) renderView();
   autoSync();
+  A.repairScannedMeals().then((n) => { if (n && ['home', 'nutrition'].includes(tab)) renderView(); });
 }
 
 // Synchronisation automatique dans l'application Android (au lancement puis au retour au premier plan).

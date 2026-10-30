@@ -24,24 +24,46 @@ export async function healthStatus() {
 // Une promesse du plugin qui ne revient jamais ne doit pas bloquer l'écran (« Connexion… » à l'infini).
 const timeout = (p, ms, msg) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error(msg)), ms))]);
 
-// Demande d'accès : si la fenêtre de Health Connect ne s'ouvre pas ou ne rend pas la main,
-// on abandonne 3 s après le retour dans l'application (ou au bout de 15 s si on n'est jamais parti).
-export async function connectHealth() {
+// Autorisations Android correspondant aux types lus (voir HealthDataType.kt du plugin).
+const HEALTH_PERMS = ['STEPS', 'SLEEP', 'HEART_RATE', 'RESTING_HEART_RATE', 'HEART_RATE_VARIABILITY', 'WEIGHT', 'ACTIVE_CALORIES_BURNED', 'EXERCISE']
+  .map((x) => `android.permission.health.READ_${x}`);
+
+// Attend le retour dans l'appli après l'ouverture d'une fenêtre système.
+// Rejette si la fenêtre ne s'est jamais ouverte (on n'a pas quitté l'appli en `openMs`).
+function waitReturn(openMs = 6000, maxMs = 180000) {
+  return new Promise((ok, no) => {
+    let left = false;
+    const done = (f) => { clearTimeout(t1); clearTimeout(t2); document.removeEventListener('visibilitychange', vis); f(); };
+    const vis = () => {
+      if (document.visibilityState === 'hidden') left = true;
+      else if (left) done(() => setTimeout(ok, 400)); // laisse Health Connect enregistrer le choix
+    };
+    const t1 = setTimeout(() => { if (!left) done(() => no(new Error('La fenêtre d’autorisation ne s’est pas ouverte'))); }, openMs);
+    const t2 = setTimeout(() => done(ok), maxMs);
+    document.addEventListener('visibilitychange', vis);
+  });
+}
+
+// Demande d'accès. L'appli ouvre elle-même la fenêtre de Health Connect puis relit les accès accordés à son retour :
+// plus aucune attente d'un résultat qui peut ne jamais arriver. Repli sur le plugin pour les anciennes versions natives.
+export async function connectHealth(onStep = () => {}) {
   const H = await health();
+  onStep('Vérification de Health Connect…');
   const a = await timeout(H.isAvailable(), 5000, 'Health Connect ne répond pas');
   if (!a.available) throw new Error('Health Connect n’est pas disponible. Installe « Health Connect » depuis le Play Store (inclus d’office depuis Android 14).');
-  let left = false, cleanup = () => {};
-  const guard = new Promise((_, no) => {
-    const fail = () => no(new Error('La fenêtre d’autorisation ne s’est pas ouverte'));
-    let t = setTimeout(() => { if (!left) fail(); }, 15000);
-    const vis = () => {
-      if (document.visibilityState === 'hidden') { left = true; clearTimeout(t); }
-      else if (left) { clearTimeout(t); t = setTimeout(fail, 3000); }
-    };
-    document.addEventListener('visibilitychange', vis);
-    cleanup = () => { clearTimeout(t); document.removeEventListener('visibilitychange', vis); };
-  });
-  try { return await Promise.race([H.requestAuthorization({ read: HEALTH_READ }), guard]); } finally { cleanup(); }
+  onStep('Ouverture de la fenêtre d’autorisation…');
+  let native = true;
+  try { await timeout(UsageStats.requestHealth({ permissions: HEALTH_PERMS }), 4000, 'pas de réponse'); }
+  catch (e) {
+    if (!/not implemented|pas de réponse/i.test(e.message || '')) throw e;
+    native = false;
+  }
+  if (native) await waitReturn();
+  else await Promise.race([H.requestAuthorization({ read: HEALTH_READ }).catch(() => {}), waitReturn()]);
+  onStep('Lecture des accès accordés…');
+  const st = await timeout(H.checkAuthorization({ read: HEALTH_READ }), 8000, 'Health Connect ne répond pas (autorisations)');
+  if (!(st.readAuthorized || []).length) throw new Error('Aucun accès accordé dans la fenêtre de Health Connect');
+  return st;
 }
 
 export const openHealthSettings = async () => (await health()).openHealthConnectSettings();

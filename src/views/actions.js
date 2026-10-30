@@ -31,6 +31,7 @@ export function openAddMenu(ctx) {
         ['photo', 'camera', 'var(--c-food)', 'Photo du repas'],
         ['snack', 'apple', 'var(--c-mood)', 'Grignotage'],
         ['scan', 'barcode', 'var(--c-move)', 'Scanner un produit'],
+        ['product', 'search', 'var(--c-water)', 'Chercher un produit'],
         ['manual', 'pencil', 'var(--c-sleep)', 'Repas manuel'],
         ['workout', 'dumbbell', 'var(--c-move)', 'Séance de sport'],
         ['checkin', 'smile', 'var(--c-mood)', 'Humeur du jour'],
@@ -74,7 +75,7 @@ export async function openPhoto(ctx, fromGallery = false, slot = null) {
   const body = sheet(`<img class="preview" src="${dataUrl}" alt=""><div id="res" style="margin-top:14px">
       <label class="lbl">Une précision ? (facultatif)</label><input id="note" placeholder="ex. sauce à la crème, moitié mangée…">
       <button class="btn block" id="go" style="margin-top:12px">${icon('sparkles', 18)} Analyser ce repas</button>
-      ${!st.settings.apiKey ? `<div class="note warn" style="margin-top:12px">${icon('key', 18)}<span>Ajoute ta clé API Anthropic dans Profil pour activer l’analyse photo.</span></div>` : ''}
+      ${!st.settings.apiKey ? `<div class="note warn" style="margin-top:12px">${icon('key', 18)}<span>Ajoute une clé IA dans Profil pour activer l’analyse photo (une clé Google Gemini est gratuite).</span></div>` : ''}
     </div>`, { title: 'Analyse du repas', full: true, onClose: () => ctx.render() });
   $('#go', body).onclick = async () => {
     const note = $('#note', body).value;
@@ -130,7 +131,7 @@ export function openScanner(ctx, slot = null) {
   const body = sheet(`
     <div class="scanner"><video muted playsinline poster="${BLANK}"></video><div class="frame"></div><div class="laser"></div></div>
     <p class="small muted" style="text-align:center">Vise le code-barres du produit</p>
-    <div class="row" style="flex-wrap:nowrap"><input id="code" inputmode="numeric" placeholder="ou tape le code (EAN)"><button class="btn" id="lookup">${icon('arrow', 18)}</button></div>
+    <div class="row" style="flex-wrap:nowrap"><input id="code" placeholder="ou tape un code (EAN) ou un nom"><button class="btn" id="lookup">${icon('arrow', 18)}</button></div>
     <div id="prod" style="margin-top:14px"></div>`, { title: 'Scanner un produit', full: true, onClose: () => { stop(); ctx.render(); } });
   const show = async (code) => {
     stop();
@@ -139,13 +140,18 @@ export function openScanner(ctx, slot = null) {
     out.innerHTML = `<div class="empty"><span class="spinner"></span><p>Recherche dans Open Food Facts…</p></div>`;
     try {
       const prod = await BC.lookup(code);
-      if (!prod) { out.innerHTML = `<div class="note warn">${icon('info', 18)}<span>Produit ${esc(code)} introuvable dans Open Food Facts. Tu peux le photographier pour une analyse IA.</span></div>`; return; }
+      if (!prod) { out.innerHTML = `<div class="note warn">${icon('info', 18)}<span>Produit ${esc(code)} introuvable dans Open Food Facts. Tape son nom dans le champ ci-dessus pour le chercher.</span></div>`; return; }
       productCard(out, prod, prod.serving || 100, body, slot || C.currentSlot());
     } catch (e) {
       out.innerHTML = `<div class="note bad">${icon('alert', 18)}<span>${esc(e.message)}</span></div>`;
     }
   };
-  $('#lookup', body).onclick = () => { const c = $('#code', body).value.replace(/\D/g, ''); if (c.length >= 8) show(c); };
+  $('#lookup', body).onclick = () => {
+    const raw = $('#code', body).value.trim(), c = raw.replace(/\D/g, '');
+    if (/^[\d\s]{8,}$/.test(raw)) show(c);
+    else if (raw.length >= 2) { body.close(); setTimeout(() => openProductSearch(ctx, slot, raw), 250); }
+  };
+  $('#code', body).onkeydown = (e) => { if (e.key === 'Enter') $('#lookup', body).click(); };
   releaseCamera();
   BC.startScanner($('video', body), show).then((s) => (stop = s)).catch(() => {
     $('.scanner', body).innerHTML = `<div class="empty" style="color:#fff">${icon('camera', 28)}<p>Caméra indisponible. Autorise l’accès à la caméra ou saisis le code.</p></div>`;
@@ -158,11 +164,12 @@ function nutriBadge(g) {
 const NOVA_COLORS = { 1: '#038141', 2: '#fecb02', 3: '#ee8100', 4: '#e63e11' };
 const NOVA_LABEL = { 1: 'Brut / peu transformé', 2: 'Ingrédient culinaire', 3: 'Transformé', 4: 'Ultra-transformé' };
 
-function productCard(out, prod, grams, body, slot) {
+function productCard(out, prod, grams, body, slot, back = null) {
   const sm = summary();
   const v = BC.verdict(prod, grams, { targets: sm.t, totToday: sm.totToday, profile: store.get().profile });
   const n = v.n;
   out.innerHTML = `
+    ${back ? `<button class="btn ghost sm" id="back" style="margin-bottom:8px">${icon('left', 16)} Résultats</button>` : ''}
     <div class="list-item" style="border:0;padding-top:0">
       ${prod.image ? `<img class="thumb" src="${esc(prod.image)}" alt="" style="width:72px;height:72px;object-fit:contain;background:#fff">` : `<span class="thumb">${icon('barcode')}</span>`}
       <div><div class="ttl">${esc(prod.name)}</div><div class="tiny muted">${esc(prod.brand)} ${esc(prod.quantity)}</div></div>
@@ -176,11 +183,13 @@ function productCard(out, prod, grams, body, slot) {
       ${v.pros.map((x) => `<div class="small" style="color:var(--good)">✓ ${esc(x)}</div>`).join('')}
       ${v.cons.map((x) => `<div class="small" style="color:var(--bad)">✗ ${esc(x)}</div>`).join('')}
     </div>
+    ${prod.missing ? `<div class="note warn" style="margin-bottom:12px">${icon('alert', 18)}<span>Valeurs nutritionnelles absentes de la fiche Open Food Facts : cherche une autre version du produit${back ? ' dans les résultats' : ' par son nom'}.</span></div>` : ''}
     <label class="lbl">Quantité consommée</label>
     <div class="row" style="flex-wrap:nowrap">
       <div class="stepper" style="flex:1"><button data-d="-10">−</button><input id="grams" type="number" inputmode="decimal" value="${grams}"><button data-d="10">+</button></div>
-      <span class="muted">g${prod.serving ? ` · portion ${prod.serving} g` : ''}</span>
+      <span class="muted">g</span>
     </div>
+    ${prod.serving ? `<div class="chips" style="margin-top:8px">${[1, 2, 3].map((k) => `<button class="chip ${Math.abs(grams - prod.serving * k) < 0.5 ? 'on' : ''}" data-por="${prod.serving * k}">${k} portion${k > 1 ? 's' : ''} · ${fmt(prod.serving * k, 1)} g</button>`).join('')}</div>` : ''}
     <table style="margin-top:12px"><tr><th></th><th class="num">pour ${fmt(grams)} g</th><th class="num">100 g</th></tr>
       ${[['Calories', 'kcal', 'kcal'], ['Protéines', 'protein', 'g'], ['Glucides', 'carbs', 'g'], ['dont sucres', 'sugar', 'g'], ['Lipides', 'fat', 'g'], ['dont saturés', 'satFat', 'g'], ['Fibres', 'fiber', 'g'], ['Sodium', 'sodium', 'mg']]
         .map(([l, k, u]) => `<tr><td>${l}</td><td class="num"><b>${fmt(n[k], k === 'kcal' || k === 'sodium' ? 0 : 1)}</b> ${u}</td><td class="num muted">${fmt(prod.per100[k], 1)}</td></tr>`).join('')}
@@ -194,12 +203,73 @@ function productCard(out, prod, grams, body, slot) {
     <p class="tiny muted" style="text-align:center">Données : Open Food Facts (ODbL)</p>`;
   const g = () => Math.max(1, Number($('#grams', out).value) || 0);
   $$('[data-slot]', out).forEach((b) => (b.onclick = () => { slot = b.dataset.slot; $$('[data-slot]', out).forEach((x) => x.classList.toggle('on', x === b)); }));
-  $('#grams', out).onchange = () => productCard(out, prod, g(), body, slot);
-  $$('[data-d]', out).forEach((b) => (b.onclick = () => productCard(out, prod, Math.max(5, g() + Number(b.dataset.d)), body, slot)));
+  $('#grams', out).onchange = () => productCard(out, prod, g(), body, slot, back);
+  $$('[data-d]', out).forEach((b) => (b.onclick = () => productCard(out, prod, Math.max(5, g() + Number(b.dataset.d)), body, slot, back)));
+  if (back) $('#back', out).onclick = back;
+  $$('[data-por]', out).forEach((b) => (b.onclick = () => productCard(out, prod, Number(b.dataset.por), body, slot, back)));
   $('#add', out).onclick = () => {
     addMeal({ title: `${prod.name}${prod.brand ? ' – ' + prod.brand.split(',')[0] : ''} (${g()} g)`, alcohol: prod.alcohol ? Math.round(((g() * prod.alcohol) / 100) * 0.8 / 10 * 10) / 10 : 0, nutrients: n, nova: prod.nova || 3, quality: v.score, verdict: v.verdict, nutriscore: prod.nutriscore, barcode: prod.code, thumb: prod.image, comment: [...v.pros, ...v.cons].join(' · '), slot: slot === 'grignotage' ? 'collation' : slot, snack: slot === 'grignotage' });
     body.close();
   };
+}
+
+// Repas scannés enregistrés sans valeurs (fiches où Open Food Facts ne donnait que le « préparé » ou la portion) :
+// on relit la fiche et on complète. Renvoie le nombre de repas corrigés.
+export async function repairScannedMeals() {
+  const broken = store.get().meals.filter((m) => m.barcode && !m.nutrients?.kcal && !m.repairTried);
+  let fixed = 0;
+  for (const m of broken.slice(0, 5)) {
+    try {
+      const prod = await BC.lookup(m.barcode);
+      const grams = Number((m.title.match(/\(([\d.,]+) g\)$/) || [])[1]?.replace(',', '.')) || prod?.serving || 100;
+      store.update((s) => {
+        const x = s.meals.find((y) => y.id === m.id); if (!x) return;
+        x.repairTried = true;
+        if (prod && !prod.missing) { x.nutrients = BC.forGrams(prod.per100, grams); fixed++; }
+      });
+    } catch { /* hors ligne : on réessaiera */ }
+  }
+  return fixed;
+}
+
+// ---------- Recherche d'un produit du commerce par son nom (Open Food Facts) ----------
+export function openProductSearch(ctx, slot = null, q0 = '') {
+  const body = sheet(`
+    <div class="row" style="flex-wrap:nowrap"><input id="pq" type="search" placeholder="ex. Kit Kat, yaourt Danone, Coca zéro…" autocomplete="off" value="${esc(q0)}"><button class="btn" id="pgo" aria-label="Chercher">${icon('search', 18)}</button></div>
+    <div id="pres" style="margin-top:10px"></div>
+    <div id="pdet"></div>
+    <p class="tiny muted" style="text-align:center;margin-top:12px">Base Open Food Facts : plus de 3 millions de produits (ODbL)</p>`, { title: 'Chercher un produit', full: true, onClose: () => ctx.render() });
+  const res = $('#pres', body), det = $('#pdet', body);
+  let list = [], ctrl = null, timer = 0;
+  const showList = () => { det.innerHTML = ''; res.hidden = false; $('#pq', body).parentElement.hidden = false; };
+  const run = async () => {
+    const q = $('#pq', body).value.trim();
+    if (q.length < 2) { res.innerHTML = '<p class="small muted">Tape au moins 2 lettres.</p>'; return; }
+    ctrl?.abort(); ctrl = new AbortController();
+    res.innerHTML = '<div class="empty"><span class="spinner"></span><p>Recherche…</p></div>';
+    try {
+      list = await BC.search(q, { signal: ctrl.signal });
+      res.innerHTML = list.length ? list.map((p, i) => `<button class="list-item prod-hit" data-pi="${i}">
+          ${p.image ? `<img class="thumb" src="${esc(p.image)}" alt="" loading="lazy">` : `<span class="thumb">${icon('barcode')}</span>`}
+          <div style="min-width:0;text-align:left"><div class="small" style="font-weight:600">${esc(p.name)}</div><div class="tiny muted">${esc([p.brand.split(',')[0], p.quantity].filter(Boolean).join(' · '))}</div></div>
+          <div class="tiny" style="text-align:right;white-space:nowrap">${p.missing ? '<span class="muted">valeurs ?</span>' : `<b>${fmt(p.per100.kcal)}</b> kcal<br><span class="muted">/100 g</span>`}${p.nutriscore ? `<div><span class="ns" style="background:${BC.NUTRI_COLORS[p.nutriscore]}">${p.nutriscore.toUpperCase()}</span></div>` : ''}</div>
+        </button>`).join('')
+        : '<p class="small muted">Aucun produit trouvé. Essaie avec la marque (ex. « kinder bueno »).</p>';
+    } catch (e) {
+      if (e.name !== 'AbortError') { res.innerHTML = `<div class="note warn">${icon('alert', 18)}<span>${esc(e.message)}</span></div><button class="btn ghost block" id="pretry" style="margin-top:8px">${icon('refresh', 16)} Réessayer</button>`; $('#pretry', res).onclick = run; }
+    }
+  };
+  $('#pq', body).oninput = () => { clearTimeout(timer); if ($('#pq', body).value.trim().length >= 3) timer = setTimeout(run, 900); };
+  $('#pq', body).onkeydown = (e) => { if (e.key === 'Enter') { clearTimeout(timer); run(); e.target.blur(); } };
+  $('#pgo', body).onclick = () => { clearTimeout(timer); run(); };
+  res.onclick = (e) => {
+    const b = e.target.closest('[data-pi]'); if (!b) return;
+    const p = list[Number(b.dataset.pi)];
+    res.hidden = true; $('#pq', body).parentElement.hidden = true;
+    productCard(det, p, p.serving || 100, body, slot || C.currentSlot(), showList);
+    body.scrollTop = 0;
+  };
+  if (q0) run(); else setTimeout(() => $('#pq', body).focus(), 300);
 }
 
 // ---------- Ajout rapide sans IA : mes plats, repas récents, bibliothèque de plats équilibrés ----------
@@ -213,16 +283,17 @@ export function openQuickMeal(ctx, slot = null) {
     ...allowedMeals(st.profile.diet, st.profile.allergies).map((m) => ({ name: m.name, n: { kcal: m.kcal, protein: m.protein, fiber: m.fiber, fruitVeg: m.fruitVeg, carbs: 0, fat: 0, satFat: 0, sugar: 0, sodium: 0 }, quality: 75, verdict: 'bon', nova: 1, from: 'Idée' })),
   ].filter((x) => x.n && !seen.has(norm(x.name)) && seen.add(norm(x.name)));
   const body = sheet(`
-    <p class="small muted" style="margin-top:0">L’analyse photo demande une clé API (Profil). En attendant, retrouve ton repas ici :</p>
+    <p class="small muted" style="margin-top:0">L’analyse photo demande une clé IA (gratuite avec Google Gemini, voir Profil). En attendant, retrouve ton repas ici :</p>
     <input id="q" placeholder="Rechercher : pâtes, salade, omelette…" autocomplete="off">
     <div id="list" style="margin-top:8px"></div>
-    <div class="grid2" style="margin-top:12px"><button class="btn ghost" id="scan">${icon('barcode', 18)} Code-barres</button><button class="btn ghost" id="manual">${icon('pencil', 18)} Manuel</button></div>`, { title: 'Ajouter un repas', full: true, onClose: () => ctx.render() });
+    <button class="btn soft block" id="off" style="margin-top:12px">${icon('search', 18)} Chercher un produit du commerce</button>
+    <div class="grid2" style="margin-top:8px"><button class="btn ghost" id="scan">${icon('barcode', 18)} Code-barres</button><button class="btn ghost" id="manual">${icon('pencil', 18)} Manuel</button></div>`, { title: 'Ajouter un repas', full: true, onClose: () => ctx.render() });
   const draw = () => {
     const q = norm($('#q', body).value.trim());
     const res = pool.filter((x) => !q || q.split(/\s+/).every((w) => norm(x.name).includes(w))).slice(0, 30);
     $('#list', body).innerHTML = res.length ? res.map((x, i) => `<div class="qm" data-i="${pool.indexOf(x)}"><div style="flex:1;min-width:0"><div class="small" style="font-weight:600">${esc(x.name)}</div><div class="tiny muted">${x.from} · ${fmt(x.n.kcal)} kcal</div></div>
       <div class="qm-por">${[0.5, 1, 1.5, 2].map((k) => `<button class="chip" data-k="${k}">${k === 0.5 ? '½' : k === 1.5 ? '1½' : k}</button>`).join('')}</div></div>`).join('')
-      : '<p class="small muted">Rien trouvé : utilise la saisie manuelle.</p>';
+      : `<p class="small muted">Rien dans tes plats : c’est un produit du commerce ? Touche « Chercher un produit du commerce ».</p>`;
   };
   draw();
   $('#q', body).oninput = draw;
@@ -233,6 +304,7 @@ export function openQuickMeal(ctx, slot = null) {
     body.close();
   };
   $('#scan', body).onclick = () => { body.close(); setTimeout(() => ctx.action('scan'), 250); };
+  $('#off', body).onclick = () => { const q = $('#q', body).value.trim(); body.close(); setTimeout(() => openProductSearch(ctx, slot, q), 250); };
   $('#manual', body).onclick = () => { body.close(); setTimeout(() => openManual(ctx), 250); };
 }
 

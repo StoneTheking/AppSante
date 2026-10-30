@@ -412,6 +412,7 @@ html, body { overflow-x: hidden; }
 .quest-msg.risk { color: #fb923c; background: rgba(251, 146, 60, 0.12); }
 .xp-pill { border: 1px solid rgba(251, 191, 36, 0.35); background: rgba(251, 191, 36, 0.12); color: #fbbf24; font-weight: 700; font-size: 0.74rem; border-radius: 99px; padding: 5px 10px; }
 .xp-pill.risk { border-color: color-mix(in srgb, var(--bad) 45%, transparent); background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); }
+.xp-pill.pending { border-style: dashed; }
 .streak-btn { height: 40px; padding: 0 12px; border-radius: 99px; border: 1px solid var(--line-2); background: var(--card-2); color: var(--text); font-weight: 800; display: inline-flex; gap: 4px; align-items: center; }
 .streak-btn.risk { border-color: rgba(251, 146, 60, 0.6); color: #fb923c; animation: pulse 1.6s ease-in-out infinite; }
 .streak-btn.cold { opacity: 0.6; }
@@ -445,7 +446,7 @@ html, body, #app, #view { max-width: 100vw; overflow-x: clip; }
 
 /* ---------- v4 : animations « récompense » ---------- */
 .sheet { transition: transform 0.42s cubic-bezier(0.18, 1.25, 0.4, 1); }
-.sheet-root.open .sheet-body > * { animation: rise 0.38s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.sheet-root.open:not(.settled) .sheet-body > * { animation: rise 0.38s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 .sheet-root.open .sheet-body > *:nth-child(2) { animation-delay: 0.03s; }
 .sheet-root.open .sheet-body > *:nth-child(3) { animation-delay: 0.06s; }
 .sheet-root.open .sheet-body > *:nth-child(4) { animation-delay: 0.09s; }
@@ -463,16 +464,16 @@ html, body, #app, #view { max-width: 100vw; overflow-x: clip; }
 .view-enter .quest.done .qi { animation: pop 0.5s cubic-bezier(0.3, 1.8, 0.5, 1); }
 .pop { animation: pop 0.45s cubic-bezier(0.3, 1.8, 0.5, 1); }
 @keyframes pop { 0% { transform: scale(0.6); } 60% { transform: scale(1.18); } 100% { transform: scale(1); } }
-:is(.view-enter, .sheet-root) .ring-anim { animation: ring 1.1s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+:is(.view-enter, .sheet-root:not(.settled)) .ring-anim { animation: ring 1.1s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 @keyframes ring { from { stroke-dasharray: 0 999; } }
 .chart .bar { transform-box: fill-box; transform-origin: bottom; }
-:is(.view-enter, .sheet-root) .chart .bar { animation: grow 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+:is(.view-enter, .sheet-root:not(.settled)) .chart .bar { animation: grow 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 @keyframes grow { from { transform: scaleY(0); } }
 .chart .draw { stroke-dasharray: 1200; stroke-dashoffset: 0; }
-:is(.view-enter, .sheet-root) .chart .draw { animation: draw 1s ease-out both; }
+:is(.view-enter, .sheet-root:not(.settled)) .chart .draw { animation: draw 1s ease-out both; }
 @keyframes draw { from { stroke-dashoffset: 1200; } }
 .meter .fill { transform-origin: left; }
-:is(.view-enter, .sheet-root) .meter .fill { animation: fillx 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+:is(.view-enter, .sheet-root:not(.settled)) .meter .fill { animation: fillx 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 @keyframes fillx { from { transform: scaleX(0); } }
 .float-up { position: fixed; z-index: 310; pointer-events: none; font-weight: 800; color: var(--c-water); animation: floatup 0.9s ease-out forwards; }
 @keyframes floatup { to { transform: translateY(-48px); opacity: 0; } }
@@ -587,3 +588,33 @@ span.qcam-side { background: none; }
 .qm { display: flex; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .qm-por { display: flex; gap: 4px; flex: none; }
 .qm-por .chip { min-width: 34px; padding: 6px 8px; justify-content: center; }
+
+/* Recherche de produit */
+.prod-hit { width: 100%; background: none; border: 0; border-bottom: 1px solid var(--line); color: inherit; grid-template-columns: auto 1fr auto; cursor: pointer; font: inherit; }
+.prod-hit .thumb { width: 48px; height: 48px; object-fit: contain; background: #fff; }
+.ns { display: inline-grid; place-items: center; width: 20px; height: 20px; margin-top: 4px; border-radius: 6px; color: #fff; font-weight: 800; font-size: 0.7rem; }
+.vid-row { width: 100%; background: none; border: 0; border-bottom: 1px solid var(--line); color: inherit; font: inherit; cursor: pointer; padding: 8px 0; }
+/* Bilan sommeil de la semaine */
+.sw-plot { position: relative; display: flex; align-items: flex-end; gap: 8px; height: 92px; margin-top: 12px; border-bottom: 1px solid var(--line); }
+.sw-bar { flex: 1; background: var(--c-sleep); border-radius: 4px 4px 0 0; }
+.sw-bar.short { background: var(--warn); }
+.sw-days { display: flex; gap: 8px; margin-top: 4px; }
+.sw-days span { flex: 1; text-align: center; font-size: 0.66rem; color: var(--muted); text-transform: capitalize; line-height: 1.3; }
+.sw-days b { display: block; color: var(--text-2, var(--text)); font-weight: 600; font-variant-numeric: tabular-nums; }
+.sw-target { position: absolute; left: 0; right: 0; border-top: 2px dashed var(--muted); opacity: 0.7; z-index: 1; pointer-events: none; }
+.sw-target span { position: absolute; right: 0; top: -16px; font-size: 0.66rem; color: var(--muted); font-style: normal; }
+/* Détail du score */
+.score-top { display: flex; align-items: center; gap: 14px; }
+.score-big { font-size: 3rem; font-weight: 800; line-height: 1; letter-spacing: -0.03em; }
+.score-rows { margin-top: 8px; }
+.score-row { border-bottom: 1px solid var(--line); }
+.score-row summary { display: grid; grid-template-columns: 22px 1fr 34% 30px; align-items: center; gap: 10px; padding: 12px 0; list-style: none; cursor: pointer; }
+.score-row summary::-webkit-details-marker { display: none; }
+.score-row .sr-l { font-weight: 650; font-size: 0.92rem; display: flex; flex-direction: column; line-height: 1.2; }
+.score-row .sr-l small { font-weight: 500; font-size: 0.7rem; color: var(--muted); }
+.score-row .sr-bar { height: 6px; border-radius: 99px; background: var(--line-2); overflow: hidden; }
+.score-row .sr-bar i { display: block; height: 100%; border-radius: 99px; }
+.score-row summary b { text-align: right; font-variant-numeric: tabular-nums; }
+.score-row .sr-more { padding: 0 0 12px 32px; }
+.ai-opt { border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; margin-top: 10px; }
+.ai-opt b { display: flex; gap: 6px; align-items: center; font-size: 0.92rem; }

@@ -13,7 +13,7 @@ export function questsCard(st) {
     ? (done === goals.length ? 'Journée parfaite ! +20 XP bonus' : `Journée validée · série de ${s.current} jour${s.current > 1 ? 's' : ''}`)
     : `Encore ${G.VALIDATE - done} quête${G.VALIDATE - done > 1 ? 's' : ''} pour ${s.atRisk ? 'sauver' : 'valider'} ta série`;
   return `<section class="card quests">
-    <div class="between"><h2 style="font-size:1.02rem;display:flex;gap:8px;align-items:center">${icon('target', 18)} Quêtes du jour</h2><button class="xp-pill ${p.atStake ? 'risk' : ''}" data-progress>Niv. ${p.level} · ${p.atStake ? `−${p.atStake} XP en jeu` : `+${p.today} XP`}</button></div>
+    <div class="between"><h2 style="font-size:1.02rem;display:flex;gap:8px;align-items:center">${icon('target', 18)} Quêtes du jour</h2><button class="xp-pill ${p.validated ? '' : 'pending'} ${p.atStake && !p.pending ? 'risk' : ''}" data-progress aria-label="${p.validated ? 'XP gagnés aujourd’hui' : 'XP en attente : validés à 3 quêtes'}">Niv. ${p.level} · ${p.atStake && !p.pending ? `−${p.atStake} XP en jeu` : `+${p.pending} XP`}</button></div>
     <div class="quest-row">${goals.map((g) => `<button class="quest ${g.done ? 'done' : ''}" data-quest="${g.id}" aria-label="${esc(g.label)} : ${esc(g.hint)}">
       <svg viewBox="0 0 44 44" width="52" height="52"><circle cx="22" cy="22" r="18" fill="none" stroke="var(--line-2)" stroke-width="4"/><circle cx="22" cy="22" r="18" fill="none" stroke="${g.color}" stroke-width="4" stroke-linecap="round" stroke-dasharray="${113 * g.progress} 113" transform="rotate(-90 22 22)"/></svg>
       <span class="qi" style="color:${g.done ? '#fff' : g.color};${g.done ? `background:${g.color}` : ''}">${icon(g.done ? 'check' : g.icon, 16)}</span>
@@ -60,7 +60,7 @@ export function openProgress() {
       <div class="between"><b>Niveau ${p.level} · ${esc(p.title)}</b><span class="small muted">${p.xp} XP</span></div>
       <div class="meter"><div class="track" style="height:10px"><div class="fill" style="width:${Math.round((p.into / p.need) * 100)}%;background:linear-gradient(90deg,#fbbf24,#f97316)"></div></div></div>
       <div class="tiny muted">${p.need - p.into} XP avant le niveau ${p.level + 1}${p.yesterday ? ` · hier : ${p.yesterday > 0 ? '+' : ''}${p.yesterday} XP` : ''}.</div>
-      <p class="tiny" style="margin:8px 0 0;line-height:1.5">${p.atStake ? `<b style="color:var(--bad)">Aujourd’hui : −${p.atStake} XP</b> si tu ne valides pas ${G.VALIDATE} quêtes avant minuit.` : `<b style="color:var(--good)">Journée validée : +${p.today} XP.</b>`}<br>
+      <p class="tiny" style="margin:8px 0 0;line-height:1.5">${p.validated ? `<b style="color:var(--good)">Journée validée : +${p.today} XP.</b>` : `<b>Aujourd’hui : +${p.pending} XP en attente</b>, gagnés dès ${G.VALIDATE} quêtes réussies.${p.atStake ? ` <b style="color:var(--bad)">Sinon −${p.atStake} XP</b> à minuit.` : ''}`}<br>
       <span class="muted">Journée validée (${G.VALIDATE} quêtes sur 5) : tu gagnes 10 XP par quête, +20 si parfaite, 1 XP par minute de sport, 2 par repas noté. Journée ratée : tu perds ${8} XP × ton niveau par quête manquante, donc la chute fait plus mal en haut. Un gel de série protège un jour raté. Tu peux redescendre de niveau.</span></p>
     </div>
 

@@ -15,8 +15,10 @@ import { correlations } from '../correlate.js';
 let seg = 'suivi';
 let dayOffset = 0;
 
+let shownSeg = null;
 export function render(view, ctx) {
-  view.innerHTML = `${segmented('hl', [['suivi', 'Suivi'], ['tendances', 'Tendances'], ['projection', 'Projection'], ['science', 'Science']], seg)}<div id="hl-body" class="view-enter"></div>`;
+  view.innerHTML = `${segmented('hl', [['suivi', 'Suivi'], ['tendances', 'Tendances'], ['projection', 'Projection'], ['science', 'Science']], seg)}<div id="hl-body" class="${seg !== shownSeg ? 'view-enter' : ''}"></div>`;
+  shownSeg = seg; // animations d'entrée seulement au changement d'onglet, pas à chaque mise à jour
   $$('[data-seg="hl"]', view).forEach((b) => (b.onclick = () => { seg = b.dataset.v; render(view, ctx); }));
   const body = $('#hl-body', view);
   ({ suivi: renderTrack, tendances: renderTrends, projection: renderFuture, science: renderScience })[seg](body, ctx);
@@ -112,6 +114,7 @@ function renderTrack(el, ctx) {
   const due = E.weighDue(st);
   el.innerHTML = `
     ${sourcesCard(st)}
+    ${dayOffset === 0 ? sleepWeekCard(st) : ''}
     <div class="card">
       <div class="between">
         <button class="icon-btn" id="prev" aria-label="Jour précédent">${icon('left')}</button>
@@ -175,13 +178,12 @@ function renderTrack(el, ctx) {
   if (N.isNative) {
     $('#hc', el)?.addEventListener('click', async () => {
       const res = $('#sync-res', el);
-      res.innerHTML = '<span class="spinner"></span> Connexion à Health Connect…';
+      res.innerHTML = '<span class="spinner"></span> Vérification de Health Connect…';
       const d0 = await N.healthDiagnose(); // toujours un état frais (pas celui de la dernière ouverture)
       store.update((s) => { s.healthDiag = { ...d0, at: Date.now() }; });
       if (['unavailable', 'update'].includes(d0.reason)) { res.innerHTML = ''; return openHealthHelp(d0, re); }
       if (!d0.ok) {
-        res.innerHTML = '<span class="spinner"></span> Ouverture de la fenêtre d’autorisation…';
-        try { await N.connectHealth(); } catch (e) { res.innerHTML = ''; return openHealthHelp({ ...d0, reason: d0.reason === 'error' ? 'error' : 'denied', detail: e.message }, re); }
+        try { await N.connectHealth((m) => { res.innerHTML = `<span class="spinner"></span> ${m}`; }); } catch (e) { res.innerHTML = ''; return openHealthHelp({ ...d0, reason: d0.reason === 'error' ? 'error' : 'denied', detail: e.message }, re); }
       }
       res.innerHTML = '<span class="spinner"></span> Synchronisation…';
       await Promise.race([syncAll(), new Promise((r) => setTimeout(r, 20000))]);
@@ -219,7 +221,7 @@ function renderTrack(el, ctx) {
 // Après deux refus, Android n'affiche plus la fenêtre d'autorisation : il faut activer l'accès depuis Health Connect.
 function openHealthHelp(d = {}, done) {
   const inf = d.info || {};
-  const diag = [`Android ${inf.release || '?'} (API ${inf.sdk || '?'})`, inf.maker, inf.managedProfile ? 'profil géré par une organisation' : null, inf.sdk && inf.sdk < 34 ? `appli Health Connect ${inf.hcApp ? 'installée' : 'absente'}` : null, d.detail].filter(Boolean).join(' · ');
+  const diag = [`Diana ${N.installedVersion() || '?'}`, `Android ${inf.release || '?'} (API ${inf.sdk || '?'})`, inf.maker, inf.managedProfile ? 'profil géré par une organisation' : null, inf.sdk && inf.sdk < 34 ? `appli Health Connect ${inf.hcApp ? 'installée' : 'absente'}` : null, d.detail].filter(Boolean).join(' · ');
   const body = sheet(`
     ${d.reason === 'unavailable' || d.reason === 'update' ? `<div class="note warn">${icon('shield', 18)}<span>${d.reason === 'update' ? 'Health Connect doit être <b>mis à jour</b> depuis le Play Store.' : inf.managedProfile ? 'Diana Health est installée dans un <b>profil géré par une organisation</b> (profil professionnel) : Health Connect n’y est pas disponible. Installe l’APK dans ton profil personnel.' : inf.sdk && inf.sdk < 34 && !inf.hcApp ? 'Sur ton Android, Health Connect est une application à installer depuis le Play Store.' : 'Health Connect n’est pas disponible sur ce téléphone.'}</span></div>`
       : `<p class="small" style="margin-top:0">${d.reason === 'denied' ? 'Diana Health n’a pas encore accès à tes données. Si aucune fenêtre ne s’est ouverte, c’est normal : <b>Android ne la réaffiche plus après deux refus</b>.' : 'La fenêtre d’autorisation n’a pas pu s’ouvrir.'}</p>
@@ -425,6 +427,34 @@ function renderScience(el) {
     <p class="tiny muted" style="text-align:center">Les études d’observation montrent des associations, pas forcément des causes. Les essais randomisés et méta-analyses sont privilégiés.</p>`;
   $('#sci-q', el).addEventListener('input', (e) => { query = e.target.value; draw(); });
   draw();
+}
+
+// ---------- Bilan sommeil de la semaine ----------
+const keys7 = () => Array.from({ length: 7 }, (_, i) => store.dayKey(i - 6));
+export function sleepWeekCard(st) {
+  const w = S.sleepWeek(st.days, st.profile, keys7());
+  const head = `<div class="card-head"><h2><span style="color:var(--c-sleep)">${icon('moon', 18)}</span> Sommeil des 7 derniers jours</h2></div>`;
+  if (!w.noted) return `<div class="card">${head}<p class="small muted" style="margin:0">Aucune nuit notée cette semaine. Continue à noter ton sommeil (bouton du soir, widget ou Health Connect) pour voir ton bilan.</p></div>`;
+  const tgt = w.need.target * 60, top = Math.max(tgt, ...w.nights.map((n) => n.min || 0)) * 1.1;
+  const jl = S.socialJetlag(st.days, Array.from({ length: 28 }, (_, i) => store.dayKey(i - 27)), st.profile.work?.enabled ? st.profile.work.days : [1, 2, 3, 4, 5]);
+  const debt = w.debt;
+  const verdict = debt > 60 ? ['var(--warn)', `il te manque ${fmtMin(debt)}`] : debt < -60 ? ['var(--good)', `${fmtMin(-debt)} de plus que ton besoin`] : ['var(--good)', 'ton besoin est couvert'];
+  return `<div class="card">${head}
+    <div class="grid2" style="gap:10px">
+      <div><div class="tiny muted">Dormi</div><div style="font-size:1.35rem;font-weight:800">${fmtMin(w.slept)}</div><div class="tiny muted">${w.noted} nuit${w.noted > 1 ? 's' : ''} notée${w.noted > 1 ? 's' : ''} · ${fmtMin(w.avg)} en moyenne</div></div>
+      <div><div class="tiny muted">Conseillé</div><div style="font-size:1.35rem;font-weight:800">${fmtMin(w.needed)}</div><div class="tiny muted">${fmtMin(w.need.target * 60)} par nuit (${w.need.min}–${w.need.max} h à ton âge)</div></div>
+    </div>
+    <p class="small" style="margin:10px 0 4px"><b style="color:${verdict[0]}">Bilan : ${verdict[1]}</b>${debt > 60 ? `, soit ${fmtMin(Math.round(debt / w.noted))} par nuit.` : '.'}${w.short ? ` <span class="muted">${w.short} nuit${w.short > 1 ? 's' : ''} sous ${w.need.min} h.</span>` : ''}</p>
+    <div class="sw-plot" role="img" aria-label="Sommeil nuit par nuit face à l’objectif de ${fmtMin(tgt)}">
+      <i class="sw-target" style="bottom:${(tgt / top) * 100}%"><span>${fmtMin(tgt)}</span></i>
+      ${w.nights.map((n) => `<div class="sw-bar ${n.min && n.min < w.need.min * 60 ? 'short' : ''}" style="height:${n.min ? Math.max(3, (n.min / top) * 100) : 0}%"></div>`).join('')}
+    </div>
+    <div class="sw-days">${w.nights.map((n) => `<span>${new Date(`${n.key}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'short' }).replace('.', '')}<b>${n.min ? `${Math.floor(n.min / 60)}h${String(n.min % 60).padStart(2, '0')}` : '–'}</b></span>`).join('')}</div>
+    <div class="legend" style="margin-top:6px"><span><i style="background:var(--c-sleep)"></i>nuit</span><span><i style="background:var(--warn)"></i>moins de ${w.need.min} h</span><span><i style="background:none;border-top:2px dashed var(--muted);height:0;border-radius:0"></i>objectif</span></div>
+    ${debt > 120 ? `<div class="note" style="margin-top:10px">${icon('bulb', 18)}<span>La dette s’accumule : dormir 6 h pendant 2 semaines pèse sur l’attention autant qu’une nuit blanche. La rattraper le week-end ne suffit pas : mieux vaut avancer le coucher de 20 à 30 min chaque soir.</span></div>` : ''}
+    ${jl != null ? `<p class="small" style="margin:10px 0 0">${icon('clock', 14)} Décalage horaire social : <b style="color:${jl >= 60 ? 'var(--warn)' : 'var(--good)'}">${fmtMin(jl)}</b> <span class="muted">${jl >= 60 ? 'entre ta semaine et tes jours libres. Au-delà d’1 h, c’est associé à plus de surpoids : garde des horaires proches le week-end.' : 'entre semaine et jours libres : horaires réguliers.'}</span></p>` : ''}
+    ${srcLinks(['hirshkowitz2015', 'vandongen2003', 'depner2019', ...(jl != null ? ['wittmann2006', 'roenneberg2012'] : [])])}
+  </div>`;
 }
 
 // ---------- Transit ----------

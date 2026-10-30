@@ -20,9 +20,9 @@ export const ACTIVITIES = [
 export const activity = (id) => ACTIVITIES.find((a) => a.id === id) || ACTIVITIES.at(-1);
 
 export const INTENSITY = {
-  legere: { label: 'Légère', factor: 0.75, talk: 'tu peux chanter' },
-  moderee: { label: 'Modérée', factor: 1, talk: 'tu peux parler, pas chanter' },
-  intense: { label: 'Intense', factor: 1.3, talk: 'quelques mots seulement' },
+  legere: { label: 'Légère', factor: 0.75, talk: 'effort ressenti 3–4 sur 10, facile' },
+  moderee: { label: 'Modérée', factor: 1, talk: 'effort ressenti 5–6 sur 10, respiration plus rapide' },
+  intense: { label: 'Intense', factor: 1.3, talk: 'effort ressenti 7–8 sur 10, difficile' },
 };
 
 // Dépense ≈ MET × poids (kg) × durée (h).

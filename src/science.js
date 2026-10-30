@@ -91,7 +91,12 @@ export const SOURCES = {
   milanovic2016: { t: 'Milanović et al. – Le fractionné (HIIT) améliore davantage la VO2max que l’endurance continue (Sports Med 2016)', u: 'https://doi.org/10.1007/s40279-015-0365-0' },
   knaier2021: { t: 'Knaier et al. – Force et endurance maximales en fin d’après-midi et le soir, méta-analyse (Med Sci Sports Exerc 2021)', u: 'https://doi.org/10.1249/MSS.0000000000002773' },
   bruggisser2023: { t: 'Bruggisser et al. – Pas de meilleur moment universel pour s’entraîner : la régularité prime (Sports Med Open 2023)', u: 'https://doi.org/10.1186/s40798-023-00577-5' },
-  sorensen2020: { t: 'Sørensen et al. – Le « test de la parole » pour régler l’intensité (J Cardiopulm Rehabil Prev 2020)', u: 'https://doi.org/10.1097/HCR.0000000000000506' },
+  hirshkowitz2015: { t: 'Hirshkowitz et al. – Durées de sommeil recommandées selon l’âge, National Sleep Foundation (Sleep Health 2015)', u: 'https://doi.org/10.1016/j.sleh.2014.12.010' },
+  vandongen2003: { t: 'Van Dongen et al. – La dette de sommeil s’accumule : 6 h par nuit pendant 2 semaines = une nuit blanche pour l’attention (Sleep 2003)', u: 'https://doi.org/10.1093/sleep/26.2.117' },
+  depner2019: { t: 'Depner et al. – Rattraper son sommeil le week-end ne corrige pas les effets métaboliques du manque de sommeil (Curr Biol 2019)', u: 'https://doi.org/10.1016/j.cub.2019.01.069' },
+  wittmann2006: { t: 'Wittmann et al. – Le « décalage horaire social » entre semaine et week-end (Chronobiol Int 2006)', u: 'https://doi.org/10.1080/07420520500545979' },
+  roenneberg2012: { t: 'Roenneberg et al. – Le décalage horaire social est associé au surpoids (Curr Biol 2012)', u: 'https://doi.org/10.1016/j.cub.2012.03.038' },
+  borg1982: { t: 'Borg – Échelles d’effort perçu et leur lien avec l’intensité réelle (Med Sci Sports Exerc 1982)', u: 'https://pubmed.ncbi.nlm.nih.gov/7154893/' },
   helgerud2007: { t: 'Helgerud et al. – Intervalles 4 × 4 min à 90–95 % FCmax : meilleur gain de VO2max (Med Sci Sports Exerc 2007)', u: 'https://doi.org/10.1249/mss.0b013e3180304570' },
   gibala2012: { t: 'Gibala et al. – Fractionné court (10 × 1 min) : adaptations comparables à l’endurance (J Physiol 2012)', u: 'https://doi.org/10.1113/jphysiol.2011.224725' },
   soligard2008: { t: 'Soligard et al. – Un échauffement structuré réduit les blessures d’environ un tiers, essai randomisé (BMJ 2008)', u: 'https://doi.org/10.1136/bmj.a2469' },
@@ -218,6 +223,44 @@ export function bedtimeVariability(beds) {
   if (xs.length < 3) return null;
   const m = xs.reduce((a, b) => a + b, 0) / xs.length;
   return Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / xs.length);
+}
+
+// Besoin de sommeil selon l'âge (Hirshkowitz 2015, Watson 2015), ajusté à la fenêtre de sommeil choisie.
+export function sleepNeed(profile = {}) {
+  const a = age(profile.birthYear) ?? 35;
+  const [min, max, def] = a < 18 ? [8, 10, 9] : a < 26 ? [7, 9, 8] : a < 65 ? [7, 9, 7.5] : [7, 8, 7.5];
+  const win = profile.bedTime && profile.wakeTime ? sleepHours(profile.bedTime, profile.wakeTime) - 0.25 : null;
+  return { min, max, target: win ? clamp(round(win * 4) / 4, min, max) : def };
+}
+
+// Bilan de la semaine : sommeil réel nuit par nuit face au besoin, et dette accumulée sur les nuits notées.
+export function sleepWeek(days, profile, keys) {
+  const need = sleepNeed(profile);
+  const nights = keys.map((k) => {
+    const d = days[k] || {};
+    const min = d.sleepMinutes || (d.bed && d.wake ? Math.round(sleepHours(d.bed, d.wake) * 60) : null);
+    return { key: k, min };
+  });
+  const noted = nights.filter((n) => n.min);
+  const slept = noted.reduce((a, n) => a + n.min, 0);
+  const needed = Math.round(noted.length * need.target * 60);
+  return { need, nights, noted: noted.length, slept, needed, debt: needed - slept, avg: noted.length ? Math.round(slept / noted.length) : null, short: noted.filter((n) => n.min < need.min * 60).length };
+}
+
+// Décalage horaire social : écart du milieu de la nuit entre jours travaillés et jours libres (Wittmann 2006).
+// workDays : jours (0 = dimanche) travaillés ; la nuit compte pour le jour du réveil.
+export function socialJetlag(days, keys, workDays = [1, 2, 3, 4, 5]) {
+  const mid = { work: [], free: [] };
+  for (const k of keys) {
+    const d = days[k] || {};
+    if (!d.bed || !d.wake) continue;
+    const dur = sleepHours(d.bed, d.wake) * 60;
+    const m = (minutesOfDay(d.bed) + dur / 2) % 1440;
+    mid[workDays.includes(new Date(`${k}T12:00:00`).getDay()) ? 'work' : 'free'].push(m < 720 ? m + 1440 : m);
+  }
+  if (mid.work.length < 2 || mid.free.length < 2) return null;
+  const avg = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
+  return Math.round(Math.abs(avg(mid.free) - avg(mid.work)));
 }
 
 // ---------- Scores 0–100 ----------
@@ -359,7 +402,7 @@ export const EVIDENCE = [
     ['La condition cardio-respiratoire est le facteur le plus fortement lié à la longévité, devant le tabac et le diabète.', ['mandsager2018']],
     ['FC de repos : chaque +10 bpm ≈ +9 % de mortalité ; l’endurance la fait baisser.', ['zhang2016']],
     ['Marche, footing, yoga et musculation réduisent les symptômes dépressifs autant qu’une psychothérapie.', ['noetel2024']],
-    ['Intensité : FC max ≈ 208 − 0,7 × âge ; modéré ≈ 64–76 % (on peut parler mais pas chanter), intense ≈ 77–95 % (quelques mots seulement).', ['tanaka2001', 'sorensen2020']],
+    ['Intensité : l’effort ressenti sur 10 suffit pour doser une séance, sans cardiofréquencemètre. Modéré ≈ 5–6 sur 10, intense ≈ 7–8 sur 10.', ['borg1982', 'foster2001']],
     ['Le fractionné (HIIT) améliore davantage la capacité cardio-respiratoire (VO2max) que l’endurance continue, en moins de temps.', ['milanovic2016']],
     ['Musculation : 2–3 séances/semaine, 8–12 répétitions, chaque groupe musculaire 2 fois/semaine, 48 h de récupération entre deux séances du même muscle.', ['acsm2009', 'schoenfeld2016']],
     ['Force et endurance sont maximales en fin d’après-midi et le soir ; mais le meilleur moment pour progresser est celui où tu peux être régulier.', ['knaier2021', 'bruggisser2023']],
@@ -440,7 +483,7 @@ export const EVIDENCE = [
     ['Noter ce que tu manges, ton activité et ton poids est l’un des comportements les plus constamment associés à la perte de poids durable.', ['burke2011', 'michie2009']],
     ['Se peser régulièrement (au moins toutes les 1 à 2 semaines) aide à perdre du poids et surtout à ne pas le reprendre.', ['zheng2014']],
     ['Ajuster la séance suivante à l’effort ressenti (trop dur / adapté / trop facile) est une méthode d’entraînement validée, aussi efficace que les programmes fixes.', ['foster2001', 'helms2016', 'greig2020']],
-    ['Une intensité vécue comme agréable rend plus régulier : au-delà du seuil où l’on ne peut plus parler, le plaisir chute chez les débutants.', ['ekkekakis2011']],
+    ['Une intensité vécue comme agréable rend plus régulier : quand l’effort devient trop dur, le plaisir chute chez les débutants.', ['ekkekakis2011']],
   ] },
   { theme: 'Écrans & santé mentale', icon: 'phone', color: 'var(--c-screen)', facts: [
     ['Limiter les réseaux sociaux à 30 min/jour pendant 3 semaines réduit solitude et symptômes dépressifs (essai contrôlé).', ['hunt2018']],

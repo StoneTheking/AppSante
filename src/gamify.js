@@ -93,7 +93,7 @@ export function progress(st, now = new Date()) {
   const floor = 50 * level * (level - 1), next = 50 * (level + 1) * level;
   return {
     xp, level, title: LEVELS[Math.min(LEVELS.length - 1, level - 1)], into: xp - floor, need: next - floor,
-    today: todayXp, yesterday, atStake: doneToday >= VALIDATE ? 0 : Math.min(xp, missPenalty(level0, doneToday)),
+    today: todayXp, pending: xpForDay(st, today, idx), validated: doneToday >= VALIDATE, yesterday, atStake: doneToday >= VALIDATE ? 0 : Math.min(xp, missPenalty(level0, doneToday)),
   };
 }
 

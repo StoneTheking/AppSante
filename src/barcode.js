@@ -40,7 +40,7 @@ export function allergenTags(allergies = '') {
 const NUTRI_LABEL = { a: 'Excellent', b: 'Bon', c: 'Moyen', d: 'Médiocre', e: 'Mauvais' };
 export const NUTRI_COLORS = { a: '#038141', b: '#85bb2f', c: '#fecb02', d: '#ee8100', e: '#e63e11' };
 
-const FIELDS = 'code,product_name,product_name_fr,brands,quantity,serving_size,serving_quantity,nutriscore_grade,nova_group,ecoscore_grade,additives_tags,nutriments,image_front_small_url,allergens_tags,labels_tags';
+const FIELDS = 'code,product_name,product_name_fr,generic_name_fr,brands,quantity,serving_size,serving_quantity,nutriscore_grade,nova_group,ecoscore_grade,additives_tags,nutriments,image_front_small_url,allergens_tags,labels_tags';
 
 export async function lookup(code) {
   const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}?fields=${FIELDS}`, { headers: { Accept: 'application/json' } });
@@ -51,19 +51,32 @@ export async function lookup(code) {
   return normalize(j.product, code);
 }
 
+// Valeur pour 100 g : certaines fiches ne renseignent que le produit « préparé » ou la portion.
+export function per100Of(n, key, serving) {
+  const num = (v) => (v === '' || v == null || Number.isNaN(Number(v)) ? null : Number(v));
+  const direct = num(n[`${key}_100g`]) ?? num(n[`${key}_prepared_100g`]);
+  if (direct != null) return direct;
+  const sv = num(n[`${key}_serving`]) ?? num(n[`${key}_prepared_serving`]);
+  return sv != null && serving ? (sv * 100) / serving : null;
+}
+
 export function normalize(p, code) {
   const n = p.nutriments || {};
+  const serving = Number(p.serving_quantity) || null;
+  const v = (k) => per100Of(n, k, serving);
+  const kj = v('energy-kj') ?? v('energy');
   const per100 = {
-    kcal: n['energy-kcal_100g'] ?? (n.energy_100g ? n.energy_100g / 4.184 : 0),
-    protein: n.proteins_100g || 0,
-    carbs: n.carbohydrates_100g || 0,
-    sugar: n.sugars_100g || 0,
-    fat: n.fat_100g || 0,
-    satFat: n['saturated-fat_100g'] || 0,
-    fiber: n.fiber_100g || 0,
-    sodium: (n.sodium_100g ?? (n.salt_100g ? n.salt_100g / 2.5 : 0)) * 1000,
-    fruitVeg: n['fruits-vegetables-nuts-estimate-from-ingredients_100g'] || 0, // % → g pour 100 g
+    kcal: v('energy-kcal') ?? (kj != null ? kj / 4.184 : 0),
+    protein: v('proteins') || 0,
+    carbs: v('carbohydrates') || 0,
+    sugar: v('sugars') || 0,
+    fat: v('fat') || 0,
+    satFat: v('saturated-fat') || 0,
+    fiber: v('fiber') || 0,
+    sodium: (v('sodium') ?? (v('salt') != null ? v('salt') / 2.5 : 0)) * 1000,
+    fruitVeg: v('fruits-vegetables-nuts-estimate-from-ingredients') || 0, // % → g pour 100 g
   };
+  per100.kcal = Math.round(per100.kcal * 10) / 10;
   const additives = (p.additives_tags || []).map((t) => {
     const id = t.replace(/^en:/, '');
     return { id: id.toUpperCase(), ...(ADDITIVES[id] || { name: '', level: 'neutre', note: '' }) };
@@ -73,7 +86,8 @@ export function normalize(p, code) {
     name: p.product_name_fr || p.product_name || 'Produit sans nom',
     brand: p.brands || '',
     quantity: p.quantity || '',
-    serving: Number(p.serving_quantity) || null,
+    serving,
+    missing: !per100.kcal && !per100.protein && !per100.carbs && !per100.fat,
     servingLabel: p.serving_size || '',
     nutriscore: (p.nutriscore_grade || '').toLowerCase().match(/^[a-e]$/) ? p.nutriscore_grade.toLowerCase() : null,
     nova: Number(p.nova_group) || null,
@@ -84,6 +98,59 @@ export function normalize(p, code) {
     per100,
     alcohol: Number(n.alcohol_100g ?? n.alcohol) || 0, // % vol. pour les boissons
   };
+}
+
+// Recherche par nom (ex. « kit kat ») dans Open Food Facts, sans clé ni compte.
+// Résultats reclassés : nom qui contient tous les mots, produit vendu en France, valeurs nutritionnelles présentes.
+const cache = new Map();
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Android : moteur de recherche récent, appelé en natif (il refuse les appels directs depuis une page web).
+async function hitsNative(q) {
+  const { Capacitor, CapacitorHttp } = await import('@capacitor/core');
+  if (!Capacitor.isNativePlatform()) return null;
+  const r = await CapacitorHttp.get({ url: 'https://search.openfoodfacts.org/search', params: { q, langs: 'fr', page_size: '40', fields: `${FIELDS},countries_tags,unique_scans_n` }, connectTimeout: 8000, readTimeout: 10000 });
+  if (r.status !== 200) return null;
+  const j = typeof r.data === 'string' ? JSON.parse(r.data) : r.data;
+  return j.hits || null;
+}
+
+// Partout : recherche classique (CORS ouvert, ~10 recherches/min ; au-delà, réponse 503 sans en-têtes CORS).
+async function hitsClassic(q, signal) {
+  const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=40&lc=fr&fields=${FIELDS},countries_tags,unique_scans_n`;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const res = await fetch(url, { signal });
+      if (res.ok) return (await res.json()).products || [];
+      if (attempt || ![429, 503].includes(res.status)) throw new Error(`Recherche indisponible (${res.status})`);
+    } catch (e) {
+      if (e.name === 'AbortError') throw e;
+      if (attempt) throw new Error(navigator.onLine === false ? 'Pas de connexion internet.' : 'Open Food Facts est saturé ou limite les recherches rapprochées : réessaie dans quelques secondes.');
+    }
+    await wait(2500);
+  }
+}
+
+export async function search(q, { signal } = {}) {
+  const norm = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  const key = norm(q);
+  if (cache.has(key)) return cache.get(key);
+  const hits = (await hitsNative(q).catch(() => null)) || (await hitsClassic(q, signal));
+  const words = key.split(' ').filter(Boolean);
+  const seen = new Set();
+  const out = hits.map((h, i) => {
+    const brands = Array.isArray(h.brands) ? h.brands.join(', ') : h.brands;
+    const prod = normalize({ ...h, brands }, h.code);
+    const hay = norm(`${prod.name} ${brands}`);
+    const score = words.filter((w) => hay.includes(w)).length * 10 + ((h.countries_tags || []).includes('en:france') ? 6 : 0)
+      + (prod.missing ? -30 : 0) + Math.min(8, Math.log2(1 + (h.unique_scans_n || 0))) + (prod.image ? 2 : 0) - i * 0.15;
+    return { prod, score };
+  }).filter(({ prod }) => {
+    const k = norm(`${prod.name}|${prod.brand.split(',')[0]}|${prod.quantity}`);
+    return !seen.has(k) && seen.add(k);
+  }).sort((a, b) => b.score - a.score).map((x) => x.prod).slice(0, 20);
+  cache.set(key, out);
+  return out;
 }
 
 export const forGrams = (per100, g) => Object.fromEntries(Object.entries(per100).map(([k, v]) => [k, Math.round(((v * g) / 100) * 10) / 10]));
