@@ -12,7 +12,6 @@ import * as SP from '../sport.js';
 import { icon, esc, fmt, fmtMin, segmented, srcLinks, barChart, timeChart, faces, bindFaces, toast, undoToast, compressImage, pickImage, sheet, $, $$ } from '../ui.js';
 import * as E from '../energy.js';
 import { correlations } from '../correlate.js';
-import { openSection as openProfile } from './profile.js';
 
 let seg = 'suivi';
 let dayOffset = 0;
@@ -153,16 +152,6 @@ function stepsSince(st) {
   return first ? `actif · compte depuis ${new Date(first.t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : 'actif';
 }
 
-// Rappel discret dans Santé : l'état de la synchro, les réglages sont dans le profil.
-function phoneLink(st) {
-  const d = st.healthDiag;
-  const warn = N.isNative && (!d?.ok || !st.usageOk);
-  return `<button class="list-item card" id="phone-link" style="width:100%;text-align:left;padding:10px 14px;margin-bottom:12px">
-    <span class="icon-badge" style="color:${warn ? 'var(--warn)' : 'var(--good)'}">${icon(N.isNative ? 'phone' : 'upload', 16)}</span>
-    <span><span class="small" style="font-weight:600">Données du téléphone</span><span class="tiny muted" style="display:block">${N.isNative ? (st.lastSync ? `à jour ${new Date(st.lastSync).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : 'pas encore synchronisées') + (warn ? ' · un accès manque' : '') : 'capture d’écran ou CSV'} · réglages dans Profil</span></span>
-    <span class="muted">${icon('right', 16)}</span></button>`;
-}
-
 export function sourcesCard(st) {
   const d = st.healthDiag;
   if (!N.isNative) return `<div class="card">
@@ -192,7 +181,7 @@ function renderTrack(el, ctx) {
   const kg = st.profile.weight || 70;
   const due = E.weighDue(st);
   el.innerHTML = `
-    ${phoneLink(st)}
+    ${sourcesCard(st)}
     ${dayOffset === 0 ? sleepWeekCard(st) : ''}
     <div class="card">
       <div class="between">
@@ -260,12 +249,11 @@ function renderTrack(el, ctx) {
   $('#next', el).onclick = () => { if (dayOffset < 0) { dayOffset++; re(); } };
   $('#add-stool', el).onclick = () => ctx.action('stool');
   $$('[data-stool-del]', el).forEach((b) => (b.onclick = () => { const undo = store.removing((s) => { s.stools = s.stools.filter((x) => x.id !== b.dataset.stoolDel); }); re(); undoToast('Entrée supprimée', undo); }));
-  $('#phone-link', el)?.addEventListener('click', () => { openProfile('phone'); ctx.go('profile'); });
+  bindSources(el, re, key);
 }
 
-// Pas, Health Connect, podomètre, temps d’écran (affiché dans Profil → Données du téléphone).
-export function bindSources(el, re) {
-  const key = store.today();
+// Pas, Health Connect, podomètre, temps d’écran : dans Santé et dans Profil → Données du téléphone.
+export function bindSources(el, re, key = store.today()) {
   if (N.isNative) {
     $('#hc', el)?.addEventListener('click', async () => {
       const res = $('#sync-res', el);
