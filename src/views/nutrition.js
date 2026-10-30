@@ -122,6 +122,23 @@ function eatDish(d) {
 }
 
 // ---------- Jour ----------
+// Journal du jour rangé par repas (petit-déj, déjeuner, collation, dîner, puis grignotages), avec le total de chacun.
+const SLOT_ORDER = [['petit-dej', 'Petit-déjeuner'], ['dejeuner', 'Déjeuner'], ['collation', 'Collation'], ['diner', 'Dîner']];
+function mealsBySlot(meals) {
+  const slotOf = (m) => {
+    if (m.snack) return 'grignotage';
+    if (SLOT_ORDER.some(([k]) => k === m.slot)) return m.slot;
+    const h = Number(String(m.time || '12').split(':')[0]); // ancien repas sans moment : selon l'heure
+    return h < 11 ? 'petit-dej' : h < 15 ? 'dejeuner' : h < 18 ? 'collation' : 'diner';
+  };
+  return [...SLOT_ORDER, ['grignotage', 'Grignotages']].map(([k, l]) => {
+    const xs = meals.filter((m) => slotOf(m) === k);
+    if (!xs.length) return '';
+    const kcal = xs.reduce((a, m) => a + (m.nutrients?.kcal || 0), 0);
+    return `<div class="slot-head"><span>${l}</span><span>${fmt(kcal)} kcal</span></div>${xs.map((m) => mealLine(m)).join('')}`;
+  }).join('');
+}
+
 function renderDay(el, ctx) {
   const st = store.get();
   const sm = summary();
@@ -159,7 +176,8 @@ function renderDay(el, ctx) {
 
     <div class="card">
       <div class="card-head"><h2>${icon('utensils', 18)} Journal du jour</h2><button class="link" data-a="manual">${icon('pencil', 14)} Manuel</button></div>
-      ${meals.length ? meals.map((m) => mealLine(m)).join('') : `<div class="empty">${icon('camera', 28)}<p>Aucun repas aujourd'hui.<br>Photographie ton assiette ou scanne un produit.</p></div>`}
+      ${st.pendingPhotos?.length ? `<div class="note" style="margin:4px 0 8px">${icon('clock', 18)}<span>${st.pendingPhotos.length} photo${st.pendingPhotos.length > 1 ? 's' : ''} de repas en attente de connexion : analyse automatique dès le retour du réseau.</span></div>` : ''}
+      ${meals.length ? mealsBySlot(meals) : `<div class="empty">${icon('camera', 28)}<p>Aucun repas aujourd'hui.<br>Photographie ton assiette ou scanne un produit.</p></div>`}
     </div>
 
     ${snackCard(st)}

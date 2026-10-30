@@ -49,10 +49,13 @@ export function render(view, ctx) {
     box.appendChild(bubble);
     bubble.scrollIntoView({ block: 'end', behavior: 'smooth' });
     try {
-      const { text: answer, sources } = await AI.coachChat(st.settings, store.get().chat.slice(-20).map(({ role, content }) => ({ role, content })), personContext(), (acc) => { bubble.innerHTML = md(acc); }, { webSearch: st.settings.webSearch });
+      // Diana (en haut à gauche) bouge la bouche pendant que sa réponse s'écrit.
+      const { text: answer, sources } = await AI.coachChat(st.settings, store.get().chat.slice(-20).map(({ role, content }) => ({ role, content })), personContext(), (acc) => { Diana.talking(true); bubble.innerHTML = md(acc); }, { webSearch: st.settings.webSearch });
+      Diana.talking(false);
       store.update((s) => s.chat.push({ role: 'assistant', content: answer, sources }));
       bubble.innerHTML = md(answer) + sourcesHtml(sources);
     } catch (e) {
+      Diana.talking(false);
       store.update((s) => s.chat.pop());
       bubble.innerHTML = `<span style="color:var(--bad)">${icon('alert', 16)} ${esc(AI.friendlyError(e))}</span>`;
     }

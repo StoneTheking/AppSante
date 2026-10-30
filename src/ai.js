@@ -2,6 +2,7 @@
 // Claude (clé Anthropic, payante à l'usage) ou Google Gemini (clé gratuite) : la clé est stockée sur l'appareil
 // et envoyée directement au fournisseur choisi.
 import { SOURCES, EVIDENCE_TEXT, evidenceText } from './science.js';
+import { isOffline, WEAK_MSG } from './net.js';
 import { geminiClient, isGeminiKey, GeminiError } from './gemini.js';
 
 const FOOD_EVIDENCE = evidenceText(['Alimentation', 'Horaires des repas']);
@@ -30,11 +31,12 @@ function fallbackParams(model) {
 }
 
 export function friendlyError(e) {
+  if (isOffline(e) || isOffline(e?.cause)) return e?.offline ? e.message : WEAK_MSG;
   if (e instanceof GeminiError || !Anthropic) return e?.message || String(e);
   if (e instanceof Anthropic.AuthenticationError) return 'Clé API invalide. Vérifie-la dans Profil.';
   if (e instanceof Anthropic.PermissionDeniedError) return 'Cette clé n’a pas accès à ce modèle.';
   if (e instanceof Anthropic.RateLimitError) return 'Trop de requêtes, réessaie dans une minute.';
-  if (e instanceof Anthropic.APIConnectionError) return 'Pas de connexion à Internet.';
+  if (e instanceof Anthropic.APIConnectionError) return WEAK_MSG;
   if (e instanceof Anthropic.APIError) return `Erreur de l’API (${e.status ?? '?'}) : ${e.message}`;
   return e?.message || String(e);
 }
@@ -151,15 +153,20 @@ export async function readScreenshot({ apiKey, model }, dataUrl) {
   return parseJson(resp);
 }
 
-const COACH_SYSTEM = `Tu es « Coach Diana », une coach personnelle en nutrition, activité physique, sommeil et bien-être mental, rigoureux et bienveillant.
+const COACH_SYSTEM = `Tu es « Coach Diana », une coach personnelle en nutrition, activité physique, sommeil et bien-être mental : chaleureuse, enthousiaste et rigoureuse.
+Ton et longueur (le plus important) :
+- Réponds comme une coach qui envoie un message à quelqu'un qu'elle apprécie : tutoiement, chaleur, encouragements sincères, un ou deux émojis bien placés, et une réaction à ce que la personne vit (« Belle journée de marche ! », « Nuit courte, je comprends que tu sois fatigué·e »).
+- Sois brève : 60 à 120 mots maximum, sauf si la personne demande explicitement plus de détails. Va droit au but : une recommandation principale, puis 2 ou 3 puces au plus.
+- Pour « que manger », propose 1 ou 2 idées précises (plat, quantité, heure) et pourquoi en une phrase, pas un menu complet.
+- Termine souvent par une petite question ou un mot d'encouragement.
 Principes :
 - Appuie-toi sur les données scientifiques les plus solides, par ordre de préférence : recommandations officielles (OMS, ANSES, HAS, EFSA, PNNS), méta-analyses et revues systématiques, essais randomisés, puis grandes cohortes. Indique le niveau de preuve quand c'est utile.
-- Cite la source (auteur, revue, année) de chaque chiffre. Utilise d'abord la base de connaissances ci-dessous ; si la question sort de ce cadre ou demande des données récentes, utilise la recherche web (sources médicales et scientifiques uniquement).
-- Personnalise tout à partir des données de l'utilisateur fournies (profil, sommeil, humeur, écrans, activité, repas, fréquence cardiaque). Dis explicitement quelles données t'ont fait conclure.
-- Donne des conseils concrets et horodatés : quoi manger, à quelle heure, quelle activité, combien de temps, à quel moment de la journée.
-- Distingue association et causalité ; signale l'incertitude et les limites des études.
+- Quand tu donnes un chiffre, cite brièvement sa source entre parenthèses (organisme ou auteur, année), une seule à la fois. Utilise d'abord la base de connaissances ci-dessous ; la recherche web seulement si la question demande des données récentes (sources médicales et scientifiques uniquement).
+- Personnalise à partir des données de l'utilisateur fournies (profil, sommeil, humeur, écrans, activité, repas déjà pris aujourd'hui) et mentionne en quelques mots celle qui a guidé ton conseil.
+- Donne des conseils concrets et horodatés : quoi, combien, à quelle heure.
+- Signale l'incertitude en une phrase quand c'est important.
 - Tu n'es pas médecin : en cas de symptôme inquiétant, de trouble alimentaire suspecté, d'idées noires (3114 en France) ou de maladie chronique, oriente vers un professionnel.
-- Réponds en français, de façon concise et structurée (titres courts, listes), sans jargon inutile.
+- Réponds en français, sans titres, sans jargon.
 
 # Base de connaissances scientifiques (résultats chiffrés)
 ${EVIDENCE_TEXT}
@@ -182,7 +189,9 @@ export async function coachChat({ apiKey, model }, history, personContext, onTex
   // Les données du jour sont jointes au dernier message utilisateur, le préfixe reste stable (cache).
   const last = messages.at(-1);
   last.content = `<donnees_utilisateur>\n${personContext}\n</donnees_utilisateur>\n\n${last.content}`;
-  const tools = webSearch && !model.startsWith('claude-haiku')
+  // Recherche web seulement si la question en a besoin (études récentes, sources…) : sinon réponse bien plus rapide.
+  const needsWeb = /étude|etude|recherche|source|récent|recent|nouveau|preuve|prouv|scientifi|actualit|20\d\d|selon|publi/i.test(history.at(-1)?.content || '');
+  const tools = webSearch && needsWeb && !model.startsWith('claude-haiku')
     ? [{ type: 'web_search_20260209', name: 'web_search', max_uses: 4, allowed_domains: SCIENCE_DOMAINS }]
     : undefined;
   let acc = '';
@@ -190,9 +199,9 @@ export async function coachChat({ apiKey, model }, history, personContext, onTex
   for (let i = 0; i < 4; i++) {
     const stream = c.beta.messages.stream({
       model,
-      max_tokens: 16000,
+      max_tokens: 4000,
       ...fallbackParams(model),
-      output_config: { effort: 'medium' },
+      output_config: { effort: 'low' },
       system: [{ type: 'text', text: COACH_SYSTEM, cache_control: { type: 'ephemeral' } }],
       ...(tools ? { tools } : {}),
       messages,

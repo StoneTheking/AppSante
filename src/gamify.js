@@ -10,6 +10,18 @@ export const dayKeyOffset = (n, from = new Date()) => { const d = new Date(from)
 const group = (xs) => { const m = new Map(); for (const x of xs) (m.get(x.date) || m.set(x.date, []).get(x.date)).push(x); return m; };
 const indexOf = (st) => ({ meals: group(st.meals), workouts: group(st.workouts), t: S.targets(st.profile) });
 
+// Assiette équilibrée : ce qui a été mangé de bon dans la journée (moitié fruits & légumes, un quart fibres,
+// un quart protéines, par rapport aux repères du jour). Manger peu ne fait donc pas avancer la quête ;
+// un excès de sucres, de graisses saturées ou de sel l'empêche d'être validée.
+export function plateGoal(tot, t) {
+  const r = (a, b) => Math.min(1, (a || 0) / b);
+  let progress = 0.5 * r(tot.fruitVeg, t.fruitVeg) + 0.25 * r(tot.fiber, t.fiber) + 0.25 * r(tot.protein, t.protein);
+  const over = [[tot.sugar > t.sugarMax, 'trop de sucres'], [tot.satFat > t.satFatMax, 'trop de graisses saturées'], [tot.sodium > t.sodiumMax, 'trop de sel']].filter(([x]) => x).map(([, l]) => l);
+  if (over.length) progress = Math.min(progress, 0.9);
+  const hint = `${Math.round(tot.fruitVeg || 0)}/${t.fruitVeg} g fruits & légumes · fibres ${Math.round(tot.fiber || 0)}/${t.fiber} g · protéines ${Math.round(tot.protein || 0)}/${t.protein} g${over.length ? ` · ${over.join(', ')}` : ''}`;
+  return { progress, hint };
+}
+
 // Les 5 quêtes quotidiennes, chacune alignée sur une recommandation.
 export function dayGoals(st, key, idx = null) {
   const d = st.days[key] || {};
@@ -18,10 +30,9 @@ export function dayGoals(st, key, idx = null) {
   const tot = S.sumNutrients(meals);
   const moveMin = (d.modMin || 0) + 2 * (d.vigMin || 0) + (idx ? idx.workouts.get(key) || [] : st.workouts.filter((w) => w.date === key)).filter(() => !(d.modMin || d.vigMin)).reduce((a, w) => a + w.minutes, 0);
   const sleepH = d.sleepMinutes ? d.sleepMinutes / 60 : S.sleepHours(d.bed, d.wake);
-  const diet = S.dietScore(tot, t);
   return [
     { id: 'move', label: 'Bouger 30 min', icon: 'steps', color: 'var(--c-move)', progress: Math.min(1, Math.max(moveMin / 30, (d.steps || 0) / t.steps)), hint: `${Math.round(moveMin)} min · ${d.steps ? d.steps + ' pas' : 'pas non renseignés'}` },
-    { id: 'food', label: 'Assiette équilibrée', icon: 'salad', color: 'var(--c-food)', progress: Math.min(1, Math.max(tot.fruitVeg / t.fruitVeg, diet != null ? diet / 70 : 0)), hint: `${Math.round(tot.fruitVeg)} g de fruits & légumes` },
+    { id: 'food', label: 'Assiette équilibrée', icon: 'salad', color: 'var(--c-food)', ...plateGoal(tot, t) },
     { id: 'sleep', label: 'Nuit de 7 h', icon: 'moon', color: 'var(--c-sleep)', progress: sleepH ? Math.min(1, sleepH / 7) : 0, hint: sleepH ? `${Math.floor(sleepH)} h ${String(Math.round((sleepH % 1) * 60) % 60).padStart(2, '0')}` : 'nuit non notée' },
     { id: 'water', label: 'Bien s’hydrater', icon: 'water', color: 'var(--c-water)', progress: Math.min(1, (d.waterMl || 0) / t.waterMl), hint: `${String((d.waterMl || 0) / 1000).replace('.', ',')} / ${String(t.waterMl / 1000).replace('.', ',')} L` },
     { id: 'mood', label: 'Check-in humeur', icon: 'smile', color: 'var(--c-mood)', progress: d.mood ? 1 : 0, hint: d.mood ? 'fait' : 'à faire' },

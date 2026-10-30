@@ -639,20 +639,24 @@ span.qcam-side { background: none; }
 
 /* Coach Diana */
 /* Coach Diana : posée au-dessus du menu, bulle qui apparaît puis s'efface (rien ne bouge dans la page) */
-.diana-orb { display: block; filter: drop-shadow(0 6px 12px rgba(10, 30, 70, .5)); }
-.diana-dock { position: fixed; z-index: 35; right: max(14px, calc((100vw - 560px) / 2 + 2px)); bottom: calc(10px + var(--nav-h) + 8px + env(safe-area-inset-bottom)); width: 58px; height: 58px; pointer-events: none; transition: opacity .25s, transform .25s; }
-.diana-dock.off { opacity: 0; transform: translateY(12px) scale(.8); }
-.diana-dock.off * { pointer-events: none !important; }
-.dd-face { pointer-events: auto; width: 58px; height: 58px; padding: 0; border: 0; background: radial-gradient(circle, color-mix(in srgb, var(--bg) 70%, transparent) 50%, transparent 71%); border-radius: 50%; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-.dd-face:active { transform: scale(.94); }
-.dd-bubble { position: absolute; right: 64px; bottom: 8px; width: max-content; max-width: min(270px, calc(100vw - 104px)); background: var(--card); border: 1px solid var(--line); border-radius: 18px 18px 6px 18px; padding: 9px 13px 10px; font-size: .86rem; line-height: 1.4; box-shadow: 0 12px 32px rgba(0, 0, 0, .3); opacity: 0; transform: translateX(10px) scale(.92); transform-origin: right bottom; transition: opacity .3s, transform .3s; pointer-events: none; }
+.diana-orb { display: block; filter: drop-shadow(0 4px 14px rgba(40, 170, 230, .35)); }
+.hello-wrap { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.diana-dock { position: relative; flex: none; width: 54px; height: 54px; margin: -4px 0 -4px -6px; }
+.dd-face { width: 54px; height: 54px; padding: 0; border: 0; background: none; border-radius: 50%; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform .15s; }
+.dd-face:active { transform: scale(.93); }
+.dd-bubble { position: absolute; left: 4px; top: calc(100% + 8px); z-index: 40; width: max-content; max-width: min(300px, calc(100vw - 40px)); background: var(--card); border: 1px solid color-mix(in srgb, #5ad7ff 35%, var(--line)); border-radius: 6px 18px 18px 18px; padding: 9px 13px 10px; font-size: .86rem; line-height: 1.4; box-shadow: 0 12px 32px rgba(0, 0, 0, .35), 0 0 24px rgba(90, 215, 255, .12); opacity: 0; transform: translateY(-8px) scale(.94); transform-origin: left top; transition: opacity .3s, transform .3s; pointer-events: none; }
 .dd-bubble.on { opacity: 1; transform: none; pointer-events: auto; transition: opacity .25s, transform .35s cubic-bezier(.2, .9, .3, 1.3); }
-.dd-bubble b { display: block; font-size: .66rem; letter-spacing: .06em; text-transform: uppercase; color: #7fa3cc; margin-bottom: 1px; }
+.dd-bubble b { display: block; font-size: .66rem; letter-spacing: .06em; text-transform: uppercase; color: #5ad7ff; margin-bottom: 1px; }
 .dd-chat { display: block; margin-top: 5px; padding: 0; border: 0; background: none; color: var(--primary); font: inherit; font-size: .76rem; font-weight: 700; cursor: pointer; }
 .diana-inline { display: flex; align-items: center; gap: 10px; margin-top: 12px; height: 52px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .diana-inline canvas { flex: none; }
 .diana-inline span { flex: 1; min-width: 0; font-size: .84rem; line-height: 1.35; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-@media (prefers-reduced-motion: reduce) { .dd-bubble, .dd-bubble.on, .diana-dock { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .dd-bubble, .dd-bubble.on { transition: none; } }
 .onb .logo.diana-logo { background: none; border: 0; box-shadow: none; width: auto; height: auto; }
 .coach-diana { display: grid; place-items: center; margin: 0 auto 6px; }
 .link-btn { background: none; border: 0; padding: 0; font: inherit; color: var(--primary); font-weight: 650; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.slot-head { display: flex; justify-content: space-between; margin: 14px 0 2px; font-size: .72rem; font-weight: 750; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.card-head + .slot-head { margin-top: 4px; }
+.boot-orb { animation: boot-in .55s cubic-bezier(.2, .9, .3, 1.25) both; }
+@keyframes boot-in { from { opacity: 0; transform: scale(.7); } }
+@media (prefers-reduced-motion: reduce) { .boot-orb { animation: none; } }

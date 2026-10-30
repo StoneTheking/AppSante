@@ -12,6 +12,7 @@ import * as PT from '../pantry.js';
 import * as SN from '../snacks.js';
 import * as Diana from '../diana.js';
 import { allowedMeals } from '../meals.js';
+import { isOffline } from '../net.js';
 
 const VERDICT = { bon: 'Bon pour toi', moyen: 'Moyen', a_limiter: 'À limiter' };
 
@@ -69,6 +70,7 @@ const MEAL_TYPES = [['petit-dej', 'Petit-déj'], ['dejeuner', 'Déjeuner'], ['co
 export async function openPhoto(ctx, fromGallery = false, slot = null) {
   const st = store.get();
   if (!st.settings.apiKey) return openQuickMeal(ctx, slot); // l'analyse photo demande une clé API
+  processPendingPhotos();
   const [file] = await pickImage({ camera: !fromGallery });
   if (!file) return;
   const dataUrl = await compressImage(file, 1024, 0.8); // assez net pour l'IA, plus rapide à envoyer
@@ -92,9 +94,55 @@ export async function openPhoto(ctx, fromGallery = false, slot = null) {
       showResult(res, { ...r, thumb, factor: 1, slot: slot || C.currentSlot() }, body);
     } catch (e) {
       stepsT.forEach(clearTimeout);
+      // Pas de réseau (ou trop faible) : la photo est gardée et analysée dès que la connexion revient.
+      if (isOffline(e) || isOffline(e?.cause) || navigator.onLine === false) {
+        queuePhoto({ dataUrl, note, slot: slot || C.currentSlot() });
+        res.innerHTML = `<div class="note">${icon('clock', 18)}<span><b>Pas de connexion : photo mise de côté.</b> Je l’analyse automatiquement dès que tu as du réseau, et le repas sera ajouté à l’heure où tu l’as pris.</span></div>
+          <button class="btn block" data-ok style="margin-top:12px">${icon('check', 18)} D’accord</button>`;
+        $('[data-ok]', res).onclick = () => body.close();
+        return;
+      }
       res.innerHTML = `<div class="note bad">${icon('alert', 18)}<span>${esc(AI.friendlyError(e))}</span></div>`;
     }
   };
+}
+
+// ---------- Photos en attente de connexion ----------
+const MAX_PENDING = 6; // chaque photo pèse ~150-250 ko dans le stockage du téléphone
+function queuePhoto({ dataUrl, note, slot }) {
+  const now = new Date();
+  store.update((s) => {
+    s.pendingPhotos = [...(s.pendingPhotos || []), { id: crypto.randomUUID(), dataUrl, note, slot, date: store.today(), time: now.toTimeString().slice(0, 5) }].slice(-MAX_PENDING);
+  });
+}
+
+let processing = false;
+// Analyse les photos mises de côté (au retour du réseau ou à l'ouverture de l'appli). Renvoie le nombre de repas ajoutés.
+export async function processPendingPhotos() {
+  const st = store.get();
+  if (processing || !st.pendingPhotos?.length || !st.settings.apiKey || navigator.onLine === false) return 0;
+  processing = true;
+  let added = 0;
+  try {
+    for (const ph of [...st.pendingPhotos]) {
+      try {
+        const r = await AI.analyzePlate(store.get().settings, ph.dataUrl, personContext(summary()), ph.note || '');
+        const thumb = await compressImage(await (await fetch(ph.dataUrl)).blob(), 160, 0.7);
+        store.update((s) => {
+          s.pendingPhotos = (s.pendingPhotos || []).filter((x) => x.id !== ph.id);
+          if (!r.is_food) return;
+          s.meals.push({ id: crypto.randomUUID(), date: ph.date, time: ph.time, title: r.title, nutrients: r.nutrients, items: r.items, nova: r.nova, quality: r.quality, verdict: r.verdict, comment: r.comment, advice: r.advice, thumb, slot: ph.slot === 'grignotage' ? 'collation' : ph.slot, snack: ph.slot === 'grignotage', alcohol: r.alcohol_drinks || 0 });
+          if (r.alcohol_drinks) s.days[ph.date] = { ...(s.days[ph.date] || {}), alcohol: Math.round(((s.days[ph.date]?.alcohol || 0) + r.alcohol_drinks) * 10) / 10 };
+        });
+        if (r.is_food) added++;
+      } catch (e) {
+        if (isOffline(e) || isOffline(e?.cause)) break; // toujours pas de réseau : on réessaiera
+        store.update((s) => { const x = (s.pendingPhotos || []).find((y) => y.id === ph.id); if (x) x.tries = (x.tries || 0) + 1; s.pendingPhotos = (s.pendingPhotos || []).filter((y) => (y.tries || 0) < 3); });
+      }
+    }
+  } finally { processing = false; }
+  if (added) Diana.pop(added > 1 ? `Connexion retrouvée : j’ai analysé tes ${added} photos de repas en attente 📸` : 'Connexion retrouvée : ta photo de repas en attente est analysée et ajoutée 📸', 'proud');
+  return added;
 }
 
 const scaled = (n, k) => Object.fromEntries(Object.entries(n).map(([a, v]) => [a, Math.round(v * k * 10) / 10]));

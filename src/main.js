@@ -1,4 +1,5 @@
 import './styles.css';
+import './net.js';
 import * as store from './store.js';
 import * as N from './native.js';
 import { refreshReminders, refreshEnv } from './context.js';
@@ -63,7 +64,7 @@ function shell() {
   document.body.classList.remove('onb-mode');
   app.innerHTML = `
     <header class="top">
-      <div class="hello"><span class="date" id="date"></span><h1 id="title"></h1></div>
+      <div class="hello-wrap"><div id="diana-slot"></div><div class="hello"><span class="date" id="date"></span><h1 id="title"></h1></div></div>
       <div class="row" style="flex-wrap:nowrap"><button class="streak-btn" id="streak-btn" aria-label="Ma progression"></button><button class="avatar" id="coach-btn" aria-label="Coach IA">${icon('chat', 19)}</button><button class="avatar" id="avatar" aria-label="Profil"></button></div>
     </header>
     <main id="view"></main>
@@ -80,7 +81,7 @@ function shell() {
   $('#avatar').onclick = () => tab !== 'profile' && go('profile');
   $('#coach-btn').onclick = () => tab !== 'coach' && go('coach');
   $('#streak-btn').onclick = () => P.openProgress();
-  Diana.mount(() => go('coach'));
+  Diana.mount($('#diana-slot'), () => go('coach'));
   $('#view').addEventListener('click', (e) => {
     const t = e.target.closest('[data-tab]');
     if (t) go(t.dataset.tab);
@@ -89,9 +90,8 @@ function shell() {
 
 function renderView(after, animate = false) {
   const { profile } = store.get();
-  const hour = new Date().getHours();
-  const hello = hour < 5 ? 'Bonne nuit' : hour < 18 ? 'Bonjour' : 'Bonsoir';
-  $('#title').textContent = tab === 'home' ? `${hello}${profile.name ? ' ' + profile.name : ''}` : TITLES[tab];
+  // Accueil : Diana prend la place du « Bonjour » (c'est elle qui salue dans sa bulle).
+  $('#title').textContent = tab === 'home' ? 'Coach Diana' : TITLES[tab];
   $('#date').textContent = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
   $('#avatar').innerHTML = profile.name ? esc(profile.name[0].toUpperCase()) : icon('user', 20);
   $$('.nav [data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
@@ -118,7 +118,21 @@ function go(t, after) {
   renderView(after, true);
 }
 
+// Lancement : Diana apparaît, fait un clin d'œil, puis s'efface sur l'appli déjà prête (rien ne se dessine sous les yeux).
+function boot() {
+  const el = $('#boot');
+  if (!el) return;
+  const slot = $('#boot-face');
+  slot.innerHTML = Diana.face('happy', 150);
+  const cv = slot.querySelector('canvas');
+  cv.classList.add('boot-orb');
+  setTimeout(() => Diana.express(cv, 'proud', 650), 450);
+  setTimeout(() => { el.style.opacity = '0'; el.style.pointerEvents = 'none'; }, 1250);
+  setTimeout(() => el.remove(), 1750);
+}
+
 function start() {
+  boot();
   if (!store.get().onboarded) {
     Onboarding.render(app, () => { shell(); go('home'); refreshReminders(); }, 'in');
     return;
@@ -181,6 +195,7 @@ async function onForeground() {
   if (events.length && ['home', 'health'].includes(tab)) renderView();
   autoSync();
   A.repairScannedMeals().then((n) => { if (n && ['home', 'nutrition'].includes(tab)) renderView(); });
+  A.processPendingPhotos().then((n) => { if (n && ['home', 'nutrition'].includes(tab)) renderView(); });
 }
 
 // Synchronisation automatique dans l'application Android (au lancement puis au retour au premier plan).
@@ -191,6 +206,8 @@ async function autoSync() {
   await Health.syncAll({ silent: true });
   if (['home', 'health'].includes(tab)) renderView();
 }
+// Réseau retrouvé : les photos de repas mises de côté sont analysées.
+window.addEventListener('online', () => { if (store.get().onboarded) A.processPendingPhotos().then((n) => { if (n && ['home', 'nutrition'].includes(tab)) renderView(); }); });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && store.get().onboarded) { onForeground(); refreshReminders(); askMoodToday(); Diana.greet(1200, { again: true }); }
 });
@@ -199,7 +216,7 @@ document.addEventListener('visibilitychange', () => {
 function askMoodToday() {
   const st = store.get();
   if (st.sleepNow || new Date().getHours() < 7 || st.moodAsked === store.today() || store.getDay().mood || document.querySelector('.sheet-root')) return;
-  setTimeout(() => { if (!document.querySelector('.sheet-root')) A.openCheckin(ctx, { daily: true }); }, 900);
+  setTimeout(() => { if (!document.querySelector('.sheet-root')) A.openCheckin(ctx, { daily: true }); }, 1500);
 }
 
 start();

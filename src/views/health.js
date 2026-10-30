@@ -187,10 +187,11 @@ function renderTrack(el, ctx) {
       store.update((s) => { s.healthDiag = { ...d0, at: Date.now() }; });
       if (['unavailable', 'update'].includes(d0.reason)) { res.innerHTML = ''; return openHealthHelp(d0, re); }
       if (!d0.ok) {
-        try { await N.connectHealth((m) => { res.innerHTML = `<span class="spinner"></span> ${m}`; }); } catch (e) { res.innerHTML = ''; return openHealthHelp({ ...d0, reason: d0.reason === 'error' ? 'error' : 'denied', detail: e.message }, re); }
+        try { await N.connectHealth((m) => { res.innerHTML = `<span class="spinner"></span> ${m}`; }); } catch (e) { res.innerHTML = ''; return openHealthHelp({ ...d0, reason: d0.reason === 'error' ? 'error' : 'denied', detail: e.message, log: e.log }, re); }
       }
       res.innerHTML = '<span class="spinner"></span> Synchronisation…';
-      await Promise.race([syncAll(), new Promise((r) => setTimeout(r, 20000))]);
+      const timedOut = await Promise.race([syncAll().then(() => false), new Promise((r) => setTimeout(() => r(true), 20000))]);
+      if (timedOut) { res.innerHTML = ''; return openHealthHelp({ ...(store.get().healthDiag || d0), reason: 'error', detail: 'Accès accordés, mais la lecture des données ne répond pas (plus de 20 s).' }, re); }
       res.innerHTML = '';
       if (!store.get().healthDiag?.ok) return openHealthHelp(store.get().healthDiag, re);
       toast('Health Connect synchronisé ✅');
@@ -228,14 +229,20 @@ function openHealthHelp(d = {}, done) {
   const diag = [`Diana ${N.installedVersion() || '?'}`, `Android ${inf.release || '?'} (API ${inf.sdk || '?'})`, inf.maker, inf.managedProfile ? 'profil géré par une organisation' : null, inf.sdk && inf.sdk < 34 ? `appli Health Connect ${inf.hcApp ? 'installée' : 'absente'}` : null, d.detail].filter(Boolean).join(' · ');
   const body = sheet(`
     ${d.reason === 'unavailable' || d.reason === 'update' ? `<div class="note warn">${icon('shield', 18)}<span>${d.reason === 'update' ? 'Health Connect doit être <b>mis à jour</b> depuis le Play Store.' : inf.managedProfile ? 'Diana Health est installée dans un <b>profil géré par une organisation</b> (profil professionnel) : Health Connect n’y est pas disponible. Installe l’APK dans ton profil personnel.' : inf.sdk && inf.sdk < 34 && !inf.hcApp ? 'Sur ton Android, Health Connect est une application à installer depuis le Play Store.' : 'Health Connect n’est pas disponible sur ce téléphone.'}</span></div>`
-      : `<p class="small" style="margin-top:0">${d.reason === 'denied' ? 'Diana Health n’a pas encore accès à tes données. Si aucune fenêtre ne s’est ouverte, c’est normal : <b>Android ne la réaffiche plus après deux refus</b>.' : 'La fenêtre d’autorisation n’a pas pu s’ouvrir.'}</p>
+      : `${d.detail ? `<div class="note bad" style="margin:0 0 10px">${icon('alert', 18)}<span><b>Pourquoi ça ne marche pas :</b> ${esc(d.detail)}</span></div>` : ''}<p class="small" style="margin-top:0">${d.reason === 'denied' ? 'Diana Health n’a pas encore accès à tes données. Si aucune fenêtre ne s’est ouverte, c’est normal : <b>Android ne la réaffiche plus après deux refus</b>.' : 'La fenêtre d’autorisation n’a pas pu s’ouvrir.'}</p>
       <ol class="small" style="padding-left:20px;line-height:1.7;margin:6px 0 12px"><li>Touche <b>Ouvrir les autorisations</b> ci-dessous.</li><li>Active <b>Tout autoriser</b> (ou au moins Pas, Sommeil, Exercice, Poids).</li><li>Reviens dans Diana Health : la synchronisation se lance seule.</li></ol>
       <p class="tiny muted">Sur Android en français, Health Connect s’appelle <b>« Connexion santé »</b> (Paramètres → Sécurité et confidentialité → Confidentialité → Connexion santé, ou Paramètres → Applications → Connexion santé). Ce n’est pas « Bien-être numérique », qui sert au temps d’écran.</p>
       <p class="tiny muted">Il faut aussi qu’une application <b>écrive</b> dans Health Connect (Samsung Health, Google Fit, Fitbit, ta montre…). Dans Samsung Health : Paramètres → Health Connect → autoriser l’écriture.</p>`}
     <button class="btn block" id="open-hc">${icon('settings', 18)} ${d.reason === 'unavailable' || d.reason === 'update' ? 'Ouvrir Health Connect / Play Store' : 'Ouvrir les autorisations'}</button>
     <div class="note" style="margin-top:12px">${icon('steps', 18)}<span>En attendant, le <b>podomètre du téléphone</b> compte tes pas sans Health Connect.</span></div>
     <button class="btn ghost block" id="steps2">${icon('steps', 18)} Activer le podomètre</button>
-    <p class="tiny muted" style="margin-top:12px">Diagnostic : ${esc(diag || d.reason || 'inconnu')}</p>`, { title: 'Health Connect', onClose: done });
+    <p class="tiny muted" style="margin-top:12px">Diagnostic : ${esc(diag || d.reason || 'inconnu')}</p>
+    ${d.log?.length ? `<details class="tiny muted"><summary>Journal de la tentative</summary><pre style="white-space:pre-wrap;margin:6px 0 0">${esc(d.log.join('\n'))}</pre></details>` : ''}
+    <button class="btn ghost block sm" id="hc-copy" style="margin-top:8px">${icon('copy', 16)} Copier le rapport</button>`, { title: 'Health Connect', onClose: done });
+  $('#hc-copy', body).onclick = async () => {
+    const txt = [`Rapport Health Connect – ${new Date().toLocaleString('fr-FR')}`, `Raison : ${d.reason || '?'}`, d.detail ? `Erreur : ${d.detail}` : '', `Diagnostic : ${diag}`, ...(d.log || [])].filter(Boolean).join('\n');
+    try { await navigator.clipboard.writeText(txt); toast('Rapport copié : colle-le dans ton message'); } catch { toast('Copie impossible'); }
+  };
   $('#open-hc', body).onclick = async () => {
     try { await N.openHealthPermissions(); } catch { await N.openHealthSettings().catch(() => toast('Impossible d’ouvrir Health Connect')); }
     // au retour dans l'application : nouvelle tentative de synchronisation

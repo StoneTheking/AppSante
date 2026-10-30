@@ -1,7 +1,8 @@
 // Motivation : quêtes du jour (accueil), écran de progression, célébrations.
 import * as store from '../store.js';
 import * as G from '../gamify.js';
-import { icon, esc, sheet, toast, srcLinks, onTapHold, $$ } from '../ui.js';
+import * as S from '../science.js';
+import { icon, esc, sheet, toast, srcLinks, onTapHold, $, $$ } from '../ui.js';
 
 // Carte « Quêtes du jour » pour l'accueil.
 export function questsCard(st) {
@@ -28,11 +29,26 @@ export function bindQuests(view, ctx) {
   $$('[data-quest]:not([data-quest="water"])', view).forEach((b) => (b.onclick = () => {
     const id = b.dataset.quest;
     if (id === 'move') ctx.go('sport');
-    else if (id === 'food') ctx.action('photo');
+    else if (id === 'food') openPlateInfo(ctx);
     else if (id === 'sleep') ctx.action('sleep');
     else if (id === 'mood') ctx.action('checkin');
   }));
   $$('[data-progress]', view).forEach((b) => (b.onclick = () => openProgress()));
+}
+
+// Détail de la quête « Assiette équilibrée » : d'où vient le pourcentage.
+function openPlateInfo(ctx) {
+  const st = store.get(), key = G.dayKeyOffset(0);
+  const t = S.targets(st.profile);
+  const tot = S.sumNutrients(st.meals.filter((m) => m.date === key));
+  const g = G.plateGoal(tot, t);
+  const bar = (l, v, max, w, c) => `<div class="meter" style="margin:10px 0"><div class="between small"><span>${l} <span class="tiny muted">(${w} %)</span></span><b>${Math.round(v || 0)} / ${max} g</b></div><div class="track"><div class="fill" style="width:${Math.min(100, ((v || 0) / max) * 100)}%;background:${c}"></div></div></div>`;
+  const body = sheet(`<p class="small muted" style="margin-top:0">La quête avance avec ce que tu manges de bon dans la journée, pas avec le simple fait de manger peu. Elle est validée quand les trois repères sont atteints.</p>
+    <div class="v" style="font-size:2rem;font-weight:800">${Math.round(g.progress * 100)} %</div>
+    ${bar('Fruits & légumes', tot.fruitVeg, t.fruitVeg, 50, 'var(--c-food)')}${bar('Fibres', tot.fiber, t.fiber, 25, 'var(--good)')}${bar('Protéines', tot.protein, t.protein, 25, 'var(--c-sleep)')}
+    ${/trop/.test(g.hint) ? `<div class="note warn">${icon('alert', 18)}<span>${esc((([x, ...r]) => x.toUpperCase() + r.join(''))(g.hint.split(' · ').filter((x) => x.startsWith('trop')).join(', ')))} aujourd’hui : la quête ne peut pas être validée.</span></div>` : ''}
+    <button class="btn block" id="pl-add" style="margin-top:14px">${icon('camera', 18)} Ajouter un repas</button>`, { title: 'Assiette équilibrée' });
+  $('#pl-add', body).onclick = () => { body.close(); setTimeout(() => ctx.action('photo'), 250); };
 }
 
 // Écran de progression : niveau, série, calendrier, badges.

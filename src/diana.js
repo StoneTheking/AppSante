@@ -41,13 +41,26 @@ function render(o, now) {
   const spin = sp > 0 && sp < 1 ? 1 - Math.pow(1 - sp, 3) : 0;
   const jump = sp > 0 && sp < 1 ? -0.07 * Math.sin(Math.PI * Math.min(1, sp * 1.6)) : 0;
   const k = still ? 0.4 : 1;
-  const yaw = (0.34 * Math.sin(t * 0.5) + 0.08 * Math.sin(t * 1.27)) * k + spin * Math.PI * 2;
-  const talk = now < o.talkUntil ? 0.5 + 0.5 * Math.sin(now * 17) : 0;
+  const yaw = (0.22 * Math.sin(t * 0.5) + 0.06 * Math.sin(t * 1.27)) * k + spin * Math.PI * 2;
+  // Elle regarde l'utilisateur, avec de temps en temps un bref coup d'œil sur le côté.
+  if (t > (o.glanceAt ?? 4) + 0.9) { o.glanceAt = t + 5 + Math.random() * 6; o.glance = [Math.random() > 0.5 ? 0.9 : -0.9, 0.3 * (Math.random() - 0.5)]; }
+  const gt = (t - (o.glanceAt ?? 4)) / 0.9;
+  const gk = gt > 0 && gt < 1 ? Math.sin(Math.PI * gt) : 0;
+  const talk = o.talking || now < o.talkUntil ? 0.5 + 0.5 * Math.sin(now * 16) * Math.sin(now * 5.3 + 1) : 0;
+  if (t > (o.flickAt ?? 3) + 0.08) o.flickAt = t + 4 + Math.random() * 6;
+  const flicker = !still && t > (o.flickAt ?? 3) && t < (o.flickAt ?? 3) + 0.08 ? 0.82 : 1; // petit grésillement d'hologramme
   draw(o.cv, {
-    yaw, pitch: (0.09 * Math.sin(t * 0.7 + 1)) * k, roll: 0.06 * Math.sin(t * 0.43 + 2) * k,
-    bob: still ? 0 : 0.018 * Math.sin(t * 1.8) + jump, blink, mood: o.mood, talk,
-    gaze: [Math.max(-1, Math.min(1, Math.sin(t * 0.5) * 1.2)), 0.2 * Math.sin(t * 0.33)], ring: t * 0.8,
+    yaw, pitch: (0.07 * Math.sin(t * 0.7 + 1)) * k, roll: 0.05 * Math.sin(t * 0.43 + 2) * k,
+    bob: still ? 0 : 0.018 * Math.sin(t * 1.8) + jump, blink, mood: now < (o.moodUntil || 0) ? o.moodNow : o.mood, talk,
+    gaze: o.glance ? [o.glance[0] * gk, o.glance[1] * gk] : [0, 0], ring: t * 0.8, time: t, flicker,
   }, o.buf);
+}
+
+// Expression passagère sur un visage (ex. clin d'œil au lancement).
+export function express(cv, mood, ms = 700) {
+  const o = orbOf(cv);
+  o.moodNow = mood; o.moodUntil = performance.now() / 1000 + ms / 1000;
+  wake();
 }
 
 function loop(ts) {
@@ -183,31 +196,38 @@ export function lines(where, st = store.get(), sm, extra = {}) {
   return out;
 }
 
-// ---------- Diana posée au-dessus du menu, sur tous les écrans ----------
+// ---------- Diana en haut à gauche, sur tous les écrans ----------
 // Elle parle dans une bulle à l'ouverture de l'appli et quand on la touche, puis la bulle s'efface.
 let dock = null, ctxArgs = ['home'], turn = {}, hideT = 0, greeted = false, lastGreet = 0;
 
-export function mount(onOpenCoach) {
-  dock?.remove();
-  dock = document.createElement('div');
-  dock.className = 'diana-dock';
-  dock.innerHTML = `<div class="dd-bubble" role="status" aria-live="polite"><b>Coach Diana</b><span></span><button class="dd-chat" type="button">Discuter avec moi →</button></div>
-    <button class="dd-face" type="button" aria-label="Coach Diana : une nouvelle phrase">${face('happy', 58)}</button>`;
-  document.body.appendChild(dock);
+export function mount(slot, onOpenCoach) {
+  dock = slot;
+  dock.classList.add('diana-dock');
+  dock.innerHTML = `<button class="dd-face" type="button" aria-label="Coach Diana : une nouvelle phrase">${face('happy', 54)}</button>
+    <div class="dd-bubble" role="status" aria-live="polite"><b>Coach Diana</b><span></span><button class="dd-chat" type="button">Discuter avec moi →</button></div>`;
   dock.querySelector('.dd-face').onclick = () => { turn[ctxArgs[0]] = (turn[ctxArgs[0]] || 0) + 1; sayCurrent(true); };
   dock.querySelector('.dd-bubble').onclick = (e) => { if (e.target.closest('.dd-chat')) { hide(); onOpenCoach?.(); } else hide(); };
+}
+
+// Pendant que la réponse s'écrit dans la discussion, Diana bouge la bouche.
+export function talking(on) {
+  const cv = dock?.querySelector('canvas');
+  if (!cv) return;
+  const o = orbOf(cv);
+  o.talking = on;
+  wake();
 }
 
 // Écran affiché : ses phrases (et dès la première fois, un petit bonjour).
 export function context(where, st, sm, extra) {
   ctxArgs = [where, st, sm, extra];
-  if (!greeted) { greeted = true; greet(); }
+  if (!greeted) { greeted = true; greet(1900); } // après l'animation de lancement
 }
 
-// Onglet courant : Diana se cache sur l'écran de discussion (c'est déjà elle qui parle).
+// Onglet courant : pas de bulle sur l'écran de discussion (c'est déjà elle qui parle).
 export function setTab(tab) {
   if (!dock) return;
-  dock.classList.toggle('off', tab === 'coach');
+  dock.classList.toggle('in-chat', tab === 'coach');
   if (tab === 'coach') hide();
 }
 
@@ -216,21 +236,27 @@ export function greet(delay = 900, { again = false, tries = 6 } = {}) {
   if (again && Date.now() - lastGreet < 10 * 60e3) return;
   lastGreet = Date.now();
   setTimeout(() => {
-    if (!dock || dock.classList.contains('off')) return;
+    if (!dock || dock.classList.contains('in-chat')) return;
     if (document.querySelector('.sheet-root')) { if (tries) greet(1500, { tries: tries - 1 }); return; }
-    sayCurrent(false);
+    sayCurrent(false, true);
   }, delay);
 }
 
-function sayCurrent(spin) {
+function sayCurrent(spin, hello = false) {
   const [where, st, sm, extra] = ctxArgs;
   const all = lines(where, st || store.get(), sm, extra);
-  const [text, mood] = all[(turn[where] || 0) % all.length];
-  say(text, mood, { spin });
+  let [text, mood] = all[(turn[where] || 0) % all.length];
+  // À l'ouverture, elle salue d'abord (elle remplace le « Bonjour Pierre » de l'en-tête).
+  if (hello && !/^(bonjour|bonsoir|bonne|salut|il est tard)/i.test(text)) {
+    const h = new Date().getHours(), name = (st || store.get()).profile?.name;
+    text = `${h < 5 ? 'Bonne nuit' : h < 18 ? 'Bonjour' : 'Bonsoir'}${name ? ' ' + name : ''} ! ${text}`;
+  }
+  say(text, mood, { spin, ms: hello ? 7000 : undefined });
 }
 
 export function say(text, mood = 'happy', { ms, spin = false } = {}) {
   if (!dock) return;
+  if (dock.classList.contains('in-chat')) { const o = orbOf(dock.querySelector('canvas')); o.spinAt = spin ? performance.now() / 1000 : o.spinAt; wake(); return; }
   const bubble = dock.querySelector('.dd-bubble');
   bubble.querySelector('span').textContent = text;
   bubble.classList.remove('on'); void bubble.offsetWidth; bubble.classList.add('on');

@@ -1,7 +1,7 @@
-// Rendu 3D de Coach Diana, calculé pixel par pixel sur un canvas (sans bibliothèque) :
-// sphère bleu nuit éclairée (lumière diffuse, reflet brillant, contour lumineux), bandeau de sport en relief,
-// grands yeux pâles et sourire fin posés sur la surface, et deux anneaux fins qui tournent autour en 3D.
-// La tête pivote doucement : les traits du visage glissent sur la sphère, ce qui donne le volume.
+// Rendu 3D de Coach Diana, calculé pixel par pixel sur un canvas (sans bibliothèque), façon hologramme :
+// sphère bleu nuit translucide au contour lumineux cyan, texture de grille qui suit la tête, lignes de balayage,
+// bandeau de sport en relief, grands yeux pâles qui regardent l'utilisateur, sourire fin (qui s'ouvre quand elle parle),
+// et deux anneaux fins qui tournent autour en 3D. La tête pivote doucement : les traits glissent sur la sphère.
 
 const norm = (v) => { const l = Math.hypot(v[0], v[1], v[2]); return [v[0] / l, v[1] / l, v[2] / l]; };
 // Repère écran : x vers la droite, y vers le bas, z vers l'observateur.
@@ -11,10 +11,12 @@ const BAND_N = norm([0.1, -1, -0.22]); // bandeau un peu incliné, plus bas sur 
 const BAND = [0.25, 0.5];
 const BAND_R = 1.055; // le bandeau dépasse légèrement de la tête
 
-const NAVY = [26, 52, 94], NAVY_DEEP = [9, 18, 38], GLOW = [64, 112, 176];
-const PALE = [226, 235, 248], PUPIL = [88, 102, 124];
-const TEAL = [24, 190, 172], TEAL_DARK = [9, 112, 112];
-const RING = 'rgba(178, 194, 220, ALPHA)';
+const NAVY = [20, 50, 98], NAVY_DEEP = [6, 16, 38], GLOW = [52, 110, 180];
+const HOLO = [90, 215, 255]; // lueur cyan de l'hologramme
+const PALE = [214, 246, 255], PUPIL = [58, 92, 128], MOUTH_IN = [10, 40, 70];
+const TEAL = [40, 214, 214], TEAL_DARK = [8, 120, 140];
+const RING = 'rgba(120, 214, 255, ALPHA)';
+const GRID = 0.2618; // une ligne de la grille tous les 15°
 
 // Expressions : courbure et largeur du sourire, yeux.
 const MOODS = {
@@ -62,12 +64,16 @@ export function draw(canvas, state, buf) {
   const mood = MOODS[state.mood] || MOODS.happy;
   const px = 1 / R; // taille d'un pixel en unités de sphère
 
-  // 1) Anneaux, moitié arrière (cachée ensuite par la tête).
+  // 1) Halo cyan, puis anneaux, moitié arrière (cachée ensuite par la tête).
   ctx.clearRect(0, 0, W, H);
+  const halo = ctx.createRadialGradient(cx, cy, R * 0.9, cx, cy, R * 1.5);
+  halo.addColorStop(0, 'rgba(90, 215, 255, 0.22)'); halo.addColorStop(1, 'rgba(90, 215, 255, 0)');
+  ctx.fillStyle = halo; ctx.fillRect(0, 0, W, H);
   const rings = ringPaths(M, state.ring || 0);
   const strokeRing = (front) => {
     ctx.lineWidth = Math.max(1, S * 0.011);
     ctx.lineCap = 'round';
+    ctx.shadowColor = 'rgba(90, 215, 255, 0.8)'; ctx.shadowBlur = S * 0.03;
     for (const [r, pts, alpha] of rings) {
       ctx.strokeStyle = RING.replace('ALPHA', (alpha * (front ? 1 : 0.55)).toFixed(3));
       ctx.beginPath();
@@ -80,6 +86,7 @@ export function draw(canvas, state, buf) {
       }
       ctx.stroke();
     }
+    ctx.shadowBlur = 0;
   };
   strokeRing(false);
 
@@ -88,10 +95,15 @@ export function draw(canvas, state, buf) {
   const ox = Math.round(cx - size / 2), oy = Math.round(cy - size / 2);
   if (!buf.img || buf.img.width !== size) { buf.img = ctx.createImageData(size, size); buf.cv = document.createElement('canvas'); buf.cv.width = buf.cv.height = size; }
   const data = buf.img.data;
-  const gx = (state.gaze?.[0] || 0) * 0.07, gy = (state.gaze?.[1] || 0) * 0.06;
+  // Les pupilles visent l'utilisateur (direction de la caméra vue depuis la tête), plus d'éventuels petits coups d'œil.
+  const view = applyT(M, [0, 0, 1]);
+  const gx = clamp(Math.atan2(view[0], view[2]) * 0.4 + (state.gaze?.[0] || 0) * 0.07, -0.09, 0.09);
+  const gy = clamp(Math.asin(clamp(view[1], -1, 1)) * 0.4 + (state.gaze?.[1] || 0) * 0.06, -0.08, 0.08);
+  const time = state.time || 0, flick = state.flicker ?? 1;
   const blink = state.blink || 0;
   const eyeRy = 0.205 * (mood.squint || 1) * (1 - 0.92 * blink);
-  const mouthT = mood.t + (state.talk || 0) * 0.025;
+  const mouthT = mood.t;
+  const open = (state.talk || 0) * 0.17; // bouche ouverte quand elle parle
   for (let j = 0; j < size; j++) {
     for (let i = 0; i < size; i++) {
       const u = (ox + i + 0.5 - cx) / R, v = (oy + j + 0.5 - cy) / R;
@@ -117,7 +129,9 @@ export function draw(canvas, state, buf) {
           const n = norm([q[0] + bn[0] * s * 0.55, q[1] + bn[1] * s * 0.55, q[2] + bn[2] * s * 0.55]);
           const base = mix(TEAL_DARK, TEAL, 0.55 + 0.45 * (1 - s * s));
           col = shade(base, n, { spec: 0.35, gloss: 18, rim: 0.25 });
-          alpha = m * clamp((BAND_R - r) * R + 0.5);
+          const edgeGlow = smooth(0.7, 1, Math.abs(s)); // liserés lumineux sur les bords du bandeau
+          col = [col[0] + 120 * edgeGlow, col[1] + 160 * edgeGlow, col[2] + 170 * edgeGlow];
+          alpha = m * clamp((BAND_R - r) * R + 0.5) * 0.94;
         }
       }
 
@@ -162,9 +176,30 @@ export function draw(canvas, state, buf) {
           const mo = 1 - smooth(mouthT - fw, mouthT + fw, dm);
           if (mo > feat) { feat = mo; featCol = PALE; }
         }
-        let c = shade(base, n, { spec: 0.6, gloss: 46, rim: 0.42 });
-        if (feat > 0) c = mix(c, shade(featCol, n, { spec: 0.25, gloss: 30, emissive: 0.32, rim: 0.1 }), feat);
-        const a = clamp((1 - r) * R + 0.5);
+        // Hologramme : contour cyan (Fresnel), grille qui suit la tête, lignes de balayage qui défilent.
+        const fres = Math.pow(1 - n[2], 2.2);
+        const gl = (x) => { const f = Math.abs(x / GRID - Math.round(x / GRID)) * GRID; return 1 - smooth(0, 1.1 * px / Math.max(0.3, n[2]), f); };
+        const latG = Math.asin(clamp(p[1], -1, 1)), lonG = Math.atan2(p[0], p[2]);
+        const grid = Math.max(gl(latG), gl(lonG) * Math.sqrt(Math.max(0, 1 - p[1] * p[1]))) * (0.1 + 0.22 * smooth(0.2, 0.95, 1 - p[2] * 0.7));
+        const scan = 0.93 + 0.07 * Math.sin((oy + j) * 2.1 - time * 6);
+        let c = shade(base, n, { spec: 0.45, gloss: 40, rim: 0.2 });
+        const glow = 0.12 + 0.95 * fres + grid;
+        c = [(c[0] + HOLO[0] * glow) * scan, (c[1] + HOLO[1] * glow) * scan, (c[2] + HOLO[2] * glow) * scan];
+        if (open > 0.002 && p[2] > 0.05) {
+          // intérieur de la bouche ouverte, entre la lèvre du haut (sourire) et une lèvre du bas arrondie
+          const lon = Math.atan2(p[0], p[2]), lat = Math.asin(clamp(p[1], -1, 1));
+          const w = mood.w * 0.8, x = lon / w;
+          if (Math.abs(x) < 1) {
+            const top = 0.4 - mood.k * x * x, bot = top + open * (1 - x * x);
+            const fw2 = 1.3 * px;
+            const inside = smooth(top - fw2, top + fw2, lat) * (1 - smooth(bot - fw2, bot + fw2, lat));
+            if (inside > 0 && inside >= feat) { feat = inside; featCol = MOUTH_IN; }
+            const lower = 1 - smooth(mouthT - fw2, mouthT + fw2, Math.abs(lat - bot));
+            if (lower > feat) { feat = lower; featCol = PALE; }
+          }
+        }
+        if (feat > 0) c = mix(c, shade(featCol, n, { spec: 0.2, gloss: 30, emissive: 0.45, rim: 0.05 }), feat);
+        const a = clamp((1 - r) * R + 0.5) * (0.86 + 0.14 * fres) * flick; // légèrement translucide
         if (col) { col = mix(c, col, alpha); alpha = alpha + a * (1 - alpha); } else { col = c; alpha = a; }
       }
       if (!col) { data[o + 3] = 0; continue; }
