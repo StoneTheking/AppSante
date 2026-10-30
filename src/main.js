@@ -123,9 +123,11 @@ function go(t, after, dir) {
 }
 
 // Glisser vers la gauche ou la droite : menu suivant ou précédent (dans l'ordre de la barre du bas).
+// La page suit le doigt dès que le geste est clairement horizontal ; sur l'accueil, tirer vers le bas
+// depuis le haut de la page relance la synchronisation (pas, sommeil, air…).
 const ORDER = ['home', 'nutrition', 'sport', 'health'];
 function swipeNav() {
-  let x0 = 0, y0 = 0, t0 = 0, ok = false;
+  let x0 = 0, y0 = 0, t0 = 0, ok = false, lock = null, dx = 0, dy = 0, pull = false;
   // Pas de changement de menu depuis un élément qui défile ou se manipule à l'horizontale.
   const blocked = (el) => {
     for (let e = el; e && e !== document.body; e = e.parentElement) {
@@ -134,21 +136,63 @@ function swipeNav() {
     }
     return false;
   };
+  const ptr = () => $('#ptr') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'ptr', innerHTML: icon('refresh', 20) }));
+  const view = () => $('#view');
   document.addEventListener('touchstart', (e) => {
     const p = e.touches[0];
-    ok = e.touches.length === 1 && ORDER.includes(tab) && !$('.sheet-root') && !blocked(e.target);
-    x0 = p.clientX; y0 = p.clientY; t0 = Date.now();
+    // le bord de l'écran est réservé au geste « retour » d'Android
+    ok = e.touches.length === 1 && ORDER.includes(tab) && !$('.sheet-root') && p.clientX > 14 && p.clientX < innerWidth - 14 && !blocked(e.target);
+    pull = ok && tab === 'home' && window.scrollY <= 0;
+    x0 = p.clientX; y0 = p.clientY; t0 = Date.now(); lock = null; dx = dy = 0;
   }, { passive: true });
-  document.addEventListener('touchend', (e) => {
+  document.addEventListener('touchmove', (e) => {
+    if (!ok) return;
+    const p = e.touches[0];
+    dx = p.clientX - x0; dy = p.clientY - y0;
+    if (!lock && Math.hypot(dx, dy) > 10) lock = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'y';
+    if (lock === 'x') {
+      e.preventDefault(); // pas de défilement vertical pendant le glissement
+      const i = ORDER.indexOf(tab) + (dx < 0 ? 1 : -1);
+      const room = i >= 0 && i < ORDER.length ? 1 : 0.25; // résistance au bout de la liste
+      view().style.transition = 'none';
+      view().style.transform = `translateX(${dx * 0.45 * room}px)`;
+    } else if (lock === 'y' && pull && dy > 0 && window.scrollY <= 0) {
+      const el = ptr(), h = Math.min(dy, 140);
+      el.style.opacity = Math.min(1, h / 80);
+      el.style.transform = `translate(-50%, ${h * 0.6}px) rotate(${h * 2.5}deg)`;
+      el.classList.toggle('ready', h >= 80);
+    }
+  }, { passive: false });
+  const end = () => {
     if (!ok) return;
     ok = false;
-    const p = e.changedTouches[0], dx = p.clientX - x0, dy = p.clientY - y0;
-    if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.8 || Date.now() - t0 > 700) return;
-    // le bord gauche est réservé au geste « retour » d'Android
-    if (x0 < 18 || x0 > innerWidth - 18) return;
-    const i = ORDER.indexOf(tab) + (dx < 0 ? 1 : -1);
-    if (i >= 0 && i < ORDER.length) go(ORDER[i], null, dx < 0 ? 1 : -1);
-  }, { passive: true });
+    const v = view();
+    if (lock === 'x') {
+      v.style.transition = 'transform .2s ease';
+      v.style.transform = '';
+      setTimeout(() => { v.style.transition = ''; }, 220);
+      const fast = Math.abs(dx) > 40 && Date.now() - t0 < 300;
+      const i = ORDER.indexOf(tab) + (dx < 0 ? 1 : -1);
+      if ((Math.abs(dx) > 60 || fast) && i >= 0 && i < ORDER.length) { v.style.transition = ''; v.style.transform = ''; go(ORDER[i], null, dx < 0 ? 1 : -1); }
+    }
+    const el = $('#ptr');
+    if (el) {
+      if (lock === 'y' && pull && dy >= 80) {
+        el.classList.add('spin');
+        refreshAll().finally(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 250); });
+      } else { el.style.opacity = '0'; setTimeout(() => el.remove(), 250); }
+    }
+  };
+  document.addEventListener('touchend', end, { passive: true });
+  document.addEventListener('touchcancel', end, { passive: true });
+}
+
+// « Tirer pour actualiser » : tout est relu tout de suite (sans attendre le délai habituel).
+async function refreshAll() {
+  const before = store.get().env?.fetched;
+  await Promise.all([autoSync(true), refreshEnv(true)]);
+  if (store.get().env?.fetched !== before && !busy()) renderView();
+  toast('Données à jour', 1200);
 }
 
 // Lancement : Diana apparaît, fait un clin d'œil, puis s'efface sur l'appli déjà prête (rien ne se dessine sous les yeux).
@@ -205,6 +249,7 @@ async function detectMorning() {
 
 // À chaque retour au premier plan : appuis du widget, air & météo, données de santé.
 async function onForeground() {
+  autoSync(); // pas et sommeil relus dès le retour dans l'appli
   const all = await N.takeWidgetEvents();
   // widget « Photo du repas »
   if (all.some((e) => e.type === 'photo') && Date.now() - Math.max(...all.filter((e) => e.type === 'photo').map((e) => e.t)) < 5 * 60e3) setTimeout(() => ctx.action('photo'), 250);
@@ -224,25 +269,33 @@ async function onForeground() {
   }
   const before = store.get().env?.fetched;
   await refreshEnv();
-  if (store.get().env?.fetched !== before && tab === 'home') renderView();
+  if (store.get().env?.fetched !== before && tab === 'home' && !busy()) renderView();
   if (events.length && ['home', 'health'].includes(tab)) renderView();
-  autoSync();
   A.repairScannedMeals().then((n) => { if (n && ['home', 'nutrition'].includes(tab)) renderView(); });
   A.processPendingPhotos().then((n) => { if (n && ['home', 'nutrition'].includes(tab)) renderView(); });
 }
 
 // Synchronisation automatique dans l'application Android (au lancement puis au retour au premier plan).
 let lastAuto = 0;
-async function autoSync() {
-  if (!N.isNative || Date.now() - lastAuto < 60e3) return;
+const busy = () => document.activeElement?.matches?.('input, textarea, select') || document.querySelector('.sheet-root');
+async function autoSync(force = false) {
+  if (!N.isNative || (!force && Date.now() - lastAuto < 20e3)) return;
   lastAuto = Date.now();
   const before = JSON.stringify([store.get().days, store.get().hcReport?.todaySteps, store.get().workouts.length]);
   await Health.syncAll({ silent: true });
   // on ne redessine que si quelque chose a changé, et jamais pendant une saisie ou avec une fenêtre ouverte
   const changed = before !== JSON.stringify([store.get().days, store.get().hcReport?.todaySteps, store.get().workouts.length]);
-  const busy = document.activeElement?.matches?.('input, textarea, select') || document.querySelector('.sheet-root');
-  if (changed && !busy && ['home', 'health'].includes(tab)) renderView();
+  if (changed && !busy() && ORDER.includes(tab)) renderView();
 }
+// Appli ouverte : air, météo et pas se mettent à jour tout seuls toutes les 10 min.
+setInterval(() => {
+  if (document.visibilityState !== 'visible' || !store.get().onboarded) return;
+  autoSync();
+  const before = store.get().env?.fetched;
+  refreshEnv().then(() => { if (store.get().env?.fetched !== before && tab === 'home' && !busy()) renderView(); });
+}, 10 * 60e3);
+// « Annuler » après une suppression : l'écran affiché reprend l'état d'avant.
+window.addEventListener('store-restored', () => { if (!document.querySelector('.sheet-root')) renderView(); toast('Restauré', 1200); });
 // Réseau retrouvé : les photos de repas mises de côté sont analysées.
 window.addEventListener('online', () => { if (store.get().onboarded) A.processPendingPhotos().then((n) => { if (n && ['home', 'nutrition'].includes(tab)) renderView(); }); });
 document.addEventListener('visibilitychange', () => {

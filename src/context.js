@@ -18,9 +18,15 @@ export const taste = () => F.tasteProfile(store.get().profile, store.get().meals
 export async function refreshEnv(force = false) {
   const st = store.get();
   if (!st.location) return null;
-  if (!force && st.env && Date.now() - new Date(st.env.fetched) < 3600e3) return st.env;
+  // air et météo : rafraîchis toutes les 10 min ; « Ma position » suit l'endroit où l'on se trouve
+  if (!force && st.env && Date.now() - new Date(st.env.fetched) < 10 * 60e3) return st.env;
   try {
-    const env = await E.fetchEnv(st.location);
+    let loc = st.location;
+    if (loc.auto || loc.name === 'Ma position') {
+      const p = await E.currentPosition(10 * 60e3).catch(() => null);
+      if (p && (p.lat !== loc.lat || p.lon !== loc.lon)) { loc = p; store.update((s) => { s.location = p; }); }
+    }
+    const env = await E.fetchEnv(loc);
     store.update((s) => { s.env = env; });
     return env;
   } catch { return st.env; }

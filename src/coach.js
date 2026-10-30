@@ -3,7 +3,7 @@ import * as S from './science.js';
 import { suggestMeals } from './meals.js';
 import { bestOutdoorHour, envInsights, aqiLabel } from './env.js';
 import { busyBlocks, suggestSlot, usualHour, DEFAULT_WORK } from './schedule.js';
-import { weekPlan, activity as sportActivity, substitute } from './sport.js';
+import { weekPlan, activity as sportActivity, substitute, adaptation, adaptedMinutes } from './sport.js';
 import { sunTimes, PARIS } from './sun.js';
 
 const avg = (xs) => {
@@ -21,7 +21,7 @@ const toMin = (hhmm) => {
 };
 
 // keys : liste de dates (anciennes → récentes), days : objet date → check-in, meals : tous les repas
-export function summarize({ profile, days, meals, weights, env, household = [], stools = [], workouts = [], calEvents = [], location = null }, keys) {
+export function summarize({ profile, days, meals, weights, env, household = [], stools = [], workouts = [], calEvents = [], location = null, sportFeedback = [] }, keys) {
   const t = S.targets(profile);
   const todayKey = keys[keys.length - 1];
   const week = keys.slice(-7);
@@ -103,7 +103,7 @@ export function summarize({ profile, days, meals, weights, env, household = [], 
   const sportToday = weekPlan(profile, workouts, new Date(), days).find((x) => x.today) || null;
   const workoutsToday = workouts.filter((x) => x.date === todayKey);
   const sun = { ...sunTimes(new Date(), location || PARIS), approx: !location };
-  return { sun, busy, usualHour: usualHour(workouts), env: envFresh, mealsToday: mealsOf(todayKey), sportToday, workoutsToday, household, stools, lateMeals, t, p, body, today, todayKey, lastNight, totToday, w, scores, dietAvg, kcalAvg, dietDaysCount: dietDays.length, ctx };
+  return { sun, busy, usualHour: usualHour(workouts), env: envFresh, mealsToday: mealsOf(todayKey), sportToday, sportFeedback, workoutsToday, household, stools, lateMeals, t, p, body, today, todayKey, lastNight, totToday, w, scores, dietAvg, kcalAvg, dietDaysCount: dietDays.length, ctx };
 }
 
 // ---------- Activité physique recommandée ----------
@@ -115,6 +115,26 @@ export function activityLabel(ids, profile = {}, fallback = 'Activité au choix'
   if (!names.length) return fallback;
   const txt = names.length > 1 ? `${names.slice(0, -1).join(', ')} ou ${names.at(-1)}` : names[0];
   return txt[0].toUpperCase() + txt.slice(1);
+}
+
+// Séance du jour d'après la semaine type : la même dans « Ma journée » (accueil) et « Ta semaine » (sport).
+export function sportOfDay(sm, profile) {
+  const slot = sm.sportToday;
+  let type = slot?.type || 'marche', minutes = slot?.minutes || 30, intensity = slot?.intensity || 'moderee';
+  const why = [];
+  const easy = () => sportActivity(substitute('marche', profile)).label.toLowerCase();
+  if (!slot?.type) { type = 'marche'; minutes = 30; intensity = 'legere'; why.push(`Jour de récupération dans ta semaine type : ${easy()} en douceur suffit.`); }
+  if (sm.ctx.poorSleep && intensity === 'intense') { type = 'marche'; intensity = 'moderee'; minutes = 30; why.push(`Nuit courte : on remplace la séance intense par ${easy()} à allure modérée.`); }
+  if (slot?.matches) { type = 'yoga'; intensity = 'legere'; minutes = 20; why.length = 0; why.push('Séance du jour déjà faite 👏 : mobilité ou étirements pour récupérer.'); }
+  if (sm.env && (sm.env.aqi > 60 || sm.env.tMax >= 33) && ['course', 'velo', 'randonnee', 'marche'].includes(type)) why.push('Air ou chaleur défavorables : fais-la en intérieur (tapis, vélo d’appartement, salle).');
+  type = substitute(type, profile);
+  const ad = adaptation(sm.sportFeedback || [], type);
+  if (!slot?.matches) {
+    minutes = adaptedMinutes(minutes, ad);
+    if (ad.easier && intensity === 'intense') intensity = 'moderee';
+    if (ad.note) why.unshift(ad.note);
+  }
+  return { type, minutes, intensity, ad, why, planned: !!slot?.type && !slot.matches };
 }
 
 export function recommendActivity(sm, profile) {
@@ -218,9 +238,9 @@ export function dailyPlan(sm, profile, date = new Date()) {
 
   // Sport : séance déjà faite, sinon séance prévue dans la semaine type (ou recommandation du jour)
   const act = recommendActivity(sm, profile);
-  const planned = sm.sportToday?.type && !sm.sportToday.matches ? sm.sportToday : null;
-  const pType = planned && !(ctx.poorSleep && planned.intensity === 'intense') ? planned : null;
-  const sess = pType ? { title: sportActivity(pType.type).label, duration: pType.minutes, intensity: pType.intensity === 'intense' ? 'soutenue' : 'modérée' } : act;
+  const sod = sportOfDay(sm, profile);
+  const pType = sod.planned ? sod : null;
+  const sess = { title: sportActivity(sod.type).label, duration: sod.minutes, intensity: sod.intensity === 'intense' ? 'soutenue' : sod.intensity === 'legere' ? 'légère' : 'modérée' };
   let actStart = Math.min(Math.max(wake + 9 * 60, 17 * 60 + 30), bed - 2 * 60 - sess.duration);
   if (ctx.lowMood) actStart = Math.min(actStart, 16 * 60 + 30);
   const env = sm.env;
@@ -233,7 +253,7 @@ export function dailyPlan(sm, profile, date = new Date()) {
     const slot = suggestSlot({ duration: sess.duration, intensity: sess.intensity === 'soutenue' ? 'intense' : 'moderee', wake: profile.wakeTime, bed: profile.bedTime, busy: sm.busy || [], pref: profile.sportPref || 'auto', usualHour: sm.usualHour, env });
     const slotChosen = !!slot && ((sm.busy || []).length > 0 || (profile.sportPref && profile.sportPref !== 'auto') || sm.usualHour != null);
     if (slotChosen) actStart = slot.start;
-    let actText = pType ? `Séance prévue dans ta semaine type. ${act.why.slice(0, 1).join(' ')}` : act.why.join(' ');
+    let actText = [pType ? 'Séance prévue dans ta semaine type.' : '', ...sod.why, ...act.why.slice(0, pType ? 1 : 2)].filter(Boolean).join(' ');
     const actSrc = [...act.src];
     if (env) {
       if (env.aqi > 60 || env.tMax >= 33) {

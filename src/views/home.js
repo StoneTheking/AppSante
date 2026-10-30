@@ -7,7 +7,7 @@ import * as SL from '../sleep.js';
 import * as N from '../native.js';
 import { questsCard, bindQuests } from './progress.js';
 import { aqiLabel } from '../env.js';
-import { icon, esc, fmt, fmtMin, srcLinks, rings, DOMAIN, sheet, toast, onTapHold, $, $$ } from '../ui.js';
+import { icon, esc, fmt, fmtMin, srcLinks, rings, DOMAIN, sheet, toast, undoToast, onTapHold, $, $$ } from '../ui.js';
 import * as R from '../review.js';
 import { correlations } from '../correlate.js';
 import { goodNightTips } from './actions.js';
@@ -226,6 +226,7 @@ function hero(sm, st) {
   return `<section class="hero hero-${style}">
     <div class="hero-kicker"><span style="white-space:nowrap">Hygiène de vie · 7 j</span><span class="row" style="gap:10px;flex-wrap:nowrap"><button class="hero-style" data-hero-style aria-label="Changer de présentation">${icon('palette', 13)}</button><span class="tapme" aria-label="Comprendre le score">${icon('info', 15)}</span></span></div>
     ${main}
+    ${sm.scores.alimentation != null && sm.dietDaysCount < 3 ? `<p class="tiny muted" style="margin:6px 0 0">Alimentation : qualité de ce que tu as noté (${sm.dietDaysCount} j), pas la quantité du jour, que suit la quête « Assiette équilibrée ».</p>` : ''}
     <div class="verdict">${icon('sparkles', 15)}<span>${esc(headline(sm, st.profile))}</span></div>
   </section>`;
 }
@@ -289,7 +290,7 @@ function openStep(p, done) {
     });
     toast(isNew ? 'Étape ajoutée ⭐' : 'Étape modifiée', 1200);
   };
-  $('#del', body)?.addEventListener('click', () => edit((e) => { e.custom = e.custom.filter((c) => c.id !== step.id); }));
+  $('#del', body)?.addEventListener('click', () => { const undo = store.removing(() => {}); edit((e) => { e.custom = e.custom.filter((c) => c.id !== step.id); }); undoToast('Étape supprimée', () => { undo(); refreshReminders().catch(() => {}); }); });
   $('#hide-today', body)?.addEventListener('click', () => edit((e) => { e.hiddenOn = { [today]: [...(e.hiddenOn[today] || []), step.key] }; }));
   $('#hide-always', body)?.addEventListener('click', () => { edit((e) => { e.hidden[step.key] = step.title; }); toast('Étape retirée (rétablissable via « Ajouter »)', 2200); });
   $('#reset', body)?.addEventListener('click', () => edit((e) => { delete e.over[step.key]; if (e.overOn[today]) delete e.overOn[today][step.key]; }));

@@ -7,13 +7,13 @@ export async function searchPlace(q) {
   return (j.results || []).map((p) => ({ name: [p.name, p.admin1, p.country_code].filter(Boolean).join(', '), lat: p.latitude, lon: p.longitude }));
 }
 
-export function currentPosition() {
+export function currentPosition(maximumAge = 3600e3) {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) return reject(new Error('Géolocalisation indisponible'));
     navigator.geolocation.getCurrentPosition(
-      (p) => resolve({ name: 'Ma position', lat: Math.round(p.coords.latitude * 100) / 100, lon: Math.round(p.coords.longitude * 100) / 100 }),
+      (p) => resolve({ name: 'Ma position', auto: true, lat: Math.round(p.coords.latitude * 100) / 100, lon: Math.round(p.coords.longitude * 100) / 100 }),
       () => reject(new Error('Position refusée : choisis ta ville à la main')),
-      { enableHighAccuracy: false, timeout: 15000, maximumAge: 3600e3 },
+      { enableHighAccuracy: false, timeout: 15000, maximumAge },
     );
   });
 }

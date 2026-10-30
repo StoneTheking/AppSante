@@ -35,9 +35,24 @@ export const fmt = (x, d = 0) => (x == null || Number.isNaN(x) ? '—' : S.round
 export function toast(msg, ms = 2600) {
   const t = $('#toast');
   t.textContent = msg;
+  t.classList.remove('with-undo');
   t.classList.add('show');
   clearTimeout(toast.h);
   toast.h = setTimeout(() => t.classList.remove('show'), ms);
+}
+
+// Après une suppression : message avec « Annuler » pendant 6 s (l'appli se redessine si on annule).
+export function undoToast(msg, undo) {
+  const t = $('#toast');
+  t.innerHTML = `<span>${esc(msg)}</span><button type="button" class="toast-undo">Annuler</button>`;
+  t.classList.add('show', 'with-undo');
+  t.querySelector('.toast-undo').onclick = () => {
+    undo();
+    t.classList.remove('show', 'with-undo');
+    window.dispatchEvent(new Event('store-restored'));
+  };
+  clearTimeout(toast.h);
+  toast.h = setTimeout(() => t.classList.remove('show', 'with-undo'), 6000);
 }
 
 // Sources : touchées, elles expliquent ce que l'étude a montré et pourquoi elle appuie ce conseil.
@@ -335,29 +350,30 @@ export function donut(value, max, { size = 120, color = 'var(--c-food)', label =
 // Barres simples (une série) ; toucher une barre affiche la valeur dans .tip de la carte.
 export function barChart(points, { ref, unit = '', digits = 0, color = 'var(--primary)', type = 'bar', fmtV = null } = {}) {
   const show = (v) => (fmtV ? fmtV(v) : fmt(v, digits) + (unit ? ' ' + unit : ''));
-  const W = 320, H = 130, pad = 20, n = points.length;
+  // valeur écrite au-dessus de chaque point (format court pour tenir : 8,4k)
+  const short = (v) => (fmtV ? fmtV(v) : v >= 10000 ? `${fmt(v / 1000, 0)}k` : v >= 1000 ? `${fmt(v / 1000, 1)}k` : fmt(v, digits));
+  const W = 320, H = 136, pad = 20, n = points.length;
   const max = Math.max(ref || 0, ...points.map((p) => p.v || 0)) * 1.15 || 1;
   const bw = (W - 8) / n;
-  const y = (v) => H - pad - (v / max) * (H - pad - 16);
+  const y = (v) => H - pad - (v / max) * (H - pad - 22);
+  const every = n <= 10 ? 1 : n <= 20 ? 2 : 3;
   const bars = points.map((p, i) => {
     const x = 4 + i * bw, has = p.v != null;
+    const val = has && (i % every === (n - 1) % every) ? `<text class="val pt" x="${x + bw / 2}" y="${y(p.v) - (type === 'line' ? 8 : 4)}" text-anchor="middle">${esc(short(p.v))}</text>` : '';
     const h = has ? Math.max(3, H - pad - y(p.v)) : 3;
     const tip = `${p.label} : ${has ? show(p.v) : 'pas de données'}`;
     if (type === 'line') return `${has ? `<circle cx="${x + bw / 2}" cy="${y(p.v)}" r="3.5" fill="${color}" stroke="var(--card)" stroke-width="2"/>` : ''}<rect class="hit" x="${x}" y="0" width="${bw}" height="${H}" data-tip="${esc(tip)}"><title>${esc(tip)}</title></rect>
-      ${n <= 7 || i % 2 === (n - 1) % 2 ? `<text x="${x + bw / 2}" y="${H - 5}" text-anchor="middle">${esc(p.short)}</text>` : ''}`;
+      ${n <= 7 || i % 2 === (n - 1) % 2 ? `<text x="${x + bw / 2}" y="${H - 5}" text-anchor="middle">${esc(p.short)}</text>` : ''}${val}`;
     return `<rect class="bar" style="animation-delay:${i * 25}ms" x="${x + 3}" y="${has ? y(p.v) : H - pad - 3}" width="${bw - 6}" height="${h}" rx="4" fill="${has ? color : 'var(--line)'}"/>
       <rect class="hit" x="${x}" y="0" width="${bw}" height="${H}" data-tip="${esc(tip)}"><title>${esc(tip)}</title></rect>
-      ${n <= 7 || i % 2 === (n - 1) % 2 ? `<text x="${x + bw / 2}" y="${H - 5}" text-anchor="middle">${esc(p.short)}</text>` : ''}`;
+      ${n <= 7 || i % 2 === (n - 1) % 2 ? `<text x="${x + bw / 2}" y="${H - 5}" text-anchor="middle">${esc(p.short)}</text>` : ''}${val}`;
   });
-  const last = [...points].reverse().find((p) => p.v != null);
-  const li = points.lastIndexOf(last);
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img">
     <line class="grid" x1="0" x2="${W}" y1="${H - pad}" y2="${H - pad}"/>
-    ${ref ? `<line class="ref" x1="0" x2="${W}" y1="${y(ref)}" y2="${y(ref)}"/><text x="6" y="${y(ref) - 4}">objectif ${fmt(ref, digits)}</text>` : ''}
+    ${ref ? `<line class="ref" x1="0" x2="${W}" y1="${y(ref)}" y2="${y(ref)}"/><text class="reft" x="${W - 2}" y="${y(ref) + 11}" text-anchor="end">objectif ${fmtV ? fmtV(ref) : fmt(ref, digits)}</text>` : ''}
     ${type === 'line' ? (() => { const pts = points.map((p, i) => (p.v != null ? `${4 + i * bw + bw / 2},${y(p.v)}` : null)).filter(Boolean); return pts.length > 1 ? `<path d="M${pts.join(' L')} L${pts.at(-1).split(',')[0]},${H - pad} L${pts[0].split(',')[0]},${H - pad} Z" fill="${color}" opacity=".12"/><polyline class="draw" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" points="${pts.join(' ')}"/>` : ''; })() : ''}
     ${bars.join('')}
-    ${last ? `<text class="val" x="${4 + li * bw + bw / 2}" y="${y(last.v) - 7}" text-anchor="middle">${esc(fmtV ? fmtV(last.v) : fmt(last.v, digits))}</text>` : ''}
-  </svg><div class="tip">Touche une barre pour voir la valeur</div>`;
+  </svg><div class="tip">Touche une barre pour le détail</div>`;
 }
 
 export function lineChart(series) {
@@ -378,6 +394,7 @@ export function lineChart(series) {
       return `<polyline fill="none" stroke="${s.color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" points="${s.pts.map((p) => `${x(p.d)},${y(p.w)}`).join(' ')}"/>
       <circle cx="${x(end.d)}" cy="${y(end.w)}" r="4.5" fill="${s.color}" stroke="var(--card)" stroke-width="2"/>
       <text class="val" x="${x(end.d) + 8}" y="${y(end.w) + 4}">${fmt(end.w, 1)} kg</text>
+      ${s.pts.filter((p) => p.d % 365 === 0 && p !== end).map((p) => `<circle cx="${x(p.d)}" cy="${y(p.w)}" r="3" fill="${s.color}"/><text class="val pt" x="${x(p.d)}" y="${y(p.w) - 7}" text-anchor="middle">${fmt(p.w, 1)}</text>`).join('')}
       ${s.pts.filter((p) => p.d % 365 === 0).map((p) => `<circle cx="${x(p.d)}" cy="${y(p.w)}" r="12" fill="transparent" data-tip="${esc(`${s.name} — ${p.d === 0 ? "aujourd'hui" : (p.d / 365) + ' an(s)'} : ${fmt(p.w, 1)} kg`)}"/>`).join('')}`;
     }).join('')}
   </svg><div class="tip">Touche un point pour voir la valeur</div>`;
@@ -400,7 +417,7 @@ export function timeChart(series, { unit = '', digits = 1 } = {}) {
     ${ticks.map((t) => `<line class="grid" x1="${padL}" x2="${W - padR}" y1="${y(t)}" y2="${y(t)}"/><text x="${padL - 5}" y="${y(t) + 3}" text-anchor="end">${fmt(t, digits)}</text>`).join('')}
     ${dates.map((d, i) => `<text x="${x(d)}" y="${H - 5}" text-anchor="${['start', 'middle', 'end'][i]}">${new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</text>`).join('')}
     ${series.map((s) => `<polyline class="draw" fill="none" stroke="${s.color}" stroke-width="2.5" ${s.dashed ? 'stroke-dasharray="5 4"' : ''} stroke-linejoin="round" stroke-linecap="round" points="${s.pts.map((p) => `${x(p.t)},${y(p.v)}`).join(' ')}"/>
-      ${s.dots ? s.pts.map((p) => `<circle cx="${x(p.t)}" cy="${y(p.v)}" r="4" fill="${s.color}" stroke="var(--card)" stroke-width="2"/><circle cx="${x(p.t)}" cy="${y(p.v)}" r="12" fill="transparent" data-tip="${esc(`${s.name} — ${new Date(p.t).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} : ${fmt(p.v, digits)} ${unit}`)}"/>`).join('') : ''}`).join('')}
+      ${s.dots ? s.pts.map((p, i) => `<circle cx="${x(p.t)}" cy="${y(p.v)}" r="4" fill="${s.color}" stroke="var(--card)" stroke-width="2"/>${i % Math.ceil(s.pts.length / 10) === (s.pts.length - 1) % Math.ceil(s.pts.length / 10) ? `<text class="val pt" x="${x(p.t)}" y="${Math.max(9, y(p.v) - 8)}" text-anchor="${x(p.t) > W - 30 ? 'end' : x(p.t) < padL + 20 ? 'start' : 'middle'}">${fmt(p.v, digits)}</text>` : ''}<circle cx="${x(p.t)}" cy="${y(p.v)}" r="12" fill="transparent" data-tip="${esc(`${s.name} — ${new Date(p.t).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} : ${fmt(p.v, digits)} ${unit}`)}"/>`).join('') : ''}`).join('')}
   </svg><div class="tip">Touche un point pour voir la valeur</div>`;
 }
 

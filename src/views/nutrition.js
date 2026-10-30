@@ -10,9 +10,9 @@ import * as S from '../science.js';
 import * as D from '../digestion.js';
 import { tokens, familyFactor } from '../family.js';
 import * as SN from '../snacks.js';
-import { icon, esc, fmt, segmented, donut, toast, sheet, srcLinks, $, $$ } from '../ui.js';
+import { icon, esc, fmt, segmented, donut, toast, undoToast, sheet, srcLinks, $, $$ } from '../ui.js';
 import { meter } from './home.js';
-import { addMeal } from './actions.js';
+import { addMeal, pendingState, processPendingPhotos } from './actions.js';
 import { openTastePicker } from './tastes.js';
 
 let seg = 'jour';
@@ -85,7 +85,7 @@ export function openMeal(id, done) {
   }));
   $('#fav', body).onclick = () => { saveDish(m); $('#fav', body).innerHTML = `${icon('star', 18)} Dans mes plats`; toast('Ajouté à « Mes plats » ⭐', 1400); };
   $('#rcp', body).onclick = () => openRecipe({ name: m.title.replace(/\s*\(.*\)$/, '') });
-  $('#del', body).onclick = () => { store.update((x) => { x.meals = x.meals.filter((y) => y.id !== id); if (m.alcohol && x.days[m.date]) x.days[m.date].alcohol = Math.max(0, (x.days[m.date].alcohol || 0) - m.alcohol); }); body.close(); };
+  $('#del', body).onclick = () => { const undo = store.removing((x) => { x.meals = x.meals.filter((y) => y.id !== id); if (m.alcohol && x.days[m.date]) x.days[m.date].alcohol = Math.max(0, (x.days[m.date].alcohol || 0) - m.alcohol); }); body.close(); undoToast('Repas supprimé', undo); };
 }
 
 // ---------- Mes plats (favoris et plats préparés à l'avance) ----------
@@ -176,7 +176,7 @@ function renderDay(el, ctx) {
 
     <div class="card">
       <div class="card-head"><h2>${icon('utensils', 18)} Journal du jour</h2><button class="link" data-a="manual">${icon('pencil', 14)} Manuel</button></div>
-      ${st.pendingPhotos?.length ? `<div class="note" style="margin:4px 0 8px">${icon('clock', 18)}<span>${st.pendingPhotos.length} photo${st.pendingPhotos.length > 1 ? 's' : ''} de repas en attente de connexion : analyse automatique dès le retour du réseau.</span></div>` : ''}
+      ${pendingCard(st)}
       ${meals.length ? mealsBySlot(meals) : `<div class="empty">${icon('camera', 28)}<p>Aucun repas aujourd'hui.<br>Photographie ton assiette ou scanne un produit.</p></div>`}
     </div>
 
@@ -202,6 +202,21 @@ function renderDay(el, ctx) {
 
   const re = () => renderDay(el, ctx);
   $$('[data-a]', el).forEach((b) => (b.onclick = () => ctx.action(b.dataset.a)));
+  // photo en attente : l'état (en cours / terminé) se met à jour tout seul
+  if (st.pendingPhotos?.length) {
+    const onPending = () => { if (!el.isConnected) return window.removeEventListener('pending-photos', onPending); const box = $('.pending-photos', el); if (box) { box.outerHTML = pendingCard(store.get()) || ''; bindPending(); } };
+    window.removeEventListener('pending-photos', renderDay.onPending || (() => {}));
+    renderDay.onPending = onPending;
+    window.addEventListener('pending-photos', onPending);
+  }
+  const bindPending = () => {
+    $('#pp-retry', el)?.addEventListener('click', async () => {
+      const n = await processPendingPhotos();
+      if (n) re(); else if (!pendingState().processing && pendingState().lastError) toast(pendingState().lastError, 3000);
+    });
+    $$('[data-pp-del]', el).forEach((b) => (b.onclick = () => { const undo = store.removing((x) => { x.pendingPhotos = (x.pendingPhotos || []).filter((p) => p.id !== b.dataset.ppDel); }); re(); undoToast('Photo retirée', undo); }));
+  };
+  bindPending();
   $('#add-snack', el)?.addEventListener('click', () => ctx.action('snack'));
   $$('[data-slot]', el).forEach((b) => (b.onclick = () => { slot = b.dataset.slot; re(); }));
   $$('[data-eat-tab]', el).forEach((b) => (b.onclick = () => { eatTab = b.dataset.eatTab; re(); }));
@@ -238,7 +253,7 @@ function openDish(d, done) {
     $('#por', body).value = store.get().dishes.find((y) => y.id === d.id)?.portions ?? 0;
   }));
   $('#rcp', body).onclick = () => openRecipe({ name: d.name });
-  $('#del', body).onclick = () => { store.update((s) => { s.dishes = s.dishes.filter((y) => y.id !== d.id); }); body.close(); };
+  $('#del', body).onclick = () => { const undo = store.removing((s) => { s.dishes = s.dishes.filter((y) => y.id !== d.id); }); body.close(); undoToast('Plat supprimé', undo); };
 }
 
 // ---------- Recettes ----------
@@ -302,7 +317,7 @@ function renderMenus(el, ctx, view) {
   $$('[data-redo-day]', el).forEach((b) => (b.onclick = () => openAiPlanner(re, { scope: 'day', date: plan.days[Number(b.dataset.redoDay)].date })));
   $('#clear-plan', el)?.addEventListener('click', () => { if (confirm('Effacer tous les menus de la semaine ?')) { store.update((s) => { s.plan = null; s.shopChecked = {}; }); re(); } });
   $$('[data-clear-day]', el).forEach((b) => (b.onclick = () => { store.update((s) => { s.plan.days[Number(b.dataset.clearDay)].meals = []; }); re(); }));
-  $$('[data-del-meal]', el).forEach((b) => (b.onclick = (e) => { e.stopPropagation(); const [di, mi] = b.dataset.delMeal.split(':').map(Number); store.update((s) => { s.plan.days[di].meals.splice(mi, 1); }); re(); }));
+  $$('[data-del-meal]', el).forEach((b) => (b.onclick = (e) => { e.stopPropagation(); const [di, mi] = b.dataset.delMeal.split(':').map(Number); const undo = store.removing((s) => { s.plan.days[di].meals.splice(mi, 1); }); re(); undoToast('Plat retiré du menu', undo); }));
   el.querySelector('[data-seg-go]')?.addEventListener('click', () => { seg = 'courses'; shopTab = 'liste'; render(view, ctx); });
   $$('[data-recipe]', el).forEach((b) => (b.onclick = () => { const [di, mi] = b.dataset.recipe.split(':').map(Number); openRecipe(plan.days[di].meals[mi]); }));
 }
@@ -385,7 +400,7 @@ function renderShop(el, ctx, view) {
     $('#p-ok', el).onclick = () => { const v = $('#p-add', el).value.trim(); if (!v) return; store.update((s) => { s.pantry = PT.addToPantry(s.pantry, [{ name: v, qty: 1, unit: 'pièce', category: 'Divers' }], store.today()); }); re(); };
     $('#scan-receipt', el).onclick = () => ctx.action('receipt');
     $('#menus-from-pantry', el).onclick = () => openAiPlanner(() => { seg = 'menus'; render(view, ctx); }, { pantryFirst: true });
-    $$('[data-pantry-del]', el).forEach((b) => (b.onclick = () => { store.update((s) => (s.pantry = s.pantry.filter((p) => p.id !== b.dataset.pantryDel))); re(); }));
+    $$('[data-pantry-del]', el).forEach((b) => (b.onclick = () => { const undo = store.removing((s) => { s.pantry = s.pantry.filter((p) => p.id !== b.dataset.pantryDel); }); re(); undoToast('Retiré du garde-manger', undo); }));
     return;
   }
   const aisles = st.plan ? P.shoppingList(st.plan, st.pantry) : {};
@@ -431,6 +446,19 @@ function renderShop(el, ctx, view) {
   };
 }
 
+// Photos de repas pas encore analysées : miniature, état (en cours / raison de l'attente), relancer ou retirer.
+function pendingCard(st) {
+  const list = st.pendingPhotos || [];
+  if (!list.length) return '';
+  const ps = pendingState();
+  return `<div class="note pending-photos" style="margin:4px 0 8px;display:block">
+    <div class="between" style="gap:8px"><span class="row" style="gap:8px;flex-wrap:nowrap">${ps.processing ? '<span class="spinner"></span>' : icon('clock', 18)}<b class="small">${ps.processing ? 'Analyse de la photo en cours…' : `${list.length} photo${list.length > 1 ? 's' : ''} en attente d’analyse`}</b></span>
+    ${ps.processing ? '' : `<button class="btn sm soft" id="pp-retry">${icon('refresh', 14)} Relancer</button>`}</div>
+    ${!ps.processing && ps.lastError ? `<p class="tiny muted" style="margin:6px 0 0">${esc(ps.lastError)}</p>` : ''}
+    <div class="row" style="gap:8px;margin-top:8px">${list.map((p) => `<div class="pp-thumb"><img src="${p.dataUrl}" alt="">${ps.processing ? '' : `<button data-pp-del="${p.id}" aria-label="Retirer cette photo">${icon('x', 12)}</button>`}<span>${esc(p.time)}</span></div>`).join('')}</div>
+  </div>`;
+}
+
 // ---------- Notes (goûts) ----------
 function stars(m) {
   return `<span class="stars" data-rate="${m.id}" aria-label="Note">${[1, 2, 3, 4, 5].map((n) => `<button data-n="${n}" class="${(m.rating || 0) >= n ? 'on' : ''}" aria-label="${n} étoile(s)">${icon('star', 22)}</button>`).join('')}</span>`;
@@ -443,7 +471,6 @@ function bindStars(el, rerender) {
     store.update((s) => { const m = s.meals.find((x) => x.id === id); if (m) { m.rating = m.rating === Number(b.dataset.n) ? 0 : Number(b.dataset.n); val = m.rating; } });
     $$('button', b.parentElement).forEach((x) => x.classList.toggle('on', Number(x.dataset.n) <= val));
     b.classList.add('pop');
-    toast('Merci : tes goûts affinent les suggestions', 1500);
     rerender();
   }));
 }

@@ -4,7 +4,7 @@ import * as C from '../coach.js';
 import * as AI from '../ai.js';
 import * as BC from '../barcode.js';
 import { summary, personContext } from '../context.js';
-import { icon, esc, fmt, fmtMin, sheet, toast, compressImage, pickImage, releaseCamera, BLANK, srcLinks, faces, bindFaces, $, $$ } from '../ui.js';
+import { icon, esc, fmt, fmtMin, sheet, toast, undoToast, compressImage, pickImage, releaseCamera, BLANK, srcLinks, faces, bindFaces, $, $$ } from '../ui.js';
 import * as SL from '../sleep.js';
 import * as N from '../native.js';
 import * as D from '../digestion.js';
@@ -116,12 +116,17 @@ function queuePhoto({ dataUrl, note, slot }) {
   });
 }
 
-let processing = false;
+let processing = false, lastError = '';
+// État affiché dans le journal : analyse en cours, ou raison de l'attente.
+export const pendingState = () => ({ processing, lastError: !store.get().settings.apiKey ? 'Ajoute une clé IA dans Profil pour analyser la photo.' : navigator.onLine === false ? 'Pas de connexion pour l’instant.' : lastError });
+const notify = () => window.dispatchEvent(new Event('pending-photos'));
 // Analyse les photos mises de côté (au retour du réseau ou à l'ouverture de l'appli). Renvoie le nombre de repas ajoutés.
 export async function processPendingPhotos() {
   const st = store.get();
   if (processing || !st.pendingPhotos?.length || !st.settings.apiKey || navigator.onLine === false) return 0;
   processing = true;
+  lastError = '';
+  notify();
   let added = 0;
   try {
     for (const ph of [...st.pendingPhotos]) {
@@ -136,11 +141,12 @@ export async function processPendingPhotos() {
         });
         if (r.is_food) added++;
       } catch (e) {
+        lastError = AI.friendlyError(e);
         if (isOffline(e) || isOffline(e?.cause)) break; // toujours pas de réseau : on réessaiera
         store.update((s) => { const x = (s.pendingPhotos || []).find((y) => y.id === ph.id); if (x) x.tries = (x.tries || 0) + 1; s.pendingPhotos = (s.pendingPhotos || []).filter((y) => (y.tries || 0) < 3); });
       }
     }
-  } finally { processing = false; }
+  } finally { processing = false; notify(); }
   if (added) Diana.pop(added > 1 ? `Connexion retrouvée : j’ai analysé tes ${added} photos de repas en attente 📸` : 'Connexion retrouvée : ta photo de repas en attente est analysée et ajoutée 📸', 'proud');
   return added;
 }
@@ -653,7 +659,7 @@ export function openSnack(ctx) {
       qty = 1;
       draw();
     }));
-    $$('[data-del]', el).forEach((b) => (b.onclick = () => { store.update((x) => (x.meals = x.meals.filter((m) => m.id !== b.dataset.del))); draw(); }));
+    $$('[data-del]', el).forEach((b) => (b.onclick = () => { const undo = store.removing((x) => { x.meals = x.meals.filter((m) => m.id !== b.dataset.del); }); draw(); undoToast('Repas retiré', undo); }));
     $('#other', el).onclick = () => { body.close(); setTimeout(() => openScanner(ctx, 'grignotage'), 250); };
     $('#snap', el).onclick = () => { body.close(); setTimeout(() => openPhoto(ctx, false, 'grignotage'), 250); };
   };

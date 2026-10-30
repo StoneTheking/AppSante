@@ -8,7 +8,7 @@ import * as SC from '../schedule.js';
 import * as N from '../native.js';
 import { summary } from '../context.js';
 import * as Diana from '../diana.js';
-import { icon, esc, fmt, donut, sheet, toast, srcLinks, $, $$ } from '../ui.js';
+import { icon, esc, fmt, donut, sheet, toast, undoToast, srcLinks, $, $$ } from '../ui.js';
 
 let timer = null;
 
@@ -19,20 +19,7 @@ export function todayAdvice(sm, st) {
   const reco = C.recommendActivity(sm, st.profile);
   const dayPlan = C.dailyPlan(sm, st.profile);
   const when = dayPlan.find((p) => p.icon === '🏃');
-  let type = slot?.type || 'marche', minutes = slot?.minutes || 30, intensity = slot?.intensity || 'moderee';
-  const why = [];
-  const easy = () => SP.activity(SP.substitute('marche', st.profile)).label.toLowerCase();
-  if (!slot?.type) { type = 'marche'; minutes = 30; intensity = 'legere'; why.push(`Jour de récupération dans ta semaine type : ${easy()} en douceur suffit.`); }
-  if (sm.ctx.poorSleep && intensity === 'intense') { type = 'marche'; intensity = 'moderee'; minutes = 30; why.push(`Nuit courte : on remplace la séance intense par ${easy()} à allure modérée.`); }
-  if (slot?.matches) { type = 'yoga'; intensity = 'legere'; minutes = 20; why.length = 0; why.push('Séance du jour déjà faite 👏 : mobilité ou étirements pour récupérer.'); }
-  if (sm.env && (sm.env.aqi > 60 || sm.env.tMax >= 33) && ['course', 'velo', 'randonnee', 'marche'].includes(type)) why.push('Air ou chaleur défavorables : fais-la en intérieur (tapis, vélo d’appartement, salle).');
-  type = SP.substitute(type, st.profile);
-  const ad = SP.adaptation(st.sportFeedback, type);
-  if (!slot?.matches) {
-    minutes = SP.adaptedMinutes(minutes, ad);
-    if (ad.easier && intensity === 'intense') intensity = 'moderee';
-    if (ad.note) why.unshift(ad.note);
-  }
+  const { type, minutes, intensity, ad, why } = C.sportOfDay(sm, st.profile);
   return { type, minutes, intensity, ad, when: when?.time, whenText: when?.text, reco, why: slot?.matches ? why : [...why, ...reco.why], src: [...new Set([...reco.src, ...(when?.src || [])])], plan };
 }
 
@@ -129,7 +116,7 @@ export function render(view, ctx) {
   }));
   $('#my-sports', view).onclick = () => openMySports(() => render(view, ctx));
   $('#edit-week', view).onclick = () => openWeekEditor(() => render(view, ctx));
-  $$('[data-del]', view).forEach((b) => (b.onclick = () => { SP.removeWorkout(b.dataset.del); render(view, ctx); }));
+  $$('[data-del]', view).forEach((b) => (b.onclick = () => { const id = b.dataset.del; const undo = store.removing(() => {}); SP.removeWorkout(id); render(view, ctx); undoToast('Séance supprimée', undo); }));
 }
 
 // Démarrer une autre activité (chrono) ou saisir une séance passée.

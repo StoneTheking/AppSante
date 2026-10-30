@@ -91,6 +91,13 @@ export function update(fn) {
   save();
 }
 
+// Suppression annulable : applique fn et renvoie de quoi revenir à l'état d'avant.
+export function removing(fn) {
+  const snap = JSON.stringify(get());
+  update(fn);
+  return () => { state = JSON.parse(snap); save(); };
+}
+
 export const today = (d = new Date()) => {
   const z = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
   return z.toISOString().slice(0, 10);

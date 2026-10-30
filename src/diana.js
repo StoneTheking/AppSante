@@ -210,7 +210,7 @@ export function mount(slot, onOpenCoach) {
   dock = slot;
   dock.classList.add('diana-dock');
   dock.innerHTML = `<button class="dd-face" type="button" aria-label="Coach Diana : une nouvelle phrase">${face('happy', 66)}</button>
-    <div class="dd-bubble" role="status" aria-live="polite"><b>Coach Diana</b><span></span><button class="dd-chat" type="button">Discuter avec moi →</button></div>`;
+    <div class="dd-bubble" role="status" aria-live="polite"><span></span><button class="dd-chat" type="button">Discuter →</button></div>`;
   dock.querySelector('.dd-face').onclick = () => { turn[ctxArgs[0]] = (turn[ctxArgs[0]] || 0) + 1; sayCurrent(true); };
   dock.querySelector('.dd-bubble').onclick = (e) => { if (e.target.closest('.dd-chat')) { hide(); onOpenCoach?.(); } else hide(); };
 }
@@ -265,7 +265,15 @@ export function say(text, mood = 'happy', { ms, spin = false } = {}) {
   if (dock.classList.contains('in-chat')) { const o = orbOf(dock.querySelector('canvas')); o.spinAt = spin ? performance.now() / 1000 : o.spinAt; wake(); return; }
   const bubble = dock.querySelector('.dd-bubble');
   bubble.querySelector('span').textContent = text;
-  bubble.classList.remove('on'); void bubble.offsetWidth; bubble.classList.add('on');
+  // la bulle prend la place libre de l'en-tête, entre Diana et les boutons de droite
+  const right = document.querySelector('#streak-btn')?.getBoundingClientRect().left || innerWidth - 16;
+  const left = dock.getBoundingClientRect().right + 6;
+  bubble.style.setProperty('--bw', `${Math.max(170, Math.round(right - left - 8))}px`);
+  bubble.classList.remove('on', 'tall'); void bubble.offsetWidth;
+  // texte long : la bulle s'ouvre vers le bas plutôt que de déborder au-dessus de l'écran
+  if (bubble.offsetHeight > 76) bubble.classList.add('tall');
+  bubble.classList.add('on');
+  dock.closest('.top')?.classList.add('speaking');
   const o = orbOf(dock.querySelector('canvas'));
   o.mood = mood;
   const now = performance.now() / 1000;
@@ -279,6 +287,7 @@ export function say(text, mood = 'happy', { ms, spin = false } = {}) {
 function hide() {
   clearTimeout(hideT);
   dock?.querySelector('.dd-bubble').classList.remove('on');
+  dock?.closest('.top')?.classList.remove('speaking');
   setTimeout(() => { const o = dock && orbOf(dock.querySelector('canvas')); if (o && !dock.querySelector('.dd-bubble.on')) o.mood = 'happy'; }, 400);
 }
 

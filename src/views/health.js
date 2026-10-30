@@ -9,7 +9,7 @@ import { summary } from '../context.js';
 import * as Diana from '../diana.js';
 import * as D from '../digestion.js';
 import * as SP from '../sport.js';
-import { icon, esc, fmt, fmtMin, segmented, srcLinks, barChart, timeChart, faces, bindFaces, toast, compressImage, pickImage, sheet, $, $$ } from '../ui.js';
+import { icon, esc, fmt, fmtMin, segmented, srcLinks, barChart, timeChart, faces, bindFaces, toast, undoToast, compressImage, pickImage, sheet, $, $$ } from '../ui.js';
 import * as E from '../energy.js';
 import { correlations } from '../correlate.js';
 
@@ -55,11 +55,11 @@ async function doSync({ silent = false } = {}) {
       results.push(`Health Connect : ${Object.keys(h.days).length} jour(s)${h.workouts.length ? `, ${h.workouts.length} séance(s)` : ''}`);
     }
   } catch (e) { if (!silent) results.push('Health Connect : ' + (e.message || e)); }
-  // Health Connect (Samsung Health, montre…) fournit les pas : le podomètre du téléphone ne sert plus et s'arrête.
+  // Samsung Health n'envoie pas toujours tous ses pas à Health Connect (envoi différé, pas de la montre…) :
+  // le podomètre du téléphone tourne en complément et on garde le plus grand des deux totaux du jour.
   store.update((s) => { s.hcSteps = hcSteps; });
-  const pedo = !hcSteps && (await N.stepsHasAccess());
+  const pedo = await N.stepsHasAccess();
   N.stepsBackground(pedo);
-  // podomètre intégré (repli) : relevé à chaque ouverture + toutes les ~15 min, pas du jour déduits des relevés
   try {
     if (pedo) {
       const r = await N.stepsRead();
@@ -73,7 +73,8 @@ async function doSync({ silent = false } = {}) {
         const start = new Date(); start.setHours(0, 0, 0, 0);
         const steps = N.stepsFromSamples(store.get().stepSamples, start.getTime());
         const k = store.today();
-        if (!st.days[k]?.steps || st.days[k]?.stepsSource === 'téléphone') store.setDay(k, { steps, stepsSource: 'téléphone' });
+        store.update((s) => { if (s.hcReport) s.hcReport.phoneSteps = steps; });
+        if (steps > (store.get().days[k]?.steps || 0)) store.setDay(k, { steps, stepsSource: 'téléphone' });
         results.push(`podomètre : ${steps} pas`);
       }
     }
@@ -128,8 +129,19 @@ function hcReportLine(r) {
   const txt = r.todaySteps
     ? `Aujourd’hui : <b>${fmt(r.todaySteps)} pas</b> reçus${r.sources?.length ? ` de ${esc(r.sources.join(', '))}` : ''}${r.lastStep ? ` (dernier relevé ${hm(r.lastStep)})` : ''}.`
     : `<span style="color:var(--warn)">Aucun pas reçu de Health Connect aujourd’hui.</span> Dans Samsung Health → Paramètres → Health Connect, autorise l’<b>écriture</b> des pas ; Samsung Health les envoie ensuite toutes les quelques minutes à quelques heures.`;
-  return `<div style="margin:-2px 0 6px"><div class="between" style="gap:8px;align-items:flex-start"><span class="tiny muted">${txt} Synchro ${hm(r.at)}.</span>${btn}</div>
-    ${errs.length ? `<details class="tiny muted"><summary>${errs.length} lecture(s) en erreur</summary>${errs.map(([k, v]) => `${esc(k)} : ${esc(v)}`).join('<br>')}</details>` : ''}</div>`;
+  const phone = r.phoneSteps != null ? ` Podomètre du téléphone : <b>${fmt(r.phoneSteps)} pas</b>${r.phoneSteps > (r.todaySteps || 0) ? ' (utilisé, plus complet)' : ''}.` : '';
+  return `<div style="margin:-2px 0 6px"><div class="between" style="gap:8px;align-items:flex-start"><span class="tiny muted">${txt}${phone} Synchro ${hm(r.at)}.</span>${btn}</div>
+    ${errs.length ? `<details class="tiny muted"><summary>${errs.length} donnée(s) non lue(s) : ${esc(errs.map(([k]) => k).join(', '))}</summary>${errs.map(([k, v]) => `${esc(k)} : ${esc(v)}`).join('<br>')}</details>` : ''}</div>`;
+}
+
+// Nom lisible d'une appli quand Android ne donne que son identifiant (com.anthropic.claude → Claude).
+const APP_NAMES = { 'com.whatsapp': 'WhatsApp', 'com.instagram.android': 'Instagram', 'com.zhiliaoapp.musically': 'TikTok', 'com.ss.android.ugc.trill': 'TikTok', 'com.google.android.youtube': 'YouTube', 'com.facebook.katana': 'Facebook', 'com.facebook.orca': 'Messenger', 'com.snapchat.android': 'Snapchat', 'com.twitter.android': 'X (Twitter)', 'com.android.chrome': 'Chrome', 'com.sec.android.app.sbrowser': 'Samsung Internet', 'com.google.android.gm': 'Gmail', 'com.samsung.android.messaging': 'Messages', 'com.google.android.apps.messaging': 'Messages', 'com.spotify.music': 'Spotify', 'com.netflix.mediaclient': 'Netflix', 'com.reddit.frontpage': 'Reddit', 'com.linkedin.android': 'LinkedIn', 'org.telegram.messenger': 'Telegram', 'com.discord': 'Discord', 'com.google.android.apps.maps': 'Google Maps', 'com.waze': 'Waze', 'com.sec.android.gallery3d': 'Galerie', 'com.sec.android.app.camera': 'Appareil photo', 'com.samsung.android.dialer': 'Téléphone', 'com.android.vending': 'Play Store', 'com.anthropic.claude': 'Claude', 'com.openai.chatgpt': 'ChatGPT', 'tv.twitch.android.app': 'Twitch', 'com.pinterest': 'Pinterest', 'com.amazon.mShop.android.shopping': 'Amazon' };
+export function appName(n = '') {
+  if (!/^[a-z][\w]*(\.[\w]+)+$/i.test(n)) return n;
+  if (APP_NAMES[n]) return APP_NAMES[n];
+  const parts = n.split('.').filter((x) => !/^(com|org|net|fr|io|app|android|apps|mobile|client|sec|google|samsung|main|prod|release)$/i.test(x));
+  const w = parts.at(-1) || n.split('.').at(-1);
+  return w.charAt(0).toUpperCase() + w.slice(1);
 }
 
 // Le compteur du téléphone ne connaît pas les pas faits avant le premier relevé : on l'indique.
@@ -155,7 +167,7 @@ function sourcesCard(st) {
     <p class="tiny muted" style="margin-top:-6px">Synchronisées automatiquement à chaque ouverture de l’application.</p>
     ${line('heart', 'Health Connect', hc, d?.ok ? (d.missing?.length ? `<button class="btn sm soft" id="hc">+ de données</button>` : '') : `<button class="btn sm soft" id="hc">${d?.reason === 'unavailable' || d?.reason === 'update' ? 'Pourquoi ?' : 'Autoriser'}</button>`)}
     ${d?.ok ? hcReportLine(st.hcReport) : ''}
-    ${st.hcSteps ? line('steps', 'Pas', ['ok', 'fournis par Health Connect (Samsung Health, montre…)']) : line('steps', 'Podomètre du téléphone', st.stepsAccess ? ['ok', stepsSince(st)] : ['muted', d?.ok ? 'inutile (Health Connect)' : 'non activé'], st.stepsAccess || d?.ok ? '' : `<button class="btn sm soft" id="steps-on">Activer</button>`)}
+    ${st.hcSteps ? line('steps', 'Pas', ['ok', st.stepsAccess ? 'Health Connect + podomètre du téléphone' : 'Health Connect'], st.stepsAccess ? '' : `<button class="btn sm soft" id="steps-on">+ Podomètre</button>`) : line('steps', 'Podomètre du téléphone', st.stepsAccess ? ['ok', stepsSince(st)] : ['muted', d?.ok ? 'inutile (Health Connect)' : 'non activé'], st.stepsAccess || d?.ok ? '' : `<button class="btn sm soft" id="steps-on">Activer</button>`)}
     ${line('phone', 'Temps d’écran', st.usageOk ? ['ok', 'autorisé'] : ['warn', 'non autorisé'], st.usageOk ? '' : `<button class="btn sm soft" id="usage">Autoriser</button>`)}
     <div id="sync-res" class="small" style="margin-top:8px"></div>
   </div>`;
@@ -208,7 +220,7 @@ function renderTrack(el, ctx) {
         ${stat('Déverrouillages', d.unlocks != null ? fmt(d.unlocks) : '—')}
         ${stat('Téléphone avant de dormir', d.phoneBeforeBedMin != null ? `${d.phoneBeforeBedMin} min` : (d.phoneInBed ?? d.phoneInBedGuess) != null ? ((d.phoneInBed ?? d.phoneInBedGuess) ? 'oui' : 'non') : '—')}
       </div>
-      ${d.topApps?.length ? `<p class="tiny muted" style="margin-top:8px">Applis les plus utilisées : ${d.topApps.map((a) => `${esc(a.name)} (${fmtMin(a.minutes)})`).join(', ')}</p>` : ''}
+      ${d.topApps?.length ? `<p class="tiny muted" style="margin-top:8px">Applis les plus utilisées : ${d.topApps.map((a) => `${esc(appName(a.name))} (${fmtMin(a.minutes)})`).join(', ')}</p>` : ''}
 
       ${section('scale', 'Poids & boissons', 'var(--c-water)', due.due && dayOffset === 0 ? '<span class="badge moyen">pesée à faire</span>' : due.days != null ? `<span class="tiny muted">${due.days === 0 ? 'pesé aujourd’hui' : due.days === 1 ? 'pesé hier' : `pesé il y a ${due.days} j`}</span>` : '')}
       <div class="grid2">
@@ -236,7 +248,7 @@ function renderTrack(el, ctx) {
   $('#prev', el).onclick = () => { dayOffset--; re(); };
   $('#next', el).onclick = () => { if (dayOffset < 0) { dayOffset++; re(); } };
   $('#add-stool', el).onclick = () => ctx.action('stool');
-  $$('[data-stool-del]', el).forEach((b) => (b.onclick = () => { store.update((s) => (s.stools = s.stools.filter((x) => x.id !== b.dataset.stoolDel))); re(); }));
+  $$('[data-stool-del]', el).forEach((b) => (b.onclick = () => { const undo = store.removing((s) => { s.stools = s.stools.filter((x) => x.id !== b.dataset.stoolDel); }); re(); undoToast('Entrée supprimée', undo); }));
   if (N.isNative) {
     $('#hc', el)?.addEventListener('click', async () => {
       const res = $('#sync-res', el);
@@ -443,6 +455,12 @@ function renderFuture(el) {
   const pr = C.projection(sm, st.profile);
   const cur = pr.current, imp = pr.improved;
   const factors = [...cur[0].factors].sort((a, c) => c.rr - a.rr);
+  const riskSentence = (now, later, yrs) => {
+    const pct = Math.abs(Math.round((now - 1) * 100));
+    const a = now > 1.02 ? `Aujourd’hui, ton risque est <b style="color:var(--bad)">${pct} % plus élevé</b> que la référence.` : now < 0.98 ? `Aujourd’hui, ton risque est <b style="color:var(--good)">${pct} % plus faible</b> que la référence. Bravo !` : 'Aujourd’hui, ton risque est <b>dans la moyenne</b> de la référence.';
+    const gain = later != null ? Math.round((now - later) * 100) : 0;
+    return a + (gain > 1 ? ` En suivant les conseils, tu peux le réduire d’environ <b>${gain} points</b>${yrs ? ` d’ici ${yrs} an${yrs > 1 ? 's' : ''}` : ''}.` : '');
+  };
   const rrTxt = (rr) => `${rr >= 1 ? '+' : '−'}${Math.abs(Math.round((rr - 1) * 100))} %`;
   const stat = (k, v, u, ic) => `<div class="stat"><div class="k">${ic ? icon(ic, 14) : ''}${k}</div><div class="v">${v}<small>${u}</small></div></div>`;
 
@@ -464,11 +482,13 @@ function renderFuture(el) {
 
     <div class="card">
       <div class="card-head"><h2>${icon('heart', 18)} Ton risque santé</h2></div>
-      <p class="small muted" style="margin-top:-6px">Risque relatif comparé à un profil de référence.</p>
+      <p class="small" style="margin-top:-6px">${riskSentence(cur[0].rr, imp.at(-1)?.rr, imp.at(-1)?.years)}</p>
+      <p class="tiny muted">Risque de maladie (cœur, diabète, certains cancers…) comparé à une personne du même âge aux habitudes recommandées : <b style="color:var(--good)">−</b> = plus faible, <b style="color:var(--bad)">+</b> = plus élevé.</p>
       <table><tr><th></th>${cur.map((c) => `<th class="num">${c.years === 0 ? 'Auj.' : c.years + ' an' + (c.years > 1 ? 's' : '')}</th>`).join('')}</tr>
-        <tr><td><span style="color:var(--series-2)">●</span> Habitudes actuelles</td>${cur.map((c) => `<td class="num">${rrTxt(c.rr)}</td>`).join('')}</tr>
-        <tr><td><span style="color:var(--series-1)">●</span> Avec les conseils</td>${imp.map((c) => `<td class="num"><b>${rrTxt(c.rr)}</b></td>`).join('')}</tr></table>
-      <h3 style="font-size:.9rem;margin:18px 0 6px">Ce qui pèse le plus</h3>
+        <tr><td><span style="color:var(--series-2)">●</span> Si rien ne change</td>${cur.map((c) => `<td class="num" style="white-space:nowrap">${rrTxt(c.rr)}</td>`).join('')}</tr>
+        <tr><td><span style="color:var(--series-1)">●</span> En suivant les conseils</td>${imp.map((c) => `<td class="num" style="white-space:nowrap"><b>${rrTxt(c.rr)}</b></td>`).join('')}</tr></table>
+      <h3 style="font-size:.9rem;margin:18px 0 2px">Ce qui pèse le plus</h3>
+      <p class="tiny muted" style="margin:0 0 4px">Chaque habitude et son effet sur ce risque. En rouge : à améliorer en priorité.</p>
       ${factors.length ? factors.map((f) => {
         const col = f.rr > 1.1 ? 'var(--bad)' : f.rr > 1.0 ? 'var(--warn)' : 'var(--good)';
         const w = Math.min(100, Math.abs(f.rr - 1) * 250);
