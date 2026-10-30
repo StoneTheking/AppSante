@@ -34,10 +34,13 @@ function parts(content) {
   });
 }
 
-function body(p, { schema = true } = {}) {
+function body(p, { schema = true, think = true } = {}) {
   const fmt = p.output_config?.format;
   let system = textOf(p.system);
   const gen = { maxOutputTokens: Math.min(p.max_tokens || 8192, 32768) };
+  // Réflexion limitée pour les tâches courantes (analyse photo, lecture de capture) : réponse bien plus rapide.
+  const effort = p.output_config?.effort;
+  if (think && (effort === 'low' || effort === 'medium')) gen.thinkingConfig = { thinkingBudget: effort === 'low' ? 512 : 1024 };
   if (fmt?.type === 'json_schema') {
     gen.responseMimeType = 'application/json';
     if (schema) gen.responseJsonSchema = fmt.schema;
@@ -92,6 +95,8 @@ async function post(key, path, payload, signal) {
 // Certains schémas JSON (anyOf, additionalProperties…) peuvent être refusés : on réessaie avec le schéma dans la consigne.
 async function withSchemaRetry(fn, p) {
   try { return await fn(body(p)); } catch (e) {
+    // réglage de réflexion refusé par ce modèle : même requête sans ce réglage
+    if (e.status === 400 && /thinking/i.test(e.raw)) return withSchemaRetry((payload) => fn(payload), { ...p, output_config: { ...p.output_config, effort: undefined } });
     // schéma refusé (400) ou qui fait planter le serveur (500) : schéma passé dans la consigne
     if ([400, 500].includes(e.status) && p.output_config?.format && !/API key/i.test(e.raw)) return fn(body(p, { schema: false }));
     if (p.tools && ((e.status === 400 && /search|tool/i.test(e.raw)) || BUSY.includes(e.status))) return fn(body({ ...p, tools: undefined }));

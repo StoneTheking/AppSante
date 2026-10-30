@@ -71,7 +71,7 @@ export async function openPhoto(ctx, fromGallery = false, slot = null) {
   if (!st.settings.apiKey) return openQuickMeal(ctx, slot); // l'analyse photo demande une clé API
   const [file] = await pickImage({ camera: !fromGallery });
   if (!file) return;
-  const dataUrl = await compressImage(file);
+  const dataUrl = await compressImage(file, 1024, 0.8); // assez net pour l'IA, plus rapide à envoyer
   const body = sheet(`<img class="preview" src="${dataUrl}" alt=""><div id="res" style="margin-top:14px">
       <label class="lbl">Une précision ? (facultatif)</label><input id="note" placeholder="ex. sauce à la crème, moitié mangée…">
       <button class="btn block" id="go" style="margin-top:12px">${icon('sparkles', 18)} Analyser ce repas</button>
@@ -80,14 +80,18 @@ export async function openPhoto(ctx, fromGallery = false, slot = null) {
   $('#go', body).onclick = async () => {
     const note = $('#note', body).value;
     const res = $('#res', body);
-    res.innerHTML = `<div class="empty"><span class="spinner"></span><p>Identification des aliments et estimation des portions…</p></div>`;
+    res.innerHTML = `<div class="empty"><span class="spinner"></span><p id="ai-step">Envoi de la photo…</p></div>`;
+    // étapes affichées pendant l'attente (l'analyse prend souvent 5 à 15 s)
+    const stepsT = ['Identification des aliments…', 'Estimation des portions…', 'Calcul des nutriments…', 'Presque fini…'].map((t, k) => setTimeout(() => { const e = $('#ai-step', res); if (e) e.textContent = t; }, 1500 + k * 3500));
     try {
       const sm = summary();
       const r = await AI.analyzePlate(st.settings, dataUrl, personContext(sm), note);
       if (!r.is_food) throw new Error('Je ne vois pas de nourriture sur cette photo.');
       const thumb = await compressImage(await (await fetch(dataUrl)).blob(), 160, 0.7);
+      stepsT.forEach(clearTimeout);
       showResult(res, { ...r, thumb, factor: 1, slot: slot || C.currentSlot() }, body);
     } catch (e) {
+      stepsT.forEach(clearTimeout);
       res.innerHTML = `<div class="note bad">${icon('alert', 18)}<span>${esc(AI.friendlyError(e))}</span></div>`;
     }
   };
@@ -100,26 +104,36 @@ function showResult(res, p, body) {
   res.innerHTML = `
     <div class="between"><h2 style="font-size:1.2rem">${esc(p.title)}</h2><span class="badge ${p.verdict}">${VERDICT[p.verdict]}</span></div>
     <div class="grid3" style="margin:14px 0">
-      <div class="stat"><div class="k">${icon('flame', 14)} Calories</div><div class="v">${fmt(n.kcal)}<small>kcal</small></div></div>
-      <div class="stat"><div class="k">Protéines</div><div class="v">${fmt(n.protein)}<small>g</small></div></div>
+      <div class="stat"><div class="k">${icon('flame', 14)} Calories</div><div class="v"><span data-n="kcal">${fmt(n.kcal)}</span><small>kcal</small></div></div>
+      <div class="stat"><div class="k">Protéines</div><div class="v"><span data-n="protein">${fmt(n.protein)}</span><small>g</small></div></div>
       <div class="stat"><div class="k">Qualité</div><div class="v">${p.quality}<small>/100</small></div></div>
-      <div class="stat"><div class="k">Glucides</div><div class="v">${fmt(n.carbs)}<small>g</small></div></div>
-      <div class="stat"><div class="k">Lipides</div><div class="v">${fmt(n.fat)}<small>g</small></div></div>
-      <div class="stat"><div class="k">Fibres</div><div class="v">${fmt(n.fiber)}<small>g</small></div></div>
+      <div class="stat"><div class="k">Glucides</div><div class="v"><span data-n="carbs">${fmt(n.carbs)}</span><small>g</small></div></div>
+      <div class="stat"><div class="k">Lipides</div><div class="v"><span data-n="fat">${fmt(n.fat)}</span><small>g</small></div></div>
+      <div class="stat"><div class="k">Fibres</div><div class="v"><span data-n="fiber">${fmt(n.fiber)}</span><small>g</small></div></div>
     </div>
-    <table>${p.items.map((i) => `<tr><td>${esc(i.name)}</td><td class="num">${fmt(i.grams * p.factor)} g</td><td class="num">${fmt(i.kcal * p.factor)} kcal</td></tr>`).join('')}</table>
+    <table>${p.items.map((i) => `<tr><td>${esc(i.name)}</td><td class="num" data-ig="${i.grams}">${fmt(i.grams * p.factor)} g</td><td class="num" data-ik="${i.kcal}">${fmt(i.kcal * p.factor)} kcal</td></tr>`).join('')}</table>
     <p class="small" style="margin:14px 0 10px">${esc(p.comment)}</p>
     <div class="note">${icon('bulb', 18)}<span>${esc(p.advice)}</span></div>
     ${p.alcohol_drinks ? `<div class="note warn">${icon('wine', 18)}<span>${fmt(p.alcohol_drinks * p.factor, 1)} verre(s) standard d’alcool détecté(s) : ajouté(s) automatiquement à ta journée.</span></div>` : ''}
     <p class="tiny muted">Sucres ${fmt(n.sugar)} g · graisses saturées ${fmt(n.satFat)} g · sodium ${fmt(n.sodium)} mg · NOVA ${p.nova} · confiance ${esc(p.confidence)}</p>
-    <label class="lbl">Portion réellement mangée : <b>${Math.round(p.factor * 100)} %</b></label>
+    <label class="lbl">Portion réellement mangée : <b id="fpct">${Math.round(p.factor * 100)} %</b></label>
     <input type="range" id="factor" min="0.25" max="2" step="0.05" value="${p.factor}">
     <label class="lbl">C’était</label>
     <div class="chips" style="flex-wrap:wrap">${MEAL_TYPES.map(([k, l]) => `<button class="chip ${p.slot === k ? 'on' : ''}" data-slot="${k}">${l}</button>`).join('')}</div>
     <button class="btn block" id="save" style="margin-top:14px">${icon('check', 18)} Enregistrer</button>`;
   $$('[data-slot]', res).forEach((b) => (b.onclick = () => { p.slot = b.dataset.slot; $$('[data-slot]', res).forEach((x) => x.classList.toggle('on', x === b)); }));
-  $('#factor', res).onchange = (e) => showResult(res, { ...p, factor: Number(e.target.value) }, body);
+  // Le curseur met les chiffres à jour en direct, pendant le glissement (sans redessiner la fiche).
+  $('#factor', res).oninput = (e) => {
+    p.factor = Number(e.target.value);
+    const m = scaled(p.nutrients, p.factor);
+    $('#fpct', res).textContent = `${Math.round(p.factor * 100)} %`;
+    $$('[data-n]', res).forEach((x) => (x.textContent = fmt(m[x.dataset.n])));
+    $$('[data-ig]', res).forEach((x) => (x.textContent = `${fmt(x.dataset.ig * p.factor)} g`));
+    $$('[data-ik]', res).forEach((x) => (x.textContent = `${fmt(x.dataset.ik * p.factor)} kcal`));
+  };
+  $('#factor', res).onchange = () => showResult(res, p, body); // au lâcher : sucres, alcool… recalculés
   $('#save', res).onclick = () => {
+    const n = scaled(p.nutrients, p.factor);
     addMeal({ title: p.title, nutrients: n, items: p.items, nova: p.nova, quality: p.quality, verdict: p.verdict, comment: p.comment, advice: p.advice, thumb: p.thumb, slot: p.slot === 'grignotage' ? 'collation' : p.slot, snack: p.slot === 'grignotage', alcohol: p.alcohol_drinks ? Math.round(p.alcohol_drinks * p.factor * 10) / 10 : 0 });
     body.close();
   };
