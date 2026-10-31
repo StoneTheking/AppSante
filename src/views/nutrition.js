@@ -10,7 +10,7 @@ import * as S from '../science.js';
 import * as D from '../digestion.js';
 import { tokens, familyFactor } from '../family.js';
 import * as SN from '../snacks.js';
-import { icon, esc, fmt, segmented, donut, toast, undoToast, sheet, srcLinks, $, $$ } from '../ui.js';
+import { icon, esc, fmt, qtyTxt, segmented, donut, toast, undoToast, sheet, srcLinks, $, $$ } from '../ui.js';
 import { meter } from './home.js';
 import { addMeal, pendingState, processPendingPhotos } from './actions.js';
 import { openTastePicker } from './tastes.js';
@@ -66,7 +66,7 @@ export function openMeal(id, done) {
       <div class="stat"><div class="k">Légumes</div><div class="v">${fmt(n.fruitVeg)}<small>g</small></div></div>
     </div>
     <p class="tiny muted" style="margin:0">Sucres ${fmt(n.sugar)} g · graisses saturées ${fmt(n.satFat)} g · sodium ${fmt(n.sodium)} mg${m.alcohol ? ` · ${fmt(m.alcohol, 1)} verre(s) d’alcool` : ''}${m.quality != null ? ` · qualité ${m.quality}/100` : ''}</p>
-    ${m.items?.length ? `<table style="margin-top:10px">${m.items.map((i) => `<tr><td>${esc(i.name)}</td><td class="num">${fmt(i.grams)} g</td><td class="num">${fmt(i.kcal)} kcal</td></tr>`).join('')}</table>` : ''}
+    ${m.items?.length ? `<table style="margin-top:10px">${m.items.map((i) => `<tr><td>${esc(i.name)}</td><td class="num">${qtyTxt(i)}</td><td class="num">${fmt(i.kcal)} kcal</td></tr>`).join('')}</table>` : ''}
     ${m.comment ? `<p class="small" style="margin:12px 0 6px">${esc(m.comment)}</p>` : ''}
     ${m.advice ? `<div class="note">${icon('bulb', 18)}<span>${esc(m.advice)}</span></div>` : ''}
     <label class="lbl">Tu as aimé ?</label>${stars(m)}

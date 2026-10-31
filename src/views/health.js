@@ -12,19 +12,21 @@ import * as SP from '../sport.js';
 import { icon, esc, fmt, fmtMin, segmented, srcLinks, barChart, timeChart, faces, bindFaces, toast, undoToast, compressImage, pickImage, sheet, $, $$ } from '../ui.js';
 import * as E from '../energy.js';
 import { correlations } from '../correlate.js';
+import * as PO from '../posture.js';
+import * as X3 from '../exercise3d.js';
 
-let seg = 'suivi';
+let seg = 'tendances'; // les tendances s'ouvrent en premier
 let dayOffset = 0;
 
 let shownSeg = null;
 export function render(view, ctx) {
   const dsm = summary();
-  view.innerHTML = `${segmented('hl', [['suivi', 'Suivi'], ['tendances', 'Tendances'], ['projection', 'Projection'], ['science', 'Science']], seg)}<div id="hl-body" class="${seg !== shownSeg ? 'view-enter' : ''}"></div>`;
+  view.innerHTML = `${segmented('hl', [['tendances', 'Tendances'], ['suivi', 'Suivi'], ['posture', 'Posture'], ['projection', 'Futur'], ['science', 'Science']], seg)}<div id="hl-body" class="${seg !== shownSeg ? 'view-enter' : ''}"></div>`;
   shownSeg = seg; // animations d'entrée seulement au changement d'onglet, pas à chaque mise à jour
   $$('[data-seg="hl"]', view).forEach((b) => (b.onclick = () => { if (b.dataset.v === seg) return; seg = b.dataset.v; render(view, ctx); }));
   Diana.context('health', store.get(), dsm);
   const body = $('#hl-body', view);
-  ({ suivi: renderTrack, tendances: renderTrends, projection: renderFuture, science: renderScience })[seg](body, ctx);
+  ({ suivi: renderTrack, tendances: renderTrends, posture: renderPosture, projection: renderFuture, science: renderScience })[seg](body, ctx);
   setTimeout(() => body.classList.remove('view-enter'), 1200);
 }
 
@@ -403,18 +405,27 @@ function renderTrends(el) {
     return `<div class="card" data-chart="${id}"><div class="card-head"><h2><span style="color:${col}">${icon(ic, 18)}</span> ${title}</h2><button class="chart-toggle" data-toggle="${id}" aria-label="${type === 'bar' ? 'Afficher en courbe' : 'Afficher en barres'}">${icon(type === 'bar' ? 'trend' : 'list', 16)}</button></div>${barChart(pts, { ...opts, color: col, type })}${srcLinks(src)}</div>`;
   };
   const we = E.weightEstimate(st);
+  const group = (title, html) => `<h3 class="grp-title">${title}</h3>${html}`;
   el.innerHTML = [
-    linksCard(st),
-    weightCard(we),
-    card('sleep', 'moon', 'Sommeil', 'var(--c-sleep)', series(sleepFn), { ref: 7, fmtV: (v) => fmtMin(v * 60) }, ['watson2015']),
-    card('steps', 'steps', 'Pas', 'var(--c-move)', series((x) => x.steps), { ref: t.steps, unit: 'pas' }, ['paluch2022']),
-    card('burn', 'flame', 'Calories brûlées par l’activité', 'var(--c-move)', series((x, k) => (x.steps != null || st.workouts.some((w) => w.date === k) ? E.activeKcal(x, st.workouts.filter((w) => w.date === k), kg) : null)), { unit: 'kcal' }, ['herrmann2024']),
-    card('mood', 'smile', 'Humeur', 'var(--c-mood)', series((x) => x.mood), { unit: '/5' }),
-    card('screen', 'phone', 'Temps d’écran', 'var(--c-screen)', series((x) => x.screenMin), { fmtV: fmtMin }),
-    card('social', 'share', 'Réseaux sociaux', 'var(--c-screen)', series((x) => x.socialMin), { ref: 30, fmtV: fmtMin }, ['hunt2018']),
-    card('kcal', 'utensils', 'Calories consommées', 'var(--c-food)', keys.map((k) => ({ label: k, short: k.slice(8), v: store.mealsOn(k).length ? S.sumNutrients(store.mealsOn(k)).kcal : null })), { ref: t.kcal, unit: 'kcal' }),
-    digestionCard(),
+    weekSummary(st, kg),
+    group('Corps & énergie', [
+      card('sleep', 'moon', 'Sommeil', 'var(--c-sleep)', series(sleepFn), { ref: 7, fmtV: (v) => fmtMin(v * 60) }, ['watson2015']),
+      card('steps', 'steps', 'Pas', 'var(--c-move)', series((x) => x.steps), { ref: t.steps, unit: 'pas' }, ['paluch2022']),
+      card('burn', 'flame', 'Calories brûlées par l’activité', 'var(--c-move)', series((x, k) => (x.steps != null || st.workouts.some((w) => w.date === k) ? E.activeKcal(x, st.workouts.filter((w) => w.date === k), kg) : null)), { unit: 'kcal' }, ['herrmann2024']),
+      weightCard(we),
+    ].join('')),
+    group('Esprit & écrans', [
+      card('mood', 'smile', 'Humeur', 'var(--c-mood)', series((x) => x.mood), { unit: '/5' }),
+      card('screen', 'phone', 'Temps d’écran', 'var(--c-screen)', series((x) => x.screenMin), { fmtV: fmtMin }),
+      card('social', 'share', 'Réseaux sociaux', 'var(--c-screen)', series((x) => x.socialMin), { ref: 30, fmtV: fmtMin }, ['hunt2018']),
+      linksCard(st),
+    ].join('')),
+    group('Assiette & digestion', [
+      card('kcal', 'utensils', 'Calories consommées', 'var(--c-food)', keys.map((k) => ({ label: k, short: k.slice(8), v: store.mealsOn(k).length ? S.sumNutrients(store.mealsOn(k)).kcal : null })), { ref: t.kcal, unit: 'kcal' }),
+      digestionCard(),
+    ].join('')),
   ].join('');
+  el.querySelectorAll('[data-goto]').forEach((b) => (b.onclick = () => el.querySelector(`[data-chart="${b.dataset.goto}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })));
   el.onclick = (e) => {
     const tg = e.target.closest('[data-toggle]');
     if (tg) {
@@ -428,6 +439,120 @@ function renderTrends(el) {
     if (tip) tip.closest('.card').querySelector('.tip').textContent = tip.dataset.tip;
     if (e.target.closest('#weigh-now')) openWeigh(() => renderTrends(el));
   };
+}
+
+// Résumé de la semaine en tuiles : moyenne des 7 derniers jours, évolution par rapport à la semaine d'avant,
+// mini-courbe ; un appui descend jusqu'au graphique détaillé.
+function weekSummary(st) {
+  const keys = store.lastDays(14);
+  const sleepFn = (x) => (x.sleepMinutes ? x.sleepMinutes / 60 : S.sleepHours(x.bed, x.wake) || null);
+  const avg = (ks, fn) => { const v = ks.map((k) => fn(st.days[k] || {})).filter((x) => x != null && !Number.isNaN(x)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  const spark = (fn, col) => {
+    const v = keys.slice(7).map((k) => fn(st.days[k] || {}));
+    const ok = v.filter((x) => x != null);
+    if (ok.length < 2) return '';
+    const lo = Math.min(...ok), hi = Math.max(...ok), r = hi - lo || 1;
+    const pts = v.map((x, i) => (x == null ? null : [i * (100 / 6), 26 - ((x - lo) / r) * 22])).filter(Boolean);
+    return `<svg class="spark" viewBox="-2 0 104 30" preserveAspectRatio="none"><path d="M${pts.map((p) => p.map((n) => n.toFixed(1)).join(' ')).join(' L')}" fill="none" stroke="${col}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>`;
+  };
+  const tiles = [
+    { id: 'sleep', ic: 'moon', col: 'var(--c-sleep)', label: 'Sommeil', fn: sleepFn, f: (v) => fmtMin(v * 60), good: 1 },
+    { id: 'steps', ic: 'steps', col: 'var(--c-move)', label: 'Pas', fn: (x) => x.steps ?? null, f: (v) => fmt(v), good: 1 },
+    { id: 'mood', ic: 'smile', col: 'var(--c-mood)', label: 'Humeur', fn: (x) => x.mood ?? null, f: (v) => `${fmt(v, 1)}/5`, good: 1 },
+    { id: 'screen', ic: 'phone', col: 'var(--c-screen)', label: 'Écrans', fn: (x) => x.screenMin ?? null, f: fmtMin, good: -1 },
+  ];
+  const html = tiles.map((t) => {
+    const now = avg(keys.slice(7), t.fn), before = avg(keys.slice(0, 7), t.fn);
+    const d = now != null && before ? (now - before) / before : null;
+    const trend = d == null || Math.abs(d) < 0.03 ? '' : `<span class="kd ${d * t.good > 0 ? 'up' : 'down'}">${d > 0 ? '▲' : '▼'} ${Math.round(Math.abs(d) * 100)} %</span>`;
+    return `<button class="ktile" data-goto="${t.id}"><span class="kl"><span style="color:${t.col}">${icon(t.ic, 15)}</span>${t.label}</span><span class="kv">${now == null ? '—' : t.f(now)}</span>${trend}${spark(t.fn, t.col)}</button>`;
+  }).join('');
+  return `<section class="card wk-sum"><div class="card-head"><h2>${icon('trend', 18)} Ta semaine</h2><span class="tiny muted">moyenne sur 7 jours</span></div><div class="ktiles">${html}</div></section>`;
+}
+
+// ---------- Posture ----------
+function renderPosture(el) {
+  const st = store.get();
+  const days = store.lastDays(7).map((k) => ({ key: k, ...(st.days[k] || {}) }));
+  const a = PO.assess(st, days);
+  const today = store.today();
+  const doneToday = !!st.posture?.done?.[today];
+  const col = a.score >= 80 ? 'var(--good)' : a.score >= 60 ? 'var(--warn)' : 'var(--bad)';
+  const walkPct = a.walk == null ? 0 : Math.min(100, a.walk);
+  el.innerHTML = `
+    <section class="card">
+      <div class="card-head"><h2><span style="color:var(--primary)">${icon('posture', 18)}</span> Ta posture</h2>${a.answered ? `<button class="btn sm soft" id="po-quiz">${icon('pencil', 14)} Refaire le bilan</button>` : ''}</div>
+      ${a.answered ? `<div class="po-score"><div class="po-ring" style="--p:${a.score};--c:${col}"><b>${a.score}</b><small>/100</small></div>
+        <div><div style="font-weight:700">Posture ${a.level}</div><div class="small muted">D’après ton bilan${a.screenH != null ? `, ton temps d’écran (${fmtMin(a.screenH * 60)}/j)` : ''}${a.walk != null ? `, ta marche (~${a.walk} min/j)` : ''} et ta routine (${a.done7}/7 jours).</div></div></div>`
+        : `<p class="small muted" style="margin-top:0">Six questions (1 minute) pour savoir ce qui pèse sur ton dos et ta nuque, et ce qui t’aidera le plus.</p><button class="btn block" id="po-quiz">${icon('sparkles', 18)} Faire mon bilan posture</button>`}
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2><span style="color:var(--c-move)">${icon('steps', 18)}</span> Marche et dos</h2><span class="tiny muted">${a.walk != null ? `~${a.walk} min/j` : 'pas non mesurés'}</span></div>
+      <div class="meter"><div class="track" style="height:10px"><div class="fill" style="width:${walkPct}%;background:var(--c-move)"></div></div></div>
+      <div class="between tiny muted" style="margin-top:4px"><span>0</span><span>objectif 100 min/jour</span></div>
+      <ul class="po-facts">
+        <li><b>Marcher protège le dos.</b> Dans l’essai WalkBack, un programme de marche progressif (jusqu’à 30 min, 5 fois par semaine) a presque doublé le temps sans nouvelle crise de mal de dos : 208 jours contre 112.</li>
+        <li><b>C’est le volume qui compte.</b> Sur plus de 11 000 adultes suivis, marcher plus de 100 min par jour était associé à 23 % de risque en moins de lombalgie chronique, même à allure tranquille.</li>
+        <li><b>Marche grand.</b> Tête haute et bras qui balancent : se redresser améliore aussi l’humeur et la résistance au stress.</li>
+      </ul>
+      ${srcLinks(['pocovi2024', 'haddadj2025', 'nair2015'])}
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2><span style="color:var(--c-mood)">${icon('activity', 18)}</span> Routine posture · 7 min</h2>${doneToday ? `<span class="badge bon">faite ✓</span>` : ''}</div>
+      <p class="small muted" style="margin-top:0">Chaque jour, idéalement après une longue période assise. Touche un exercice pour voir la démonstration en 3D.</p>
+      ${PO.ROUTINE.map((r) => `<details class="po-ex"><summary><span class="small" style="font-weight:600">${esc(r.label)}</span><span class="tiny muted" style="white-space:nowrap;margin-left:8px">${esc(r.dose)}</span></summary>
+        ${X3.hasAnim(r.label) ? `<div class="ex3d" data-anim="${esc(r.label)}" data-noswipe><canvas aria-label="Démonstration animée : ${esc(r.label)}"></canvas><div class="ex3d-cue"></div><span class="ex3d-hint">${icon('refresh', 11)} glisse pour tourner</span></div>` : ''}
+        <p class="tiny muted" style="margin:6px 0 0">${esc(r.why)}</p></details>`).join('')}
+      <button class="btn block ${doneToday ? 'ghost' : ''}" id="po-done" style="margin-top:12px">${doneToday ? 'Annuler pour aujourd’hui' : `${icon('check', 18)} J’ai fait ma routine aujourd’hui`}</button>
+      ${srcLinks(['sheikhhoseini2018'])}
+    </section>
+
+    ${a.answered ? `<section class="card"><div class="card-head"><h2>${icon('bulb', 18)} Tes priorités</h2></div>
+      ${a.tips.map(([ic, t, txt, src]) => `<div class="link-row"><span style="color:var(--primary)">${icon(ic, 18)}</span><div><div class="small" style="font-weight:600">${esc(t)}</div><div class="tiny muted">${esc(txt)}</div>${srcLinks(src)}</div></div>`).join('')}
+    </section>` : ''}
+
+    <div class="note" style="margin:4px 0 12px">${icon('info', 18)}<span>Il n’existe pas de « posture parfaite » à tenir toute la journée : la meilleure position est la suivante. Bouger souvent compte plus que se tenir droit en permanence.</span></div>
+    ${srcLinks(PO.SOURCES)}`;
+  $$('#po-quiz', el).forEach((b) => (b.onclick = () => postureQuiz(() => renderPosture(el))));
+  $('#po-done', el).onclick = () => {
+    store.update((s) => { s.posture ||= {}; s.posture.done ||= {}; if (s.posture.done[today]) delete s.posture.done[today]; else s.posture.done[today] = true; });
+    if (!doneToday) { toast('Routine posture notée 👏', 1500); Diana.pop('Bravo ! Ton dos et ta nuque te disent merci 💙', 'proud'); }
+    renderPosture(el);
+  };
+  // démonstrations 3D lancées à l'ouverture de l'exercice
+  $$('details.po-ex', el).forEach((d) => d.addEventListener('toggle', () => {
+    const box = d.querySelector('[data-anim]');
+    if (!d.open || !box || box.dataset.on) return;
+    box.dataset.on = '1';
+    const cue = box.querySelector('.ex3d-cue');
+    X3.play(box.querySelector('canvas'), box.dataset.anim, { onCue: (t) => { cue.textContent = t; cue.classList.remove('in'); void cue.offsetWidth; cue.classList.add('in'); } });
+  }));
+}
+
+function postureQuiz(done) {
+  const ans = { ...(store.get().posture?.answers || {}) };
+  let i = 0;
+  const body = sheet('<div id="pq"></div>', { title: 'Bilan posture' });
+  const el = $('#pq', body);
+  const draw = () => {
+    const q = PO.QUESTIONS[i];
+    el.innerHTML = `<div class="tiny muted" style="font-weight:700">Question ${i + 1} / ${PO.QUESTIONS.length}</div>
+      <div class="meter" style="margin:6px 0 12px"><div class="track"><div class="fill" style="width:${((i + 1) / PO.QUESTIONS.length) * 100}%;background:var(--primary)"></div></div></div>
+      <h3 style="margin:0 0 12px">${esc(q.q)}</h3>
+      <div style="display:grid;gap:8px">${q.a.map((t, k) => `<button class="btn ${ans[q.id] === k ? '' : 'ghost'} block" data-k="${k}">${esc(t)}</button>`).join('')}</div>
+      ${i ? `<button class="link tiny" id="pq-back" style="margin-top:12px">← Question précédente</button>` : ''}`;
+    $$('[data-k]', el).forEach((b) => (b.onclick = () => {
+      ans[q.id] = Number(b.dataset.k);
+      if (i < PO.QUESTIONS.length - 1) { i++; draw(); return; }
+      store.update((s) => { s.posture ||= {}; s.posture.answers = ans; s.posture.at = Date.now(); });
+      body.close();
+      done?.();
+    }));
+    $('#pq-back', el)?.addEventListener('click', () => { i--; draw(); });
+  };
+  draw();
 }
 
 // Poids réel (pesées) vs poids estimé d'après les repas notés et l'activité mesurée.

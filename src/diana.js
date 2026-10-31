@@ -6,6 +6,7 @@ import * as S from './science.js';
 import * as G from './gamify.js';
 import * as SP from './sport.js';
 import { draw } from './diana3d.js';
+import { THREE, available as glOk } from './gl3d.js';
 
 // ---------- Visage en 3D animé ----------
 // face(mood, size) renvoie un <canvas> ; il est animé automatiquement dès qu'il apparaît dans la page.
@@ -24,7 +25,7 @@ function orbOf(cv) {
   const dpr = Math.min(2.5, window.devicePixelRatio || 1);
   const css = parseFloat(cv.style.width) || 56;
   cv.width = cv.height = Math.round(css * dpr);
-  const o = { cv, buf: {}, mood: cv.dataset.mood || 'happy', t0: performance.now() / 1000 + Math.random() * 20, blinkAt: 2 + Math.random() * 3, spinAt: -9, talkUntil: 0, visible: true };
+  const o = { cv, buf: {}, mood: cv.dataset.mood || 'happy', t0: performance.now() / 1000, clock: Math.random() * 20, last: performance.now() / 1000, blinkAt: 2 + Math.random() * 3, spinAt: -9, talkUntil: 0, visible: true };
   cv._orb = o;
   orbs.add(o);
   if ('IntersectionObserver' in window) new IntersectionObserver(([e]) => { o.visible = e.isIntersecting; if (o.visible) wake(); }).observe(cv);
@@ -32,8 +33,47 @@ function orbOf(cv) {
   return o;
 }
 
+// Diana roule comme une balle dans le sens du défilement : vitesse angulaire (axes de l'écran) qui s'amortit,
+// puis elle revient doucement face à l'utilisateur.
+const ball = { q: null, wx: 0, wy: 0, t: 0 };
+export function roll(dx = 0, dy = 0) {
+  if (still) return;
+  const k = 0.012;
+  ball.wx = Math.max(-14, Math.min(14, ball.wx - dy * k));
+  ball.wy = Math.max(-14, Math.min(14, ball.wy + dx * k));
+  wake();
+}
+const _q = typeof THREE !== 'undefined' ? new THREE.Quaternion() : null, _id = _q && new THREE.Quaternion(), _ax = _q && new THREE.Vector3(), _m = _q && new THREE.Matrix4();
+function stepBall(now) {
+  if (!_q) return null;
+  ball.q ||= new THREE.Quaternion();
+  const dt = Math.min(0.05, Math.max(0, now - (ball.t || now)));
+  if (now === ball.t) return _m;
+  ball.t = now;
+  const w = Math.hypot(ball.wx, ball.wy);
+  if (w > 1e-3) {
+    _ax.set(ball.wx / w, ball.wy / w, 0);
+    _q.setFromAxisAngle(_ax, w * dt);
+    ball.q.premultiply(_q);
+  }
+  const damp = Math.exp(-dt * 2.6);
+  ball.wx *= damp; ball.wy *= damp;
+  // retour face à l'utilisateur quand elle a presque fini de rouler
+  if (w < 2.5) ball.q.slerp(_id, 1 - Math.exp(-dt * (3.5 - w)));
+  _m.makeRotationFromQuaternion(ball.q);
+  return _m;
+}
+const rolling = () => Math.hypot(ball.wx, ball.wy) > 0.02 || (ball.q && 1 - Math.abs(ball.q.w) > 1e-5);
+if (typeof window !== 'undefined') {
+  let lastY = window.scrollY || 0;
+  window.addEventListener('scroll', () => { const y = window.scrollY; roll(0, y - lastY); lastY = y; }, { passive: true });
+}
+
 function render(o, now) {
-  const t = now - o.t0;
+  // horloge propre à chaque visage, qui ne saute pas au retour dans l'appli
+  o.clock += Math.min(0.1, Math.max(0, now - o.last));
+  o.last = now;
+  const t = o.clock;
   if (t > o.blinkAt + 0.18) o.blinkAt = t + 2.5 + Math.random() * 3.5;
   const bt = (t - o.blinkAt) / 0.18;
   const blink = still ? 0 : bt > 0 && bt < 1 ? Math.sin(Math.PI * bt) : 0;
@@ -47,12 +87,10 @@ function render(o, now) {
   const gt = (t - (o.glanceAt ?? 4)) / 0.9;
   const gk = gt > 0 && gt < 1 ? Math.sin(Math.PI * gt) : 0;
   const talk = o.talking || now < o.talkUntil ? 0.5 + 0.5 * Math.sin(now * 16) * Math.sin(now * 5.3 + 1) : 0;
-  if (t > (o.flickAt ?? 3) + 0.08) o.flickAt = t + 4 + Math.random() * 6;
-  const flicker = !still && t > (o.flickAt ?? 3) && t < (o.flickAt ?? 3) + 0.08 ? 0.82 : 1; // petit grésillement d'hologramme
   draw(o.cv, {
     yaw, pitch: (0.07 * Math.sin(t * 0.7 + 1)) * k, roll: 0.05 * Math.sin(t * 0.43 + 2) * k,
     bob: still ? 0 : 0.018 * Math.sin(t * 1.8) + jump, blink, mood: now < (o.moodUntil || 0) ? o.moodNow : o.mood, talk,
-    gaze: o.glance ? [o.glance[0] * gk, o.glance[1] * gk] : [0, 0], time: t, flicker,
+    gaze: o.glance ? [o.glance[0] * gk, o.glance[1] * gk] : [0, 0], time: t, ball: stepBall(now),
   }, o.buf);
 }
 
@@ -71,18 +109,25 @@ function loop(ts) {
     if (!o.cv.isConnected) { orbs.delete(o); continue; }
     if (o.visible) any = true;
   }
-  if (!any || still) return;
-  if (ts - lastFrame > 30) { lastFrame = ts; for (const o of orbs) if (o.visible) render(o, ts / 1000); } // ~30 images/s suffisent
+  if (!any) return;
+  if (still && !rolling()) { for (const o of orbs) if (o.visible) render(o, ts / 1000); return; }
+  // carte graphique : 60 images/s ; rendu de secours sur le processeur : 30 images/s
+  if (ts - lastFrame > (glOk() ? 12 : 30)) { lastFrame = ts; for (const o of orbs) if (o.visible) render(o, ts / 1000); }
   raf = requestAnimationFrame(loop);
 }
 function wake() {
-  if (!still) { raf ||= requestAnimationFrame(loop); return; }
+  if (!still || rolling()) { raf ||= requestAnimationFrame(loop); return; }
   for (const o of orbs) if (o.cv.isConnected) render(o, performance.now() / 1000); // mouvement réduit : une image fixe
 }
 if (typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', wake);
   // Les visages ajoutés à la page s'animent tout seuls.
-  new MutationObserver(() => { document.querySelectorAll('canvas.diana-orb').forEach((cv) => { if (!cv._orb) orbOf(cv); }); wake(); })
+  new MutationObserver(() => {
+    document.querySelectorAll('canvas.diana-orb').forEach((cv) => { if (!cv._orb) orbOf(cv); });
+    // une fenêtre s'ouvre par-dessus : la bulle s'efface pour ne rien cacher
+    if (document.querySelector('.sheet-root') && dock?.querySelector('.dd-bubble.on')) hide();
+    wake();
+  })
     .observe(document.documentElement, { childList: true, subtree: true });
 }
 
@@ -114,7 +159,7 @@ export function lines(where, st = store.get(), sm, extra = {}) {
   const planned = sm?.sportToday?.type && !doneW.length ? sm.sportToday : null;
   const s = G.streak(st);
   const goals = G.dayGoals(st, store.today());
-  const left = G.VALIDATE - goals.filter((g) => g.done).length;
+  const left = G.needFor(st, store.today()) - goals.filter((g) => g.done).length;
   const scores = sm?.scores || {};
   const weakest = Object.entries(scores).filter(([k, v]) => PILLAR[k] && v != null).sort((a, b) => a[1] - b[1])[0];
 
@@ -265,13 +310,19 @@ export function say(text, mood = 'happy', { ms, spin = false } = {}) {
   if (dock.classList.contains('in-chat')) { const o = orbOf(dock.querySelector('canvas')); o.spinAt = spin ? performance.now() / 1000 : o.spinAt; wake(); return; }
   const bubble = dock.querySelector('.dd-bubble');
   bubble.querySelector('span').textContent = text;
-  // la bulle prend la place libre de l'en-tête, entre Diana et les boutons de droite
-  const right = document.querySelector('#streak-btn')?.getBoundingClientRect().left || innerWidth - 16;
+  // La bulle reste dans l'en-tête, à droite de Diana, là où il y a du vide : les boutons de droite s'effacent
+  // pendant qu'elle parle, le texte rétrécit si besoin, et si c'est encore trop long l'en-tête s'agrandit
+  // (le contenu de la page est poussé vers le bas au lieu d'être caché).
+  const top = dock.closest('.top');
   const left = dock.getBoundingClientRect().right + 6;
-  bubble.style.setProperty('--bw', `${Math.max(170, Math.round(right - left - 8))}px`);
-  bubble.classList.remove('on', 'tall'); void bubble.offsetWidth;
-  // texte long : la bulle s'ouvre vers le bas plutôt que de déborder au-dessus de l'écran
-  if (bubble.offsetHeight > 76) bubble.classList.add('tall');
+  bubble.style.setProperty('--bw', `${Math.max(170, Math.round(innerWidth - left - 14))}px`);
+  bubble.classList.remove('on', 'tall', 'fs1', 'fs2'); void bubble.offsetWidth;
+  const maxH = 72;
+  if (bubble.offsetHeight > maxH) bubble.classList.add('fs1');
+  if (bubble.offsetHeight > maxH) bubble.classList.add('fs2');
+  const extra = Math.max(0, bubble.offsetHeight - maxH);
+  if (extra) bubble.classList.add('tall');
+  if (top) top.style.paddingBottom = extra ? `${12 + extra + 4}px` : '';
   bubble.classList.add('on');
   dock.closest('.top')?.classList.add('speaking');
   const o = orbOf(dock.querySelector('canvas'));
@@ -287,7 +338,9 @@ export function say(text, mood = 'happy', { ms, spin = false } = {}) {
 function hide() {
   clearTimeout(hideT);
   dock?.querySelector('.dd-bubble').classList.remove('on');
-  dock?.closest('.top')?.classList.remove('speaking');
+  const top = dock?.closest('.top');
+  top?.classList.remove('speaking');
+  if (top) top.style.paddingBottom = '';
   setTimeout(() => { const o = dock && orbOf(dock.querySelector('canvas')); if (o && !dock.querySelector('.dd-bubble.on')) o.mood = 'happy'; }, 400);
 }
 

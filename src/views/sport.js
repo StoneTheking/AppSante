@@ -7,7 +7,6 @@ import * as W from '../workouts.js';
 import * as SC from '../schedule.js';
 import * as N from '../native.js';
 import * as X3 from '../exercise3d.js';
-import * as XP from '../exphotos.js';
 import { summary } from '../context.js';
 import * as Diana from '../diana.js';
 import { icon, esc, fmt, donut, sheet, toast, undoToast, srcLinks, $, $$ } from '../ui.js';
@@ -237,30 +236,15 @@ export function openVideoList(done) {
 
 const equip = (st) => st.profile.equipment || 'aucun';
 
-// Démonstration d'un exercice : photos réelles en fondu (Free Exercise DB) et/ou mannequin 3D de Diana
-// qu'on fait tourner au doigt. Le mode choisi (Photos ou 3D) est retenu pour toutes les démonstrations.
-const demoMode = () => (store.get().settings.demoMode === '3d' ? '3d' : 'photo');
-const hasDemo = (label) => X3.hasAnim(label) || XP.hasPhotos(label);
+// Démonstration d'un exercice : mannequin 3D de Diana (three.js) qu'on fait tourner au doigt.
+const hasDemo = (label) => X3.hasAnim(label);
 const animHtml = (label, big = false) => {
-  const a3 = X3.hasAnim(label), ph = XP.hasPhotos(label);
-  if (!a3 && !ph) return '';
-  const mode = a3 && ph ? demoMode() : ph ? 'photo' : '3d';
-  const [u0, u1] = XP.photoUrls(label);
-  return `<div class="demo mode-${mode}${big ? ' big' : ''}" data-demo data-noswipe>
-    ${ph ? `<div class="exph" data-photos role="img" aria-label="Démonstration en photos : ${esc(label)}"><img src="${u0}" alt="" loading="lazy" decoding="async"><img class="b" src="${u1}" alt="" loading="lazy" decoding="async"><span class="exph-src">Free Exercise DB</span></div>` : ''}
-    ${a3 ? `<div class="ex3d" data-anim="${esc(label)}"><canvas aria-label="Démonstration animée : ${esc(label)}"></canvas><div class="ex3d-cue"></div><span class="ex3d-hint">${icon('refresh', 11)} glisse pour tourner</span></div>` : ''}
-    ${a3 && ph ? `<div class="demo-tabs"><button data-demo-mode="photo">Photos</button><button data-demo-mode="3d">3D</button></div>` : ''}
+  if (!X3.hasAnim(label)) return '';
+  return `<div class="demo${big ? ' big' : ''}" data-demo data-noswipe>
+    <div class="ex3d" data-anim="${esc(label)}"><canvas aria-label="Démonstration animée : ${esc(label)}"></canvas><div class="ex3d-cue"></div><span class="ex3d-hint">${icon('refresh', 11)} glisse pour tourner</span></div>
   </div>`;
 };
 function mountAnims(root) {
-  $$('[data-photos] img', root).forEach((img) => { img.onerror ||= () => XP.fallback(img); });
-  $$('[data-demo-mode]', root).forEach((b) => (b.onclick = (e) => {
-    e.preventDefault(); e.stopPropagation();
-    const m = b.dataset.demoMode;
-    store.update((s) => { s.settings.demoMode = m; });
-    $$('[data-demo]', document).forEach((d) => { if (d.querySelector('[data-demo-mode]')) d.className = d.className.replace(/mode-\w+/, 'mode-' + m); });
-    mountAnims(root);
-  }));
   $$('[data-anim]', root).forEach((box) => {
     if (box.dataset.on || !box.offsetParent) return;
     box.dataset.on = '1';

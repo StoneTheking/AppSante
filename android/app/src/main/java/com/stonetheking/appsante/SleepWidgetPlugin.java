@@ -5,6 +5,12 @@ import android.appwidget.AppWidgetManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Build;
 
 import com.getcapacitor.JSArray;
@@ -41,6 +47,53 @@ public class SleepWidgetPlugin extends Plugin {
         String target = call.getString("target");
         if (target != null) getContext().getSharedPreferences(SleepWidgetProvider.PREFS, Context.MODE_PRIVATE).edit().putString("target", target).apply();
         SleepWidgetProvider.setState(getContext(), sleeping, since);
+        call.resolve();
+    }
+
+    static final int WORKOUT_ID = 4200;
+    static final String WORKOUT_CHANNEL = "workout";
+
+    /**
+     * Séance de sport en cours : notification permanente avec le chronomètre qui tourne (comme une appli de course).
+     * Un appui rouvre l'onglet Sport.
+     */
+    @PluginMethod
+    public void workoutShow(PluginCall call) {
+        Context c = getContext();
+        NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm == null) { call.resolve(); return; }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm.getNotificationChannel(WORKOUT_CHANNEL) == null) {
+            NotificationChannel ch = new NotificationChannel(WORKOUT_CHANNEL, "Séance en cours", NotificationManager.IMPORTANCE_LOW);
+            ch.setDescription("Chronomètre de la séance de sport en cours");
+            ch.setShowBadge(false);
+            nm.createNotificationChannel(ch);
+        }
+        long start = call.getLong("start", System.currentTimeMillis());
+        Intent open = new Intent(c, MainActivity.class).setAction(QuestsWidgetProvider.ACTION_QUEST)
+            .setData(Uri.parse("dianahealth://quest/move"))
+            .putExtra("quest", "move")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent pi = PendingIntent.getActivity(c, 42, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        Notification.Builder b = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ? new Notification.Builder(c, WORKOUT_CHANNEL) : new Notification.Builder(c);
+        b.setSmallIcon(R.drawable.ic_stat_appsante)
+            .setContentTitle(call.getString("title", "Séance en cours"))
+            .setContentText(call.getString("text", "Touchez pour revenir à votre séance"))
+            .setWhen(start)
+            .setShowWhen(true)
+            .setUsesChronometer(true)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setColor(0xFFFB923C)
+            .setCategory(Notification.CATEGORY_PROGRESS)
+            .setContentIntent(pi);
+        try { nm.notify(WORKOUT_ID, b.build()); } catch (Exception ignored) { }
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void workoutHide(PluginCall call) {
+        NotificationManager nm = (NotificationManager) getContext().getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm != null) nm.cancel(WORKOUT_ID);
         call.resolve();
     }
 

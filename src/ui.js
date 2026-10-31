@@ -4,7 +4,7 @@ import {
   Droplet, Coffee, Dumbbell, Apple, Salad, ChefHat, ShoppingCart, CalendarDays, TrendingUp, Bell, Sparkles, ChevronLeft,
   ChevronRight, Check, X, Trash2, RefreshCw, Download, Upload, Settings, Activity, Brain, Bed, Clock, Scale, Wine, Info,
   TriangleAlert, CircleCheck, Send, Zap, BookOpen, Share2, Leaf, Watch, Link, ListChecks, Pencil, Image as ImageIcon, Lightbulb, Target,
-  Sunrise, Bike, Copy, ArrowRight, KeyRound, Shield, Star, Users, MapPin, Receipt, Palette, Briefcase, CirclePlay, EyeOff, Search,
+  Sunrise, Bike, Copy, ArrowRight, KeyRound, Shield, Star, Users, MapPin, Receipt, Palette, Briefcase, CirclePlay, EyeOff, Search, Paperclip, FileText, PersonStanding,
 } from 'lucide';
 import * as S from './science.js';
 
@@ -16,7 +16,7 @@ const ICONS = {
   settings: Settings, activity: Activity, brain: Brain, bed: Bed, clock: Clock, scale: Scale, wine: Wine, info: Info, alert: TriangleAlert,
   ok: CircleCheck, send: Send, zap: Zap, book: BookOpen, share: Share2, leaf: Leaf, watch: Watch, link: Link, list: ListChecks,
   pencil: Pencil, image: ImageIcon, bulb: Lightbulb, target: Target, sunrise: Sunrise, bike: Bike, copy: Copy, arrow: ArrowRight,
-  key: KeyRound, shield: Shield, star: Star, users: Users, pin: MapPin, receipt: Receipt, palette: Palette, work: Briefcase, video: CirclePlay, hide: EyeOff, search: Search,
+  key: KeyRound, shield: Shield, star: Star, users: Users, pin: MapPin, receipt: Receipt, palette: Palette, work: Briefcase, video: CirclePlay, hide: EyeOff, search: Search, paperclip: Paperclip, file: FileText, posture: PersonStanding,
 };
 
 const attrs = (o) => Object.entries(o).map(([k, v]) => `${k}="${v}"`).join(' ');
@@ -188,6 +188,19 @@ export async function pickImage({ camera = true, multiple = false } = {}) {
     input.click();
   });
 }
+
+// Choix de fichiers (plusieurs à la fois) : photos et PDF, depuis le gestionnaire de fichiers du téléphone.
+export function pickFiles({ accept = 'image/*,application/pdf', multiple = true } = {}) {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = accept;
+    input.multiple = multiple;
+    input.onchange = () => resolve([...input.files]);
+    input.click();
+  });
+}
+export const readDataUrl = (blob) => new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = reject; r.readAsDataURL(blob); });
 
 // Caméra plein écran dans l'application : renvoie un Blob JPEG, 'gallery', ou undefined si annulé.
 let camStream = null, camStop = null;
@@ -427,3 +440,12 @@ export function releaseCamera() {
   camStream?.getTracks().forEach((t) => t.stop());
   camStream = null;
 }
+
+// Boissons : quantités en centilitres (1 g ≈ 1 mL), y compris dans l'analyse d'une photo de repas.
+const DRINK_RE = /\b(eau|jus|soda|coca|cola|limonade|sirop|boisson|bi[eè]re|vin|ros[ée]|cidre|champagne|cocktail|spritz|whisky|vodka|rhum|pastis|caf[ée]|expresso|espresso|cappuccino|latte|th[ée]|tisane|infusion|lait(?! de coco)|smoothie|milk-?shake|kombucha|energy|red bull|ice tea|orangina|perrier|badoit|schweppes|fanta|sprite|pepsi|oasis|nectar)\b/i;
+const SOLID_RE = /\b(yaourt|fromage|g[âa]teau|cake|riz au lait|chocolat au lait|confiture|tarte|glace|sorbet)\b/i;
+export const isDrink = (item) => (typeof item?.liquid === 'boolean' ? item.liquid : DRINK_RE.test(item?.name || '') && !SOLID_RE.test(item?.name || ''));
+export const qtyTxt = (item, k = 1) => {
+  const g = (item.grams || 0) * k;
+  return isDrink(item) ? `${fmt(g / 10, g < 100 ? 1 : 0)} cL` : `${fmt(g)} g`;
+};

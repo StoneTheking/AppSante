@@ -4,7 +4,7 @@ import * as C from '../coach.js';
 import * as AI from '../ai.js';
 import * as BC from '../barcode.js';
 import { summary, personContext } from '../context.js';
-import { icon, esc, fmt, fmtMin, sheet, toast, undoToast, compressImage, pickImage, releaseCamera, BLANK, srcLinks, faces, bindFaces, $, $$ } from '../ui.js';
+import { icon, esc, fmt, fmtMin, isDrink, qtyTxt, pickFiles, readDataUrl, sheet, toast, undoToast, compressImage, pickImage, releaseCamera, BLANK, srcLinks, faces, bindFaces, $, $$ } from '../ui.js';
 import * as SL from '../sleep.js';
 import * as N from '../native.js';
 import * as D from '../digestion.js';
@@ -168,7 +168,7 @@ function showResult(res, p, body) {
       <div class="stat"><div class="k">Lipides</div><div class="v"><span data-n="fat">${fmt(n.fat)}</span><small>g</small></div></div>
       <div class="stat"><div class="k">Fibres</div><div class="v"><span data-n="fiber">${fmt(n.fiber)}</span><small>g</small></div></div>
     </div>
-    <table>${p.items.map((i) => `<tr><td>${esc(i.name)}</td><td class="num" data-ig="${i.grams}">${fmt(i.grams * p.factor)} g</td><td class="num" data-ik="${i.kcal}">${fmt(i.kcal * p.factor)} kcal</td></tr>`).join('')}</table>
+    <table>${p.items.map((i) => `<tr><td>${esc(i.name)}</td><td class="num" data-ig="${i.grams}" data-liq="${isDrink(i) ? 1 : ''}">${qtyTxt(i, p.factor)}</td><td class="num" data-ik="${i.kcal}">${fmt(i.kcal * p.factor)} kcal</td></tr>`).join('')}</table>
     <p class="small" style="margin:14px 0 10px">${esc(p.comment)}</p>
     <div class="note">${icon('bulb', 18)}<span>${esc(p.advice)}</span></div>
     ${p.alcohol_drinks ? `<div class="note warn">${icon('wine', 18)}<span>${fmt(p.alcohol_drinks * p.factor, 1)} verre(s) standard d’alcool détecté(s) : ajouté(s) automatiquement à ta journée.</span></div>` : ''}
@@ -185,7 +185,7 @@ function showResult(res, p, body) {
     const m = scaled(p.nutrients, p.factor);
     $('#fpct', res).textContent = `${Math.round(p.factor * 100)} %`;
     $$('[data-n]', res).forEach((x) => (x.textContent = fmt(m[x.dataset.n])));
-    $$('[data-ig]', res).forEach((x) => (x.textContent = `${fmt(x.dataset.ig * p.factor)} g`));
+    $$('[data-ig]', res).forEach((x) => (x.textContent = qtyTxt({ grams: Number(x.dataset.ig), liquid: !!x.dataset.liq }, p.factor)));
     $$('[data-ik]', res).forEach((x) => (x.textContent = `${fmt(x.dataset.ik * p.factor)} kcal`));
   };
   $('#factor', res).onchange = () => showResult(res, p, body); // au lâcher : sucres, alcool… recalculés
@@ -600,14 +600,28 @@ export function openStool(ctx) {
 // ---------- Ticket de caisse ----------
 export async function openReceipt(ctx) {
   const st = store.get();
-  const [file] = await pickImage({ camera: true });
-  if (!file) return;
-  const dataUrl = await compressImage(file, 2000, 0.85);
-  const body = sheet(`<div id="rc"><div class="empty"><span class="spinner"></span><p>Lecture du ticket…</p></div></div>`, { title: 'Ticket de caisse', full: true, onClose: () => ctx.render() });
+  // Plusieurs fichiers possibles : photos prises sur le moment, photos de la galerie, PDF (ticket dématérialisé).
+  const files = [];
+  const body = sheet(`<div id="rc"></div>`, { title: 'Ticket de caisse', full: true, onClose: () => ctx.render() });
   const el = $('#rc', body);
+  const pick = () => {
+    el.innerHTML = `<p class="small muted" style="margin-top:0">Photographie ton ticket (un long ticket peut tenir en plusieurs photos) ou choisis des fichiers : photos ou <b>PDF</b> (ticket envoyé par e-mail, appli du magasin…).</p>
+      <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn ghost" id="rc-cam">${icon('camera', 18)} Prendre une photo</button><button class="btn ghost" id="rc-files">${icon('paperclip', 18)} Photos ou PDF</button></div>
+      <div id="rc-list" style="margin:12px 0;display:grid;gap:6px">${files.map((f, i) => `<div class="between card" style="padding:8px 10px;margin:0"><span class="small" style="display:inline-flex;gap:8px;align-items:center;min-width:0">${icon(f.type === 'application/pdf' ? 'file' : 'image', 16)}<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.name || `Photo ${i + 1}`)}</span></span><button class="link tiny" data-rm="${i}" style="color:var(--bad)">${icon('trash', 14)}</button></div>`).join('')}</div>
+      <button class="btn block" id="rc-go" ${files.length ? '' : 'disabled'}>${icon('sparkles', 18)} Lire ${files.length > 1 ? `les ${files.length} fichiers` : 'le ticket'}</button>`;
+    $('#rc-cam', el).onclick = async () => { const [f] = await pickImage({ camera: true }); if (f) { files.push(Object.assign(f, { name: f.name || `Photo ${files.length + 1}` })); } pick(); };
+    $('#rc-files', el).onclick = async () => { const fs = await pickFiles(); files.push(...fs.filter((f) => /^image\/|pdf$/.test(f.type))); if (fs.some((f) => !/^image\/|pdf$/.test(f.type))) toast('Seules les photos et les PDF sont lus'); pick(); };
+    $$('[data-rm]', el).forEach((b) => (b.onclick = () => { files.splice(Number(b.dataset.rm), 1); pick(); }));
+    $('#rc-go', el).onclick = read;
+  };
+  const read = async () => {
+  el.innerHTML = `<div class="empty"><span class="spinner"></span><p>Lecture ${files.length > 1 ? `des ${files.length} fichiers` : 'du ticket'}…</p></div>`;
   try {
-    const r = await AI.readReceipt(st.settings, dataUrl);
-    if (!r.is_receipt || !r.items.length) throw new Error('Je ne trouve pas d’articles sur cette photo. Reprends le ticket bien à plat et éclairé.');
+    const big = files.find((f) => f.type === 'application/pdf' && f.size > 20e6);
+    if (big) throw new Error(`Le PDF « ${big.name} » est trop lourd (plus de 20 Mo).`);
+    const data = await Promise.all(files.map((f) => (f.type === 'application/pdf' ? readDataUrl(f) : compressImage(f, 2000, 0.85))));
+    const r = await AI.readReceipt(st.settings, data);
+    if (!r.is_receipt || !r.items.length) throw new Error('Je ne trouve pas d’articles dans ces fichiers. Reprends le ticket bien à plat et éclairé.');
     const stats = PT.basketStats(r.items);
     const adv = PT.basketAdvice(stats);
     const col = stats.score >= 65 ? 'var(--good)' : stats.score >= 45 ? 'var(--warn)' : 'var(--bad)';
@@ -634,8 +648,11 @@ export async function openReceipt(ctx) {
       body.close();
     };
   } catch (e) {
-    el.innerHTML = `<div class="note bad">${icon('alert', 18)}<span>${esc(AI.friendlyError(e))}</span></div>`;
+    el.innerHTML = `<div class="note bad">${icon('alert', 18)}<span>${esc(AI.friendlyError(e))}</span></div><button class="btn ghost block" id="rc-back" style="margin-top:12px">Revenir aux fichiers</button>`;
+    $('#rc-back', el).onclick = pick;
   }
+  };
+  pick();
 }
 
 // ---------- Grignotages : ajout en un geste ----------

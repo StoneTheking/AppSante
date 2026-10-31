@@ -39,8 +39,11 @@ export function dayGoals(st, key, idx = null) {
   ].map((g) => ({ ...g, done: g.progress >= 1 }));
 }
 
-export const VALIDATE = 3; // quêtes nécessaires pour valider la journée
-const validated = (st, key, idx) => dayGoals(st, key, idx).filter((g) => g.done).length >= VALIDATE;
+export const VALIDATE = 3; // quêtes nécessaires pour valider la journée (niveaux 1 à 4)
+// À partir du niveau 5 (« Forêt »), il faut une quête de plus : 4 sur 5. Les jours d'avant gardent la règle de l'époque.
+export const PLUS_LEVEL = 5;
+export const needFor = (st, key) => (st.questPlusSince && key >= st.questPlusSince ? VALIDATE + 1 : VALIDATE);
+const validated = (st, key, idx) => dayGoals(st, key, idx).filter((g) => g.done).length >= needFor(st, key);
 
 // Série : jours validés consécutifs. Un « gel » (gagné tous les 7 jours validés, 2 max) protège un jour manqué.
 export function streak(st, now = new Date(), idx = indexOf(st)) {
@@ -75,7 +78,7 @@ const LEVELS = ['Graine', 'Pousse', 'Jeune arbre', 'Arbre', 'Chêne', 'Forêt', 
 // niveau n atteint à 50 × n × (n − 1) XP (100, 300, 600, 1000…)
 const levelOf = (xp) => { let l = 1; while (xp >= 50 * (l + 1) * l) l++; return l; };
 // Journée ratée : on perd des XP pour chaque quête manquante sous le seuil, et plus le niveau est haut, plus ça coûte.
-export const missPenalty = (level, done) => Math.max(0, VALIDATE - done) * 8 * level;
+export const missPenalty = (level, done, need = VALIDATE) => Math.max(0, need - done) * 8 * level;
 
 // Les jours passés se jouent jour par jour : journée validée = XP gagnés, journée ratée = XP perdus
 // (sauf si un gel de série la protège). Aujourd'hui ne compte qu'en positif tant que la journée n'est pas finie.
@@ -91,20 +94,22 @@ export function progress(st, now = new Date()) {
     if (d < from) d.setTime(from.getTime());
     for (let k = localKey(d); k < today; d.setDate(d.getDate() + 1), k = localKey(d)) {
       const done = dayGoals(st, k, idx).filter((g) => g.done).length;
-      const delta = done >= VALIDATE ? xpForDay(st, k, idx) : frozen.has(k) ? 0 : -missPenalty(levelOf(xp), done);
+      const need = needFor(st, k);
+      const delta = done >= need ? xpForDay(st, k, idx) : frozen.has(k) ? 0 : -missPenalty(levelOf(xp), done, need);
       xp = Math.max(0, xp + delta);
       yesterday = delta;
     }
   }
   const doneToday = dayGoals(st, today, idx).filter((g) => g.done).length;
-  const todayXp = doneToday >= VALIDATE ? xpForDay(st, today, idx) : 0;
+  const needToday = needFor(st, today);
+  const todayXp = doneToday >= needToday ? xpForDay(st, today, idx) : 0;
   const level0 = levelOf(xp);
   xp += todayXp;
   const level = levelOf(xp);
   const floor = 50 * level * (level - 1), next = 50 * (level + 1) * level;
   return {
     xp, level, title: LEVELS[Math.min(LEVELS.length - 1, level - 1)], into: xp - floor, need: next - floor,
-    today: todayXp, pending: xpForDay(st, today, idx), validated: doneToday >= VALIDATE, yesterday, atStake: doneToday >= VALIDATE ? 0 : Math.min(xp, missPenalty(level0, doneToday)),
+    today: todayXp, pending: xpForDay(st, today, idx), validated: doneToday >= needToday, need: needToday, yesterday, atStake: doneToday >= needToday ? 0 : Math.min(xp, missPenalty(level0, doneToday, needToday)),
   };
 }
 
@@ -136,7 +141,7 @@ export function streakReminder(st) {
   const goals = dayGoals(st, dayKeyOffset(0));
   const missing = goals.filter((g) => !g.done).map((g) => g.label.toLowerCase());
   if (s.todayOk) return null;
-  const need = VALIDATE - goals.filter((g) => g.done).length;
+  const need = needFor(st, dayKeyOffset(0)) - goals.filter((g) => g.done).length;
   return {
     title: s.current > 0 || s.atRisk ? `🔥 Ta série est en jeu !` : '🔥 Lance ta série aujourd’hui',
     body: `Encore ${need} quête${need > 1 ? 's' : ''} : ${missing.slice(0, 3).join(', ')}.`,

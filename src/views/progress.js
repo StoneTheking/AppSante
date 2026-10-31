@@ -10,16 +10,17 @@ export function questsCard(st) {
   const done = goals.filter((g) => g.done).length;
   const s = G.streak(st);
   const p = G.progress(st);
-  const msg = done >= G.VALIDATE
+  const need = G.needFor(st, G.dayKeyOffset(0));
+  const msg = done >= need
     ? (done === goals.length ? 'Journée parfaite ! +20 XP bonus' : `Journée validée · série de ${s.current} jour${s.current > 1 ? 's' : ''}`)
-    : `Encore ${G.VALIDATE - done} quête${G.VALIDATE - done > 1 ? 's' : ''} pour ${s.atRisk ? 'sauver' : 'valider'} ta série`;
+    : `Encore ${need - done} quête${need - done > 1 ? 's' : ''} pour ${s.atRisk ? 'sauver' : 'valider'} ta série`;
   return `<section class="card quests">
     <div class="between"><h2 style="font-size:1.02rem;display:flex;gap:8px;align-items:center">${icon('target', 18)} Quêtes du jour</h2><button class="xp-pill ${p.validated ? '' : 'pending'} ${p.atStake && !p.pending ? 'risk' : ''}" data-progress aria-label="${p.validated ? 'XP gagnés aujourd’hui' : 'XP en attente : validés à 3 quêtes'}">Niv. ${p.level} · ${p.atStake && !p.pending ? `−${p.atStake} XP en jeu` : `+${p.pending} XP`}</button></div>
     <div class="quest-row">${goals.map((g) => `<button class="quest ${g.done ? 'done' : ''}" data-quest="${g.id}" aria-label="${esc(g.label)} : ${esc(g.hint)}">
       <svg viewBox="0 0 44 44" width="52" height="52"><circle cx="22" cy="22" r="18" fill="none" stroke="var(--line-2)" stroke-width="4"/><circle cx="22" cy="22" r="18" fill="none" stroke="${g.color}" stroke-width="4" stroke-linecap="round" stroke-dasharray="${113 * g.progress} 113" transform="rotate(-90 22 22)"/></svg>
       <span class="qi" style="color:${g.done ? '#fff' : g.color};${g.done ? `background:${g.color}` : ''}">${icon(g.done ? 'check' : g.icon, 16)}</span>
       <small>${esc(g.label)}</small></button>`).join('')}</div>
-    <div class="quest-msg ${s.atRisk && done < G.VALIDATE ? 'risk' : ''}">${s.atRisk && done < G.VALIDATE ? '🔥 ' : ''}${esc(msg)}</div>
+    <div class="quest-msg ${s.atRisk && done < need ? 'risk' : ''}">${s.atRisk && done < need ? '🔥 ' : ''}${esc(msg)}</div>
   </section>`;
 }
 
@@ -70,19 +71,19 @@ export function openProgress() {
       <div><div class="big">${s.current}</div><div class="small muted">jour${s.current > 1 ? 's' : ''} de série · record ${s.best}</div></div>
       <div class="freeze" title="Gels de série">❄️ ${s.freezes}<small>gel${s.freezes > 1 ? 's' : ''}</small></div>
     </div>
-    <p class="tiny muted" style="margin:6px 0 12px">Une journée est validée avec ${G.VALIDATE} quêtes sur 5. Tous les 7 jours validés, tu gagnes un gel (2 max) qui protège ta série si tu rates un jour.</p>
+    <p class="tiny muted" style="margin:6px 0 12px">Une journée est validée avec ${p.need} quêtes sur 5${p.need > G.VALIDATE ? ` (une de plus depuis le niveau ${G.PLUS_LEVEL})` : ` (${G.VALIDATE + 1} à partir du niveau ${G.PLUS_LEVEL})`}. Tous les 7 jours validés, tu gagnes un gel (2 max) qui protège ta série si tu rates un jour.</p>
 
     <div class="card" style="padding:14px">
       <div class="between"><b>Niveau ${p.level} · ${esc(p.title)}</b><span class="small muted">${p.xp} XP</span></div>
       <div class="meter"><div class="track" style="height:10px"><div class="fill" style="width:${Math.round((p.into / p.need) * 100)}%;background:linear-gradient(90deg,#fbbf24,#f97316)"></div></div></div>
       <div class="tiny muted">${p.need - p.into} XP avant le niveau ${p.level + 1}${p.yesterday ? ` · hier : ${p.yesterday > 0 ? '+' : ''}${p.yesterday} XP` : ''}.</div>
-      <p class="tiny" style="margin:8px 0 0;line-height:1.5">${p.validated ? `<b style="color:var(--good)">Journée validée : +${p.today} XP.</b>` : `<b>Aujourd’hui : +${p.pending} XP en attente</b>, gagnés dès ${G.VALIDATE} quêtes réussies.${p.atStake ? ` <b style="color:var(--bad)">Sinon −${p.atStake} XP</b> à minuit.` : ''}`}<br>
-      <span class="muted">Journée validée (${G.VALIDATE} quêtes sur 5) : tu gagnes 10 XP par quête, +20 si parfaite, 1 XP par minute de sport, 2 par repas noté. Journée ratée : tu perds ${8} XP × ton niveau par quête manquante, donc la chute fait plus mal en haut. Un gel de série protège un jour raté. Tu peux redescendre de niveau.</span></p>
+      <p class="tiny" style="margin:8px 0 0;line-height:1.5">${p.validated ? `<b style="color:var(--good)">Journée validée : +${p.today} XP.</b>` : `<b>Aujourd’hui : +${p.pending} XP en attente</b>, gagnés dès ${p.need} quêtes réussies.${p.atStake ? ` <b style="color:var(--bad)">Sinon −${p.atStake} XP</b> à minuit.` : ''}`}<br>
+      <span class="muted">Journée validée (${p.need} quêtes sur 5) : tu gagnes 10 XP par quête, +20 si parfaite, 1 XP par minute de sport, 2 par repas noté. Journée ratée : tu perds ${8} XP × ton niveau par quête manquante, donc la chute fait plus mal en haut. Un gel de série protège un jour raté. Tu peux redescendre de niveau.</span></p>
     </div>
 
     <div class="card" style="padding:14px">
       <b>${weeks} dernières semaines</b>
-      <div class="cal">${['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((d) => `<span class="dow">${d}</span>`).join('')}${'<span></span>'.repeat((new Date(cells[0].k).getDay() + 6) % 7)}${cells.map((c) => `<span class="cell ${c.today ? 'today' : ''}" title="${c.k} : ${c.n}/5" style="background:${c.frozen ? '#60a5fa' : c.n >= G.VALIDATE ? `color-mix(in srgb,#f97316 ${40 + c.n * 12}%,transparent)` : c.n ? 'var(--card-2)' : 'var(--bg-2)'}">${c.frozen ? '❄' : ''}</span>`).join('')}</div>
+      <div class="cal">${['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((d) => `<span class="dow">${d}</span>`).join('')}${'<span></span>'.repeat((new Date(cells[0].k).getDay() + 6) % 7)}${cells.map((c) => `<span class="cell ${c.today ? 'today' : ''}" title="${c.k} : ${c.n}/5" style="background:${c.frozen ? '#60a5fa' : c.n >= G.needFor(st, c.k) ? `color-mix(in srgb,#f97316 ${40 + c.n * 12}%,transparent)` : c.n ? 'var(--card-2)' : 'var(--bg-2)'}">${c.frozen ? '❄' : ''}</span>`).join('')}</div>
     </div>
 
     <div class="card" style="padding:14px">
@@ -111,7 +112,8 @@ export function celebrate() {
     confetti();
     toast(`🏅 Nouveau badge : ${newBadges.map((b) => b.label).join(', ')}`, 3500);
   } else if (fresh.length) {
-    const validatedNow = doneCount >= G.VALIDATE && doneCount - fresh.length < G.VALIDATE;
+    const needNow = G.needFor(st, key);
+    const validatedNow = doneCount >= needNow && doneCount - fresh.length < needNow;
     confetti(validatedNow ? 60 : 24);
     toast(validatedNow ? `🔥 Journée validée ! Série : ${G.streak(st).current} jour(s)` : `✓ ${fresh[0].label} · +10 XP`, 2500);
   }

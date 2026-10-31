@@ -315,6 +315,13 @@ export const setWidgetState = (sleeping, since, target) => (isNative ? SleepWidg
 export const pinSleepWidget = () => (isNative ? SleepWidget.pin().then((r) => r.requested).catch(() => false) : Promise.resolve(false));
 export const pinQuestsWidget = () => (isNative ? SleepWidget.pin({ kind: 'quests' }).then((r) => r.requested).catch(() => false) : Promise.resolve(false));
 export const setQuestsWidget = (data) => (isNative ? SleepWidget.setQuests({ data: JSON.stringify(data) }).catch(() => {}) : Promise.resolve());
+// Séance en cours : notification permanente avec chronomètre (ou retirée quand la séance s'arrête).
+export async function workoutNotif(w, label) {
+  if (!isNative) return;
+  if (!w) return SleepWidget.workoutHide().catch(() => {});
+  try { const { LocalNotifications } = await import('@capacitor/local-notifications'); await LocalNotifications.requestPermissions(); } catch { /* sans permission : rien n'apparaît */ }
+  return SleepWidget.workoutShow({ title: `${label || 'Séance'} en cours`, text: 'Touchez pour revenir à votre séance · Diana Health', start: new Date(w.start).getTime() }).catch(() => {});
+}
 export const pinPhotoWidget = () => (isNative ? SleepWidget.pin({ kind: 'photo' }).then((r) => r.requested).catch(() => false) : Promise.resolve(false));
 
 // ---------- Détection du réveil ----------

@@ -68,8 +68,8 @@ const PLATE_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['name', 'grams', 'kcal'],
-        properties: { name: { type: 'string' }, grams: { type: 'number' }, kcal: { type: 'number' } },
+        required: ['name', 'grams', 'kcal', 'liquid'],
+        properties: { name: { type: 'string' }, grams: { type: 'number', description: 'Quantité en grammes (pour une boisson : volume en mL)' }, kcal: { type: 'number' }, liquid: { type: 'boolean', description: 'true pour une boisson (eau, café, jus, soda, vin, bière…) : la quantité s’affichera en cL' } },
       },
     },
     nutrients: {
@@ -127,6 +127,8 @@ function parseJson(resp) {
 function imageBlock(dataUrl) {
   const [head, data] = dataUrl.split(',');
   const media_type = head.match(/data:(.*?);/)[1];
+  // PDF (ticket de caisse reçu par e-mail, drive…) : bloc « document »
+  if (media_type === 'application/pdf') return { type: 'document', source: { type: 'base64', media_type, data } };
   return { type: 'image', source: { type: 'base64', media_type, data } };
 }
 
@@ -381,7 +383,9 @@ const RECEIPT_SCHEMA = {
 };
 
 // Ticket de caisse → liste d'articles normalisés (garde-manger).
-export async function readReceipt(settings, dataUrl) {
+// Un ou plusieurs fichiers (photos ou PDF) : plusieurs photos d'un long ticket, ou plusieurs tickets.
+export async function readReceipt(settings, files) {
+  const list = Array.isArray(files) ? files : [files];
   const { apiKey } = settings;
   const model = modelFor(settings, 'photo');
   const c = await client(apiKey);
@@ -391,7 +395,7 @@ export async function readReceipt(settings, dataUrl) {
     ...fallbackParams(model),
     output_config: { effort: 'low', format: { type: 'json_schema', schema: RECEIPT_SCHEMA } },
     system: "Tu lis des tickets de caisse de supermarchés français. Décode les abréviations (ex. « YAO NAT 4X125 » = yaourt nature, 500 g ; « CHOCAPIC » = céréales chocolatées, NOVA 4). Ignore les remises, consignes et lignes de paiement. Classe chaque article et estime son groupe NOVA.",
-    messages: [{ role: 'user', content: [imageBlock(dataUrl), { type: 'text', text: 'Extrais les articles de ce ticket.' }] }],
+    messages: [{ role: 'user', content: [...list.map(imageBlock), { type: 'text', text: list.length > 1 ? `Voici ${list.length} fichiers (photos ou PDF) : soit plusieurs morceaux d’un même long ticket, soit plusieurs tickets. Extrais tous les articles ; un article visible deux fois parce que les photos se chevauchent ne compte qu’une fois. Magasin, date et total : ceux du ticket principal (total = somme des tickets s’il y en a plusieurs).` : 'Extrais les articles de ce ticket.' }] }],
   });
   return parseJson(resp);
 }

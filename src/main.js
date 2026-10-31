@@ -18,6 +18,7 @@ import * as P from './views/progress.js';
 import * as G from './gamify.js';
 import * as Diana from './diana.js';
 import * as S from './science.js';
+import * as SPO from './sport.js';
 
 const VIEWS = { home: Home, nutrition: Nutrition, sport: Sport, health: Health, coach: Coach, profile: Profile };
 const TITLES = { nutrition: 'Nutrition', sport: 'Sport', health: 'Santé', coach: 'Coach', profile: 'Profil' };
@@ -38,9 +39,10 @@ const ctx = {
     const s = G.streak(st);
     const t = goals.find((g) => g.id === 'water');
     const data = {
-      date: G.dayKeyOffset(0), need: G.VALIDATE, streak: s.current, atRisk: s.atRisk, done: goals.filter((g) => g.done).length,
+      date: G.dayKeyOffset(0), need: G.needFor(st, G.dayKeyOffset(0)), streak: s.current, atRisk: s.atRisk, done: goals.filter((g) => g.done).length,
       items: goals.map((g) => ({ id: g.id, progress: Math.round(g.progress * 100) / 100, done: g.done })),
       waterMl: store.getDay().waterMl || 0, waterTarget: S.targets(st.profile).waterMl, hint: t?.hint,
+      waterSeen: st.widgetWaterSeen || 0, // appuis « eau » du widget déjà comptés ici
     };
     const json = JSON.stringify(data);
     if (!force && json === ctx.syncQuests.last) return;
@@ -116,9 +118,14 @@ function renderView(after, animate = false) {
   $$('.nav [data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
   Diana.setTab(tab);
   const view = $('#view');
+  // simple mise à jour (retour dans l'appli, données synchronisées) : même position, pas d'animation,
+  // hauteur gardée pendant le remplacement pour que la page ne saute pas
+  const y = window.scrollY;
+  if (!animate) view.style.minHeight = `${view.offsetHeight}px`;
   view.className = animate ? 'view-enter' : '';
   if (animate) void view.offsetWidth;
   VIEWS[tab].render(view, ctx);
+  if (!animate) { if (Math.abs(window.scrollY - y) > 1) window.scrollTo(0, y); requestAnimationFrame(() => { view.style.minHeight = ''; }); }
   // l'animation d'entrée ne joue qu'à la navigation, pas à chaque mise à jour
   clearTimeout(renderView.t);
   renderView.t = setTimeout(() => $$('.view-enter').forEach((e) => e.classList.remove('view-enter')), 1200);
@@ -127,9 +134,29 @@ function renderView(after, animate = false) {
   sb.innerHTML = `${icon('flame', 17)}<span>${s.current}</span>`;
   sb.className = `streak-btn ${s.atRisk ? 'risk' : s.current ? '' : 'cold'}`;
   P.celebrate();
+  questPlus();
+  syncWorkoutNotif();
   clearTimeout(renderView.q);
   renderView.q = setTimeout(() => ctx.syncQuests(), 600); // hors du chemin critique de l'affichage
   after?.();
+}
+
+// Niveau 5 atteint : une quête de plus sera demandée chaque jour à partir d'aujourd'hui (annoncé une fois).
+function questPlus() {
+  const st = store.get();
+  if (st.questPlusSince || !st.onboarded) return;
+  if (G.progress(st).level < G.PLUS_LEVEL) return;
+  store.update((s) => { s.questPlusSince = G.dayKeyOffset(0); });
+  setTimeout(() => Diana.pop(`Niveau ${G.PLUS_LEVEL} atteint 🌲 Nouveau défi : désormais il faut ${G.VALIDATE + 1} quêtes sur 5 pour valider ta journée. On y va ensemble !`, 'cheer', 9000), 1500);
+}
+
+// Notification « séance en cours » alignée sur le chronomètre de l'appli.
+function syncWorkoutNotif() {
+  const w = store.get().workoutNow;
+  const key = w ? `${w.type}|${w.start}` : '';
+  if (key === syncWorkoutNotif.last) return;
+  syncWorkoutNotif.last = key;
+  N.workoutNotif(w, w && SPO.activity(w.type).label);
 }
 
 function go(t, after, dir) {
@@ -143,7 +170,7 @@ function go(t, after, dir) {
     // la nouvelle page entre depuis le côté où le doigt l'a poussée ; l'animation démarre une fois la page dessinée
     const v = $('#view');
     v.classList.remove('swipe-l', 'swipe-r');
-    requestAnimationFrame(() => { v.classList.add(dir > 0 ? 'swipe-l' : 'swipe-r'); clearTimeout(go.t); go.t = setTimeout(() => v.classList.remove('swipe-l', 'swipe-r'), 400); });
+    requestAnimationFrame(() => { v.classList.add(dir > 0 ? 'swipe-l' : 'swipe-r'); clearTimeout(go.t); go.t = setTimeout(() => v.classList.remove('swipe-l', 'swipe-r'), 300); });
   }
 }
 
@@ -168,7 +195,7 @@ function swipeNav() {
     // le bord de l'écran est réservé au geste « retour » d'Android
     ok = !leaving && e.touches.length === 1 && ORDER.includes(tab) && !$('.sheet-root') && p.clientX > 14 && p.clientX < innerWidth - 14 && !blocked(e.target);
     pull = ok && tab === 'home' && window.scrollY <= 0;
-    x0 = p.clientX; y0 = p.clientY; t0 = Date.now(); lock = null; dx = dy = 0;
+    x0 = p.clientX; y0 = p.clientY; t0 = Date.now(); lock = null; dx = dy = 0; swipeNav.lastDx = 0;
   }, { passive: true });
   document.addEventListener('touchmove', (e) => {
     if (!ok) return;
@@ -181,7 +208,9 @@ function swipeNav() {
       const room = i >= 0 && i < ORDER.length ? 1 : 0.25; // résistance au bout de la liste
       // une seule écriture par image, sur un calque GPU (.dragging) : pas de repeinture de la page à chaque mouvement
       if (!view().classList.contains('dragging')) view().classList.add('dragging');
-      if (!raf) raf = requestAnimationFrame(() => { raf = 0; view().style.transform = `translate3d(${dx * 0.45 * room}px,0,0)`; });
+      if (!raf) raf = requestAnimationFrame(() => { raf = 0; view().style.transform = `translate3d(${dx * 0.5 * room}px,0,0)`; });
+      Diana.roll(dx - (swipeNav.lastDx || 0), 0); // Diana roule dans le sens du geste
+      swipeNav.lastDx = dx;
     } else if (lock === 'y' && pull && dy > 0 && window.scrollY <= 0) {
       const el = ptr(), h = Math.min(dy, 140);
       el.style.opacity = Math.min(1, h / 80);
@@ -195,14 +224,14 @@ function swipeNav() {
     const v = view();
     if (lock === 'x') {
       cancelAnimationFrame(raf); raf = 0;
-      const fast = Math.abs(dx) > 40 && Date.now() - t0 < 300;
+      const fast = Math.abs(dx) > 35 && Date.now() - t0 < 300;
       const i = ORDER.indexOf(tab) + (dx < 0 ? 1 : -1);
-      if ((Math.abs(dx) > 60 || fast) && i >= 0 && i < ORDER.length) {
+      if ((Math.abs(dx) > 55 || fast) && i >= 0 && i < ORDER.length) {
         // La page continue sa course et s'efface, puis la suivante se dessine hors de vue :
         // le calcul de la nouvelle page ne fige plus l'écran à mi-geste.
         leaving = true;
         const d = dx < 0 ? 1 : -1;
-        v.style.transition = 'transform .14s ease-in, opacity .14s ease-in';
+        v.style.transition = 'transform .1s ease-in, opacity .1s ease-in';
         v.style.transform = `translate3d(${-d * 70}px,0,0)`;
         v.style.opacity = '0';
         setTimeout(() => {
@@ -210,7 +239,7 @@ function swipeNav() {
           v.classList.remove('dragging');
           go(ORDER[i], null, d);
           requestAnimationFrame(() => { v.style.transition = ''; leaving = false; });
-        }, 140);
+        }, 100);
       } else {
         v.style.transition = 'transform .2s ease';
         v.style.transform = '';
@@ -300,7 +329,8 @@ async function onForeground() {
   // eau ajoutée depuis le widget : 25 cL par appui, comptés le jour de l'appui
   const water = all.filter((e) => e.type === 'water');
   if (water.length) {
-    store.update((s) => { for (const e of water) { const k = G.dayKeyOffset(0, new Date(e.t)); s.days[k] = { ...(s.days[k] || {}), waterMl: (s.days[k]?.waterMl || 0) + 250 }; } });
+    store.update((s) => { for (const e of water) { if (e.t <= (s.widgetWaterSeen || 0)) continue; const k = G.dayKeyOffset(0, new Date(e.t)); s.days[k] = { ...(s.days[k] || {}), waterMl: (s.days[k]?.waterMl || 0) + 250 }; s.widgetWaterSeen = Math.max(s.widgetWaterSeen || 0, e.t); } });
+    ctx.syncQuests(true);
     if (['home', 'health'].includes(tab)) renderView();
   }
   const events = all.filter((e) => !['photo', 'scan', 'quest', 'water'].includes(e.type));

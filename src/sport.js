@@ -1,4 +1,5 @@
 // Sport : catalogue d'activités, dépense énergétique, zones cardiaques, plan de la semaine, séances.
+import * as N from './native.js';
 import * as store from './store.js';
 import { age as ageOf } from './science.js';
 
@@ -84,12 +85,14 @@ export function removeWorkout(id) {
 // ---------- Chronomètre ----------
 export function startWorkout(type, intensity = 'moderee') {
   store.update((s) => { s.workoutNow = { type, intensity, start: new Date().toISOString() }; });
+  N.workoutNotif(store.get().workoutNow, activity(type).label); // notification avec chronomètre sur le téléphone
 }
 export function stopWorkout() {
   const cur = store.get().workoutNow;
   if (!cur) return null;
   const minutes = (Date.now() - new Date(cur.start)) / 60000;
   store.update((s) => { s.workoutNow = null; });
+  N.workoutNotif(null);
   if (minutes < 1) return null;
   return addWorkout({ ...cur, minutes, source: 'chrono' });
 }

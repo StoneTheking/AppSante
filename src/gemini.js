@@ -31,7 +31,7 @@ function parts(content) {
   if (typeof content === 'string') return [{ text: content }];
   return content.flatMap((b) => {
     if (b.type === 'text') return [{ text: b.text }];
-    if (b.type === 'image') return [{ inline_data: { mime_type: b.source.media_type, data: b.source.data } }];
+    if (b.type === 'image' || b.type === 'document') return [{ inline_data: { mime_type: b.source.media_type, data: b.source.data } }];
     return []; // blocs propres à Anthropic (recherche web…) ignorés
   });
 }

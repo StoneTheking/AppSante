@@ -4,7 +4,9 @@
 // dans l'espace, coudes et genoux calculés), segments triés par profondeur et ombrés comme des cylindres.
 // On peut faire tourner la caméra au doigt pour voir le mouvement sous tous les angles.
 
-const D = Math.PI / 180;
+import * as M3 from './mannequin3d.js';
+
+export const D = Math.PI / 180;
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const mul = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
@@ -21,8 +23,8 @@ const Ry = (t) => { const c = Math.cos(t), s = Math.sin(t); return [[c, 0, s], [
 const Rz = (t) => { const c = Math.cos(t), s = Math.sin(t); return [[c, s, 0], [-s, c, 0], [0, 0, 1]]; };
 
 // Proportions (mètres) et rayons des segments.
-const L = { thigh: 0.44, shin: 0.43, arm: 0.29, fore: 0.27, spine: 0.25, hip: 0.1, sh: 0.18, neck: 0.14, foot: 0.15 };
-const RAD = { torso: 0.115, chest: 0.125, thigh: 0.07, shin: 0.05, arm: 0.047, fore: 0.04, foot: 0.035, head: 0.105 };
+export const L = { thigh: 0.44, shin: 0.43, arm: 0.29, fore: 0.27, spine: 0.25, hip: 0.1, sh: 0.18, neck: 0.14, foot: 0.15 };
+export const RAD = { torso: 0.115, chest: 0.125, thigh: 0.07, shin: 0.05, arm: 0.047, fore: 0.04, foot: 0.035, head: 0.105 };
 
 // Coude ou genou par cinématique inverse à deux segments : racine, cible, longueurs, direction de pliage.
 function ik(root, target, a, b, pole) {
@@ -40,7 +42,7 @@ function ik(root, target, a, b, pole) {
 }
 
 // Pose → points du squelette.
-function skeleton(P) {
+export function skeleton(P) {
   const R = mm(Ry(P.yaw * D), mm(Rx(P.tilt * D), mm(Rz(P.roll * D), Rx(P.pitch * D))));
   const pelvis = P.root;
   // colonne en deux segments : « curve » arrondit (positif) ou creuse (négatif) le dos
@@ -50,7 +52,7 @@ function skeleton(P) {
   const chest = add(mid, mv(T2, [0, L.spine, 0]));
   const H = mm(T2, Rx(P.head * D));
   const head = add(chest, mv(H, [0, L.neck, 0.015]));
-  const out = { pelvis, mid, chest, head, headR: H, chestR: T2, pelvisR: R, side: {} };
+  const out = { pelvis, mid, chest, head, headR: H, chestR: T2, midR: T1, pelvisR: R, side: {} };
   for (const s of [1, -1]) {
     const k = s > 0 ? 'L' : 'R';
     const shoulder = add(chest, mv(T2, [s * L.sh, -0.045, 0]));
@@ -251,6 +253,16 @@ const breath = (base, cue) => ({ cam: 50, work: ['core'], keys: [k(base, { cue: 
 const breathStand = breath(STAND, ['Debout, épaules relâchées', 'Inspire par le nez, ventre qui se gonfle', 'Expire longuement par la bouche']);
 const breathLying = { ...breath(k(SUPINE, { fL: [0.14, 0.08, 0.42], tL: [0, 0, 1], kP: [0.1, 0.3, 1], hL: [0.3, 0.06, 0.15] }), ['Allongé, genoux pliés', 'Deux inspirations par le nez', 'Longue expiration par la bouche']), tilt: 24 };
 
+// Posture : menton rentré, anges au mur, ouverture thoracique, marche droite
+const CHIN0 = k(STAND, { fL: [0.12, 0.08, 0], hL: [0.2, 0.92, 0.05], curve: 4, head: 14 });
+const chinTuck = { cam: 85, work: ['back'], keys: [k(CHIN0, { cue: 'Tête projetée en avant (posture « téléphone »)', hold: 0.5 }), k(CHIN0, { curve: -2, head: -6, root: [0, 0.96, 0], t: 1.2, cue: 'Rentre le menton : double menton, nuque longue', hold: 1.6 }), k(CHIN0, { t: 1 })] };
+const WALL_B = ['box', [0, 1.1, -0.2, 0.9, 2.2, 0.08]];
+const ANGEL0 = k(STAND, { root: [0, 0.93, -0.06], fL: [0.14, 0.08, 0.12], hL: [0.36, 1.42, -0.1], eP: [1, -1, -0.3], head: -3 });
+const wallAngel = { cam: 25, work: ['back', 'shoulder'], props: [WALL_B], keys: [k(ANGEL0, { cue: 'Dos, tête et bras contre le mur, coudes à 90°', hold: 0.4 }), k(ANGEL0, { hL: [0.2, 1.92, -0.1], eP: [1, -0.3, -0.3], t: 1.6, cue: 'Glisse les bras vers le haut sans décoller du mur', hold: 0.3 }), k(ANGEL0, { t: 1.6, cue: 'Redescends en serrant les omoplates' })] };
+const TX0 = k(SEATED, { hL: [0.08, 1.3, -0.08], hR: [-0.08, 1.3, -0.08], eP: [1, -0.2, 0.4], bend: 8, curve: 6, head: 5 });
+const thoracic = { cam: 80, work: ['back'], props: [SEAT_BOX], keys: [k(TX0, { cue: 'Assis, mains derrière la tête, dos arrondi', hold: 0.3 }), k(TX0, { bend: -18, curve: -10, head: -12, hL: [0.1, 1.3, -0.2], hR: [-0.1, 1.3, -0.2], t: 1.6, cue: 'Ouvre la poitrine vers le plafond, sans cambrer le bas du dos', hold: 1 }), k(TX0, { t: 1.4 })] };
+const walkTall = { ...march(false), cam: 65, work: ['back', 'core'], keys: march(false).keys.map((x, i) => ({ ...x, head: -2, curve: -1, cue: i === 0 ? 'Grandis-toi : tête haute, regard à l’horizon' : i === 2 ? 'Épaules basses, bras qui balancent' : x.cue })) };
+
 // Exercice → animation.
 export const ANIMS = {
   'Squat au poids du corps': squat,
@@ -314,17 +326,21 @@ export const ANIMS = {
   'Respiration lente : 4 s inspiration, 6 s expiration': breathStand,
   'Respiration consciente assise': breathStand,
   'Soupir cyclique allongé': breathLying,
+  'Rentrer le menton (chin tuck)': chinTuck,
+  'Anges au mur': wallAngel,
+  'Ouverture thoracique assise': thoracic,
+  'Marche droite, tête haute': walkTall,
 };
 export const hasAnim = (label) => !!ANIMS[label];
 
 // Pose à l'instant t (secondes) d'une animation : keys = [pose, …], chaque pose a t (durée pour y arriver) et hold.
-function timeline(a) {
+export function timeline(a) {
   const keys = a.keys.map((x) => ({ ...BASE, ...x }));
   const seg = keys.map((x, i) => ({ dur: i === 0 ? 0.6 : x.t || 1, hold: x.hold || 0 }));
   const total = seg.reduce((s, x) => s + x.dur + x.hold, 0);
   return { keys, seg, total };
 }
-function poseAt(tl, time) {
+export function poseAt(tl, time) {
   let t = time % tl.total;
   const n = tl.keys.length;
   for (let i = 0; i < n; i++) {
@@ -394,7 +410,13 @@ function parts(S, work, props, pose) {
 }
 
 // Anime une démonstration dans un canvas. Renvoie une fonction d'arrêt.
-export function play(canvas, label, { onCue, at, yaw } = {}) {
+// Rendu 3D réaliste (three.js) quand la carte graphique est disponible, sinon dessin 2D de secours.
+export function play(canvas, label, opts = {}) {
+  if (ANIMS[label] && M3.supported()) { const stop = M3.play(canvas, label, opts); if (stop) return stop; }
+  return play2d(canvas, label, opts);
+}
+
+function play2d(canvas, label, { onCue, at, yaw } = {}) {
   const a = ANIMS[label];
   if (!a) return () => {};
   const tl = timeline(a);

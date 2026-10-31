@@ -23,7 +23,10 @@ import java.util.Locale;
  * Widget « Quêtes du jour » : les 5 anneaux de l'accueil, la série et le message du jour.
  * L'application envoie l'état à chaque mise à jour (SleepWidgetPlugin.setQuests) ;
  * un appui sur « Eau » ajoute 25 cL tout de suite (repris par l'application à sa prochaine ouverture),
+ * « Repas » ouvre directement l'appareil photo, « Sommeil » note le coucher (comme le widget sommeil),
  * les autres quêtes ouvrent l'écran qui permet de les faire.
+ * Les appuis sur l'eau sont gardés à part (« taps ») et ajoutés à l'affichage tant que l'application ne les a pas
+ * encore comptés (waterSeen) : un état envoyé entre-temps par l'application ne fait plus reculer la jauge.
  */
 public class QuestsWidgetProvider extends AppWidgetProvider {
 
@@ -51,24 +54,12 @@ public class QuestsWidgetProvider extends AppWidgetProvider {
         if (!ACTION_WATER.equals(intent.getAction())) return;
         long now = System.currentTimeMillis();
         SleepWidgetProvider.addEvent(context, "water", now, null);
+        SharedPreferences p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         try {
-            JSONObject d = load(context);
-            if (d != null && today().equals(d.optString("date"))) {
-                int ml = d.optInt("waterMl") + WATER_ML;
-                int target = Math.max(1, d.optInt("waterTarget", 2000));
-                d.put("waterMl", ml);
-                JSONArray items = d.optJSONArray("items");
-                if (items != null) {
-                    for (int i = 0; i < items.length(); i++) {
-                        JSONObject q = items.getJSONObject(i);
-                        if ("water".equals(q.optString("id"))) {
-                            q.put("progress", Math.min(1.0, ml / (double) target));
-                            q.put("done", ml >= target);
-                        }
-                    }
-                }
-                save(context, d);
-            }
+            JSONArray taps = new JSONArray(p.getString("taps", "[]"));
+            taps.put(now);
+            while (taps.length() > 60) taps.remove(0);
+            p.edit().putString("taps", taps.toString()).apply();
         } catch (Exception ignored) {
         }
         Toast.makeText(context, "+25 cL 💧", Toast.LENGTH_SHORT).show();
@@ -101,6 +92,23 @@ public class QuestsWidgetProvider extends AppWidgetProvider {
         boolean fresh = d != null && today().equals(d.optString("date"));
         JSONArray items = fresh ? d.optJSONArray("items") : null;
         RemoteViews v = new RemoteViews(context.getPackageName(), R.layout.widget_quests);
+        // eau ajoutée depuis le widget et pas encore reprise par l'application
+        int extraMl = 0;
+        if (fresh) {
+            long seen = d.optLong("waterSeen", 0);
+            String day = today();
+            try {
+                JSONArray taps = new JSONArray(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("taps", "[]"));
+                SimpleDateFormat f = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
+                for (int j = 0; j < taps.length(); j++) {
+                    long t = taps.optLong(j);
+                    if (t > seen && day.equals(f.format(new Date(t)))) extraMl += WATER_ML;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        int target = d != null ? Math.max(1, d.optInt("waterTarget", 2000)) : 2000;
+        int waterMl = (d != null ? d.optInt("waterMl") : 0) + extraMl;
         int done = 0;
         for (int i = 0; i < IDS.length; i++) {
             double p = 0;
@@ -114,6 +122,10 @@ public class QuestsWidgetProvider extends AppWidgetProvider {
                     }
                 }
             }
+            if ("water".equals(IDS[i]) && extraMl > 0) {
+                p = Math.max(p, Math.min(1.0, waterMl / (double) target));
+                ok = ok || waterMl >= target;
+            }
             if (ok) done++;
             v.setProgressBar(RING[i], 100, (int) Math.round(Math.max(0, Math.min(1, p)) * 100), false);
             v.setViewVisibility(DOT[i], ok ? View.VISIBLE : View.GONE);
@@ -124,6 +136,16 @@ public class QuestsWidgetProvider extends AppWidgetProvider {
             if ("water".equals(IDS[i])) {
                 Intent w = new Intent(context, QuestsWidgetProvider.class).setAction(ACTION_WATER);
                 pi = PendingIntent.getBroadcast(context, 30, w, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            } else if ("sleep".equals(IDS[i])) {
+                // même action que le widget sommeil : « je vais dormir » (ou « je me réveille » si la nuit est en cours)
+                Intent s = new Intent(context, SleepWidgetProvider.class).setAction(SleepWidgetProvider.ACTION_TOGGLE);
+                pi = PendingIntent.getBroadcast(context, 36, s, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            } else if ("food".equals(IDS[i])) {
+                // repas : l'appareil photo s'ouvre directement (photo du plat ou du code-barres)
+                Intent ph = new Intent(context, MainActivity.class).setAction(PhotoWidgetProvider.ACTION_PHOTO)
+                    .setData(Uri.parse("dianahealth://photo/quest"))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                pi = PendingIntent.getActivity(context, 37, ph, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
             } else {
                 Intent open = new Intent(context, MainActivity.class).setAction(ACTION_QUEST)
                     .setData(Uri.parse("dianahealth://quest/" + IDS[i]))
@@ -135,7 +157,7 @@ public class QuestsWidgetProvider extends AppWidgetProvider {
         }
         int need = d != null ? d.optInt("need", 3) : 3;
         int streak = d != null ? d.optInt("streak", 0) : 0;
-        if (fresh && done >= need && d.optInt("done", 0) < need) streak++; // validée depuis le widget (eau)
+        if (fresh && done >= need && d.optInt("done", 0) < need && !d.optBoolean("validated", false)) streak++; // validée depuis le widget (eau)
         v.setTextViewText(R.id.q_count, done + "/" + IDS.length);
         v.setTextViewText(R.id.q_streak, String.valueOf(streak));
         String msg;
