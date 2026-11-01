@@ -39,7 +39,7 @@ const ctx = {
     const s = G.streak(st);
     const t = goals.find((g) => g.id === 'water');
     const data = {
-      date: G.dayKeyOffset(0), need: G.needFor(st, G.dayKeyOffset(0)), streak: s.current, atRisk: s.atRisk, done: goals.filter((g) => g.done).length,
+      date: G.dayKeyOffset(0), need: G.needFor(st, G.dayKeyOffset(0)), postureDue: G.blockedBy(goals).length > 0, streak: s.current, atRisk: s.atRisk, done: goals.filter((g) => g.done).length,
       items: goals.map((g) => ({ id: g.id, progress: Math.round(g.progress * 100) / 100, done: g.done })),
       waterMl: store.getDay().waterMl || 0, waterTarget: S.targets(st.profile).waterMl, hint: t?.hint,
       waterSeen: st.widgetWaterSeen || 0, // appuis « eau » du widget déjà comptés ici
@@ -77,6 +77,7 @@ const ctx = {
     else if (a === 'workout') go('sport', () => Sport.openWorkout(ctx, $('#view'), !store.get().workoutNow));
     else if (a === 'menus') go('nutrition', () => { $('[data-seg="nut"][data-v="menus"]')?.click(); });
     else if (a === 'sync') { Profile.openSection('phone'); go('profile'); }
+    else if (a === 'posture') go('health', () => { $('[data-seg="hl"][data-v="posture"]')?.click(); });
   },
 };
 
@@ -364,6 +365,7 @@ function widgetAsk(e) {
   else if (q === 'sleep') ctx.action('sleep');
   else if (q === 'mood') ctx.action('checkin');
   else if (q === 'food') go('nutrition');
+  else if (q === 'posture') ctx.action('posture');
   else if (tab !== 'home') go('home');
 }
 

@@ -195,6 +195,60 @@ export async function correctPlate(settings, previous, correction, personContext
   return parseJson(resp);
 }
 
+// ---------- Analyse de posture sur photo ----------
+// Repères (photo de profil ou de face, debout) : tête en avant (oreille devant l'épaule), épaules enroulées,
+// dos très arrondi (cyphose), bas du dos très creusé ou aplati, bassin, genoux, asymétries épaules/bassin.
+const POSTURE_EX = ['Rentrer le menton (chin tuck)', 'Anges au mur', 'Ouverture thoracique assise', 'Étirement des pectoraux contre un mur', 'Fente basse (chaque côté)', 'Pont fessier', 'Chat-vache', 'Marche droite, tête haute'];
+const POSTURE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['is_person', 'usable', 'view', 'score', 'verdict', 'summary', 'findings', 'positives', 'exercises', 'tip', 'confidence'],
+  properties: {
+    is_person: { type: 'boolean', description: 'Une personne entière (ou au moins du bassin à la tête) est visible' },
+    usable: { type: 'boolean', description: 'Photo exploitable : corps visible, pas trop de vêtements amples, angle à peu près de profil, de face ou de dos' },
+    view: { type: 'string', enum: ['profil', 'face', 'dos', 'autre'] },
+    score: { type: 'integer', description: '0-100 : alignement global observé (100 = aucun écart notable)' },
+    verdict: { type: 'string', enum: ['bonne', 'correcte', 'a_travailler'] },
+    summary: { type: 'string', description: 'Bilan en 1-2 phrases, bienveillant, tutoiement' },
+    findings: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['zone', 'finding', 'severity'],
+        properties: {
+          zone: { type: 'string', enum: ['tête et nuque', 'épaules', 'haut du dos', 'bas du dos', 'bassin', 'genoux', 'pieds', 'symétrie'] },
+          finding: { type: 'string', description: 'Ce qui est observé, concret (ex. « oreille ~4 cm devant l’épaule : tête en avant »)' },
+          severity: { type: 'string', enum: ['legere', 'moderee', 'marquee'] },
+        },
+      },
+    },
+    positives: { type: 'string', description: 'Ce qui est bien aligné (une phrase)' },
+    exercises: { type: 'array', items: { type: 'string', enum: POSTURE_EX }, description: '2 à 4 exercices de la routine les plus utiles pour CE cas' },
+    tip: { type: 'string', description: 'Un conseil du quotidien (poste de travail, téléphone, pauses)' },
+    confidence: { type: 'string', enum: ['haute', 'moyenne', 'faible'] },
+  },
+};
+export async function analyzePosture(settings, dataUrl, note = '') {
+  const { apiKey } = settings;
+  const model = modelFor(settings, 'photo');
+  const c = await client(apiKey);
+  const resp = await c.beta.messages.create({
+    model,
+    max_tokens: 6000,
+    ...fallbackParams(model),
+    output_config: { effort: 'medium', format: { type: 'json_schema', schema: POSTURE_SCHEMA } },
+    system: `Tu es kinésithérapeute. Tu évalues la posture debout d'une personne sur une photo (idéalement de profil, en tenue près du corps).
+Méthode : repère les points (oreille, épaule, hanche, genou, cheville en vue de profil ; hauteur des épaules et du bassin, axe de la tête en vue de face ou de dos) et mesure les écarts à la ligne d'aplomb.
+Repères : tête en avant si l'oreille est nettement devant l'épaule ; épaules enroulées si l'épaule est devant la ligne d'aplomb ; dos rond si le haut du dos est très arrondi ; bas du dos très creusé ou très plat ; bassin basculé ; genoux en hyperextension ; asymétrie d'épaules ou de bassin.
+Barème : 80-100 « bonne » (écarts absents ou légers), 60-79 « correcte » (un écart modéré), moins de 60 « a_travailler » (écart marqué ou plusieurs écarts modérés).
+Sois honnête et nuancé : une seule photo ne montre qu'un instant, la posture varie, et il n'existe pas de posture parfaite ; une posture « à travailler » n'est pas une maladie. Si la photo n'est pas exploitable (angle, cadrage, vêtements amples, assis), mets usable = false, ne note pas sévèrement et dis comment refaire la photo.
+Ne commente jamais le poids, la silhouette ou l'apparence physique : uniquement l'alignement. Réponds en français, en tutoyant.`,
+    messages: [{ role: 'user', content: [imageBlock(dataUrl), { type: 'text', text: `${note ? `Précision : ${note}\n\n` : ''}Analyse ma posture sur cette photo.` }] }],
+  });
+  return parseJson(resp);
+}
+
 export async function readScreenshot(settings, dataUrl) {
   const { apiKey } = settings;
   const model = modelFor(settings, 'quick');

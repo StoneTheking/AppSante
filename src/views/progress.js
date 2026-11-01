@@ -11,16 +11,18 @@ export function questsCard(st) {
   const s = G.streak(st);
   const p = G.progress(st);
   const need = G.needFor(st, G.dayKeyOffset(0));
-  const msg = done >= need
+  const blocked = G.blockedBy(goals).length > 0;
+  const msg = G.dayOk(goals, need)
     ? (done === goals.length ? 'Journée parfaite ! +20 XP bonus' : `Journée validée · série de ${s.current} jour${s.current > 1 ? 's' : ''}`)
-    : `Encore ${need - done} quête${need - done > 1 ? 's' : ''} pour ${s.atRisk ? 'sauver' : 'valider'} ta série`;
+    : done >= need && blocked ? 'Routine posture obligatoire pour valider la journée'
+    : `Encore ${need - done} quête${need - done > 1 ? 's' : ''}${blocked ? ' dont la routine posture (obligatoire)' : ''} pour ${s.atRisk ? 'sauver' : 'valider'} ta série`;
   return `<section class="card quests">
     <div class="between"><h2 style="font-size:1.02rem;display:flex;gap:8px;align-items:center">${icon('target', 18)} Quêtes du jour</h2><button class="xp-pill ${p.validated ? '' : 'pending'} ${p.atStake && !p.pending ? 'risk' : ''}" data-progress aria-label="${p.validated ? 'XP gagnés aujourd’hui' : 'XP en attente : validés à 3 quêtes'}">Niv. ${p.level} · ${p.atStake && !p.pending ? `−${p.atStake} XP en jeu` : `+${p.pending} XP`}</button></div>
     <div class="quest-row">${goals.map((g) => `<button class="quest ${g.done ? 'done' : ''}" data-quest="${g.id}" aria-label="${esc(g.label)} : ${esc(g.hint)}">
       <svg viewBox="0 0 44 44" width="52" height="52"><circle cx="22" cy="22" r="18" fill="none" stroke="var(--line-2)" stroke-width="4"/><circle cx="22" cy="22" r="18" fill="none" stroke="${g.color}" stroke-width="4" stroke-linecap="round" stroke-dasharray="${113 * g.progress} 113" transform="rotate(-90 22 22)"/></svg>
       <span class="qi" style="color:${g.done ? '#fff' : g.color};${g.done ? `background:${g.color}` : ''}">${icon(g.done ? 'check' : g.icon, 16)}</span>
       <small>${esc(g.label)}</small></button>`).join('')}</div>
-    <div class="quest-msg ${s.atRisk && done < need ? 'risk' : ''}">${s.atRisk && done < need ? '🔥 ' : ''}${esc(msg)}</div>
+    <div class="quest-msg ${s.atRisk && !G.dayOk(goals, need) ? 'risk' : ''}">${s.atRisk && !G.dayOk(goals, need) ? '🔥 ' : ''}${esc(msg)}</div>
   </section>`;
 }
 
@@ -33,6 +35,7 @@ export function bindQuests(view, ctx) {
     else if (id === 'food') openPlateInfo(ctx);
     else if (id === 'sleep') ctx.action('sleep');
     else if (id === 'mood') ctx.action('checkin');
+    else if (id === 'posture') ctx.action('posture');
   }));
   $$('[data-progress]', view).forEach((b) => (b.onclick = () => openProgress()));
 }

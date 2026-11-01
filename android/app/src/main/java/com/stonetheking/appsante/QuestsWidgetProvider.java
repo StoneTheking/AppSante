@@ -157,12 +157,13 @@ public class QuestsWidgetProvider extends AppWidgetProvider {
         }
         int need = d != null ? d.optInt("need", 3) : 3;
         int streak = d != null ? d.optInt("streak", 0) : 0;
-        if (fresh && done >= need && d.optInt("done", 0) < need && !d.optBoolean("validated", false)) streak++; // validée depuis le widget (eau)
+        if (fresh && done >= need && !d.optBoolean("postureDue", false) && d.optInt("done", 0) < need && !d.optBoolean("validated", false)) streak++; // validée depuis le widget (eau)
         v.setTextViewText(R.id.q_count, done + "/" + IDS.length);
         v.setTextViewText(R.id.q_streak, String.valueOf(streak));
         String msg;
         boolean risk = false;
         if (!fresh) msg = context.getString(R.string.widget_quests_empty);
+        else if (done >= need && d.optBoolean("postureDue", false)) msg = "Routine posture obligatoire pour valider";
         else if (done >= need) msg = done == IDS.length ? "Journée parfaite ! +20 XP bonus" : "Journée validée · série de " + streak + " jour" + (streak > 1 ? "s" : "");
         else {
             int left = need - done;

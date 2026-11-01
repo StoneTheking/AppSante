@@ -13,6 +13,7 @@ import { icon, esc, fmt, fmtMin, segmented, srcLinks, barChart, timeChart, faces
 import * as E from '../energy.js';
 import { correlations } from '../correlate.js';
 import * as PO from '../posture.js';
+import * as G from '../gamify.js';
 import * as X3 from '../exercise3d.js';
 
 let seg = 'tendances'; // les tendances s'ouvrent en premier
@@ -487,6 +488,8 @@ function renderPosture(el) {
         : `<p class="small muted" style="margin-top:0">Six questions (1 minute) pour savoir ce qui pèse sur ton dos et ta nuque, et ce qui t’aidera le plus.</p><button class="btn block" id="po-quiz">${icon('sparkles', 18)} Faire mon bilan posture</button>`}
     </section>
 
+    ${photoCard(st, today)}
+
     <section class="card">
       <div class="card-head"><h2><span style="color:var(--c-move)">${icon('steps', 18)}</span> Marche et dos</h2><span class="tiny muted">${a.walk != null ? `~${a.walk} min/j` : 'pas non mesurés'}</span></div>
       <div class="meter"><div class="track" style="height:10px"><div class="fill" style="width:${walkPct}%;background:var(--c-move)"></div></div></div>
@@ -500,7 +503,7 @@ function renderPosture(el) {
     </section>
 
     <section class="card">
-      <div class="card-head"><h2><span style="color:var(--c-mood)">${icon('activity', 18)}</span> Routine posture · 7 min</h2>${doneToday ? `<span class="badge bon">faite ✓</span>` : ''}</div>
+      <div class="card-head"><h2><span style="color:var(--c-mood)">${icon('activity', 18)}</span> Routine posture · 7 min</h2>${doneToday ? `<span class="badge bon">faite ✓</span>` : G.postureRequired(st, today) ? `<span class="badge a_limiter">obligatoire</span>` : ''}</div>
       <p class="small muted" style="margin-top:0">Chaque jour, idéalement après une longue période assise. Touche un exercice pour voir la démonstration en 3D.</p>
       ${PO.ROUTINE.map((r) => `<details class="po-ex"><summary><span class="small" style="font-weight:600">${esc(r.label)}</span><span class="tiny muted" style="white-space:nowrap;margin-left:8px">${esc(r.dose)}</span></summary>
         ${X3.hasAnim(r.label) ? `<div class="ex3d" data-anim="${esc(r.label)}" data-noswipe><canvas aria-label="Démonstration animée : ${esc(r.label)}"></canvas><div class="ex3d-cue"></div><span class="ex3d-hint">${icon('refresh', 11)} glisse pour tourner</span></div>` : ''}
@@ -516,6 +519,8 @@ function renderPosture(el) {
     <div class="note" style="margin:4px 0 12px">${icon('info', 18)}<span>Il n’existe pas de « posture parfaite » à tenir toute la journée : la meilleure position est la suivante. Bouger souvent compte plus que se tenir droit en permanence.</span></div>
     ${srcLinks(PO.SOURCES)}`;
   $$('#po-quiz', el).forEach((b) => (b.onclick = () => postureQuiz(() => renderPosture(el))));
+  $$('[data-po-photo]', el).forEach((b) => (b.onclick = () => postureFromPhoto(b.dataset.poPhoto === 'gallery', () => renderPosture(el))));
+  $$('[data-po-last]', el).forEach((b) => (b.onclick = () => showPostureResult(st.posture.checks.at(-1), null)));
   $('#po-done', el).onclick = () => {
     store.update((s) => { s.posture ||= {}; s.posture.done ||= {}; if (s.posture.done[today]) delete s.posture.done[today]; else s.posture.done[today] = true; });
     if (!doneToday) { toast('Routine posture notée 👏', 1500); Diana.pop('Bravo ! Ton dos et ta nuque te disent merci 💙', 'proud'); }
@@ -529,6 +534,60 @@ function renderPosture(el) {
     const cue = box.querySelector('.ex3d-cue');
     X3.play(box.querySelector('canvas'), box.dataset.anim, { onCue: (t) => { cue.textContent = t; cue.classList.remove('in'); void cue.offsetWidth; cue.classList.add('in'); } });
   }));
+}
+
+// ---------- Analyse de la posture sur photo ----------
+const VERDICT_PO = { bonne: ['Bonne', 'bon'], correcte: ['Correcte', 'moyen'], a_travailler: ['À travailler', 'a_limiter'] };
+const frDate = (k) => new Date(k + 'T12:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+const addDays = (k, n) => G.dayKeyOffset(n, new Date(k + 'T12:00'));
+function photoCard(st, today) {
+  const last = st.posture?.checks?.at(-1);
+  const req = G.postureRequired(st, today) ? st.posture.required : null;
+  const hasKey = !!st.settings.apiKey;
+  return `<section class="card">
+    <div class="card-head"><h2><span style="color:var(--c-screen)">${icon('camera', 18)}</span> Analyse photo de ta posture</h2></div>
+    ${req ? `<div class="note warn" style="margin-top:0">${icon('alert', 18)}<span><b>Routine posture obligatoire</b> jusqu’au ${frDate(addDays(req.until, -1))} : c’est une quête du jour, la journée n’est validée qu’avec elle. Refais une photo quand tu te sens mieux aligné·e : si elle est correcte, l’obligation est levée.</span></div>` : ''}
+    ${last ? `<button data-po-last style="display:flex;gap:10px;align-items:center;width:100%;border:0;background:none;color:inherit;text-align:left;padding:0;margin:4px 0 12px"><span class="badge ${VERDICT_PO[last.verdict]?.[1] || 'moyen'}" style="flex:none">${last.score}/100</span><div><div class="small" style="font-weight:600">Dernière photo : ${VERDICT_PO[last.verdict]?.[0] || last.verdict}</div><div class="tiny muted">${frDate(last.date)} · ${esc(last.summary || '')}</div></div></button>` : ''}
+    <p class="small muted" style="margin-top:0">Debout, détendu·e, <b>de profil</b>, corps entier dans le cadre, tenue près du corps. Pose le téléphone à hauteur de taille avec le retardateur, ou demande à quelqu’un.</p>
+    ${hasKey ? `<div class="grid2"><button class="btn" data-po-photo="camera">${icon('camera', 18)} Me prendre en photo</button><button class="btn soft" data-po-photo="gallery">${icon('image', 18)} Galerie</button></div>
+      <p class="tiny muted" style="margin:8px 0 0">La photo est envoyée à l’IA pour l’analyse puis n’est pas gardée : seul le résultat est enregistré.</p>`
+      : `<div class="note">${icon('key', 18)}<span>Ajoute une clé IA dans Profil (une clé Google Gemini est gratuite) pour analyser ta posture en photo.</span></div>`}
+  </section>`;
+}
+
+async function postureFromPhoto(fromGallery, done) {
+  const [file] = await pickImage({ camera: !fromGallery, timer: 10, facing: 'environment', hint: 'De profil, debout, corps entier : aligne-toi sur la ligne' });
+  if (!file) return;
+  const dataUrl = await compressImage(file, 1280, 0.85);
+  const body = sheet(`<img class="preview" src="${dataUrl}" alt="" style="max-height:260px;object-fit:contain"><div id="po-res" style="margin-top:14px"><div class="empty"><span class="spinner"></span><p>Analyse de ta posture…</p></div></div>`, { title: 'Ta posture', full: true, onClose: done });
+  try {
+    const r = await AI.analyzePosture(store.get().settings, dataUrl);
+    const today = store.today();
+    let outcome;
+    store.update((s) => { outcome = PO.applyCheck(s, r, today, addDays); });
+    showPostureResult({ ...r, date: today }, outcome, $('#po-res', body));
+    if (outcome === 'required') Diana.pop('On va chouchouter ton dos : la routine posture devient une quête du jour pendant 3 semaines 💪', 'happy');
+    if (outcome === 'lifted') Diana.pop('Super progrès ! Ta routine posture n’est plus obligatoire 🎉', 'proud');
+  } catch (e) {
+    $('#po-res', body).innerHTML = `<div class="note bad">${icon('alert', 18)}<span>${esc(AI.friendlyError(e))}</span></div>`;
+  }
+}
+
+function showPostureResult(r, outcome, box = null) {
+  if (!r) return;
+  const html = `
+    ${r.usable === false || r.is_person === false ? `<div class="note warn">${icon('alert', 18)}<span><b>Photo difficile à analyser.</b> ${esc(r.summary || '')} Refais-la de profil, debout, corps entier, en tenue près du corps.</span></div>` : `
+    <div class="between"><h2 style="font-size:1.2rem;margin:0">Posture ${(VERDICT_PO[r.verdict]?.[0] || '').toLowerCase()}</h2><span class="badge ${VERDICT_PO[r.verdict]?.[1] || 'moyen'}">${r.score}/100</span></div>
+    <p class="small" style="margin:10px 0">${esc(r.summary)}</p>
+    ${outcome === 'required' ? `<div class="note warn">${icon('target', 18)}<span><b>Routine posture ajoutée en quête obligatoire</b> pendant 3 semaines : 7 minutes par jour, et la journée n’est validée qu’avec elle. Une nouvelle photo correcte la lève.</span></div>` : ''}
+    ${outcome === 'lifted' ? `<div class="note">${icon('check', 18)}<span><b>Bravo, posture correcte !</b> La routine n’est plus obligatoire (elle reste conseillée).</span></div>` : ''}
+    ${r.findings?.length ? `<label class="lbl">Ce que je vois</label>${r.findings.map((f) => `<div style="display:flex;gap:10px;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--line)"><span class="badge ${f.severity === 'marquee' ? 'a_limiter' : f.severity === 'moderee' ? 'moyen' : 'bon'}" style="white-space:nowrap;flex:none">${esc(f.zone)}</span><div class="small">${esc(f.finding)}</div></div>`).join('')}` : ''}
+    ${r.positives ? `<p class="small" style="margin:10px 0"><b>Bien :</b> ${esc(r.positives)}</p>` : ''}
+    ${r.exercises?.length ? `<label class="lbl">Tes exercices prioritaires</label><ul class="small" style="margin:4px 0 10px;padding-left:18px">${r.exercises.map((x) => `<li>${esc(x)} <span class="tiny muted">${esc(PO.ROUTINE.find((y) => y.label === x)?.dose || '')}</span></li>`).join('')}</ul>` : ''}
+    ${r.tip ? `<div class="note">${icon('bulb', 18)}<span>${esc(r.tip)}</span></div>` : ''}
+    <p class="tiny muted">Une photo ne montre qu’un instant et il n’existe pas de posture parfaite : ce bilan sert à cibler tes exercices. En cas de douleur qui dure, consulte un médecin ou un kiné.${r.confidence ? ` Confiance : ${esc(r.confidence)}.` : ''}</p>`}`;
+  if (box) box.innerHTML = html;
+  else sheet(html, { title: 'Dernier bilan photo' });
 }
 
 function postureQuiz(done) {

@@ -157,9 +157,10 @@ export function compressImage(file, max = 1280, quality = 0.82) {
 
 // Choix d'image. Photo : caméra intégrée (aperçu immédiat, sans ouvrir l'appli Appareil photo) ;
 // galerie : sélecteur natif dans l'application Android, sélecteur de fichiers sinon.
-export async function pickImage({ camera = true, multiple = false } = {}) {
+// timer : retardateur proposé (secondes) ; facing : caméra de départ ('environment' ou 'user').
+export async function pickImage({ camera = true, multiple = false, timer = 0, facing = 'environment', hint = '' } = {}) {
   if (camera && navigator.mediaDevices?.getUserMedia) {
-    const r = await quickCamera().catch(() => null);
+    const r = await quickCamera({ timer, facing, hint }).catch(() => null);
     if (r === 'gallery') return pickImage({ camera: false, multiple });
     if (r) return [r];
     if (r === null && quickCamera.denied) { /* repli ci-dessous */ } else return [];
@@ -203,42 +204,69 @@ export function pickFiles({ accept = 'image/*,application/pdf', multiple = true 
 export const readDataUrl = (blob) => new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = reject; r.readAsDataURL(blob); });
 
 // Caméra plein écran dans l'application : renvoie un Blob JPEG, 'gallery', ou undefined si annulé.
-let camStream = null, camStop = null;
+let camStream = null, camStop = null, camFacing = 'environment';
 // Image vide : sans « poster », la WebView Android affiche une grosse icône ▶ avant la première image.
 export const BLANK = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
-function quickCamera() {
+function quickCamera({ timer = 0, facing = 'environment', hint = '' } = {}) {
   return new Promise(async (resolve, reject) => {
     const root = document.createElement('div');
     root.className = 'qcam';
+    // options « photo de soi » (posture) : changement de caméra, retardateur, consigne de cadrage
+    const selfOpts = timer > 0 || facing === 'user';
     root.innerHTML = `<video playsinline muted autoplay poster="${BLANK}"></video><div class="qcam-flash"></div>
       <button class="qcam-x" aria-label="Fermer">${icon('x', 26)}</button>
-      <div class="qcam-bar"><button class="qcam-side" data-gal aria-label="Galerie">${icon('image', 24)}</button><button class="qcam-shot" aria-label="Prendre la photo"></button><span class="qcam-side"></span></div>`;
+      ${hint ? `<div class="qcam-guide"></div><div class="qcam-hint">${esc(hint)}</div>` : ''}
+      <div class="qcam-count" hidden></div>
+      <div class="qcam-bar"><button class="qcam-side" data-gal aria-label="Galerie">${icon('image', 24)}</button><button class="qcam-shot" aria-label="Prendre la photo"></button>${selfOpts ? `<span class="qcam-tools"><button class="qcam-side sm" data-timer aria-label="Retardateur">${timer ? `${timer} s` : 'Off'}</button><button class="qcam-side sm" data-flip aria-label="Changer de caméra">${icon('refresh', 20)}</button></span>` : '<span class="qcam-side"></span>'}</div>`;
     document.body.appendChild(root);
     const video = root.querySelector('video');
-    const close = (v) => { clearTimeout(camStop); camStop = setTimeout(() => { camStream?.getTracks().forEach((t) => t.stop()); camStream = null; }, 20000); root.remove(); resolve(v); };
+    let delay = timer, ticking = null, gone = false;
+    const close = (v) => { gone = true; clearInterval(ticking); clearTimeout(camStop); camStop = setTimeout(() => { camStream?.getTracks().forEach((t) => t.stop()); camStream = null; }, 20000); root.remove(); resolve(v); };
     root.querySelector('.qcam-x').onclick = () => close(undefined);
     root.querySelector('[data-gal]').onclick = () => close('gallery');
-    try {
+    const start = async (want) => {
       clearTimeout(camStop);
       // le flux reste ouvert 20 s après fermeture : la photo suivante s'ouvre instantanément
-      if (!camStream || !camStream.active) camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+      if (camStream?.active && camFacing !== want) { camStream.getTracks().forEach((t) => t.stop()); camStream = null; }
+      if (!camStream || !camStream.active) camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: want }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+      camFacing = want;
+      video.classList.toggle('mirror', want === 'user'); // aperçu en miroir pour la caméra avant (la photo, elle, reste à l'endroit)
       video.addEventListener('playing', () => video.classList.add('on'), { once: true });
       video.srcObject = camStream;
       await video.play().catch(() => {});
+    };
+    try {
+      await start(selfOpts ? facing : 'environment'); // repas, codes-barres : toujours la caméra arrière
     } catch (e) {
       quickCamera.denied = true;
       root.remove();
       reject(e);
       return;
     }
-    root.querySelector('.qcam-shot').onclick = () => {
-      if (!video.videoWidth) return;
+    root.querySelector('[data-flip]')?.addEventListener('click', () => start(camFacing === 'user' ? 'environment' : 'user').catch(() => {}));
+    root.querySelector('[data-timer]')?.addEventListener('click', (e) => { delay = delay === 0 ? 3 : delay === 3 ? 10 : 0; e.currentTarget.textContent = delay ? `${delay} s` : 'Off'; });
+    const snap = () => {
+      if (gone || !video.videoWidth) return;
       const c = document.createElement('canvas');
       c.width = video.videoWidth; c.height = video.videoHeight;
       c.getContext('2d').drawImage(video, 0, 0);
       root.querySelector('.qcam-flash').classList.add('on');
       navigator.vibrate?.(15);
       c.toBlob((b) => close(b), 'image/jpeg', 0.9);
+    };
+    root.querySelector('.qcam-shot').onclick = () => {
+      if (!video.videoWidth || ticking) return;
+      if (!delay) return snap();
+      // retardateur : compte à rebours affiché en grand, une vibration par seconde
+      const box = root.querySelector('.qcam-count');
+      let n = delay;
+      box.hidden = false; box.textContent = n;
+      ticking = setInterval(() => {
+        n--;
+        navigator.vibrate?.(n ? 30 : 80);
+        if (n > 0) { box.textContent = n; return; }
+        clearInterval(ticking); ticking = null; box.hidden = true; snap();
+      }, 1000);
     };
   });
 }

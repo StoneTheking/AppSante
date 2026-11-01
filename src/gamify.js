@@ -22,7 +22,12 @@ export function plateGoal(tot, t) {
   return { progress, hint };
 }
 
-// Les 5 quêtes quotidiennes, chacune alignée sur une recommandation.
+// Routine posture obligatoire : imposée après une photo de posture jugée « à travailler », pendant 21 jours
+// au plus, ou jusqu'à une nouvelle photo correcte. Ce jour-là, la journée n'est validée que si elle est faite.
+export const POSTURE_DAYS = 21;
+export const postureRequired = (st, key) => { const r = st.posture?.required; return !!r && key >= r.from && (!r.until || key < r.until); };
+
+// Les 5 quêtes quotidiennes, chacune alignée sur une recommandation (+ la routine posture quand elle est obligatoire).
 export function dayGoals(st, key, idx = null) {
   const d = st.days[key] || {};
   const t = idx ? idx.t : S.targets(st.profile);
@@ -36,6 +41,7 @@ export function dayGoals(st, key, idx = null) {
     { id: 'sleep', label: 'Nuit de 7 h', icon: 'moon', color: 'var(--c-sleep)', progress: sleepH ? Math.min(1, sleepH / 7) : 0, hint: sleepH ? `${Math.floor(sleepH)} h ${String(Math.round((sleepH % 1) * 60) % 60).padStart(2, '0')}` : 'nuit non notée' },
     { id: 'water', label: 'Bien s’hydrater', icon: 'water', color: 'var(--c-water)', progress: Math.min(1, (d.waterMl || 0) / t.waterMl), hint: `${String((d.waterMl || 0) / 1000).replace('.', ',')} / ${String(t.waterMl / 1000).replace('.', ',')} L` },
     { id: 'mood', label: 'Check-in humeur', icon: 'smile', color: 'var(--c-mood)', progress: d.mood ? 1 : 0, hint: d.mood ? 'fait' : 'à faire' },
+    ...(postureRequired(st, key) ? [{ id: 'posture', label: 'Routine posture', icon: 'posture', color: 'var(--c-screen)', required: true, progress: st.posture?.done?.[key] ? 1 : 0, hint: st.posture?.done?.[key] ? 'faite' : 'obligatoire' }] : []),
   ].map((g) => ({ ...g, done: g.progress >= 1 }));
 }
 
@@ -43,7 +49,10 @@ export const VALIDATE = 3; // quêtes nécessaires pour valider la journée (niv
 // À partir du niveau 5 (« Forêt »), il faut une quête de plus : 4 sur 5. Les jours d'avant gardent la règle de l'époque.
 export const PLUS_LEVEL = 5;
 export const needFor = (st, key) => (st.questPlusSince && key >= st.questPlusSince ? VALIDATE + 1 : VALIDATE);
-const validated = (st, key, idx) => dayGoals(st, key, idx).filter((g) => g.done).length >= needFor(st, key);
+// Journée validée : assez de quêtes ET les quêtes obligatoires faites.
+export const dayOk = (goals, need) => goals.filter((g) => g.done).length >= need && !goals.some((g) => g.required && !g.done);
+export const blockedBy = (goals) => goals.filter((g) => g.required && !g.done);
+const validated = (st, key, idx) => dayOk(dayGoals(st, key, idx), needFor(st, key));
 
 // Série : jours validés consécutifs. Un « gel » (gagné tous les 7 jours validés, 2 max) protège un jour manqué.
 export function streak(st, now = new Date(), idx = indexOf(st)) {
@@ -93,23 +102,25 @@ export function progress(st, now = new Date()) {
     const from = new Date(now); from.setDate(from.getDate() - 365);
     if (d < from) d.setTime(from.getTime());
     for (let k = localKey(d); k < today; d.setDate(d.getDate() + 1), k = localKey(d)) {
-      const done = dayGoals(st, k, idx).filter((g) => g.done).length;
+      const goals = dayGoals(st, k, idx), done = goals.filter((g) => g.done).length;
       const need = needFor(st, k);
-      const delta = done >= need ? xpForDay(st, k, idx) : frozen.has(k) ? 0 : -missPenalty(levelOf(xp), done, need);
+      // quête obligatoire manquée : compte comme une quête manquante de plus
+      const delta = dayOk(goals, need) ? xpForDay(st, k, idx) : frozen.has(k) ? 0 : -missPenalty(levelOf(xp), Math.min(done, need - blockedBy(goals).length), need);
       xp = Math.max(0, xp + delta);
       yesterday = delta;
     }
   }
-  const doneToday = dayGoals(st, today, idx).filter((g) => g.done).length;
+  const goalsToday = dayGoals(st, today, idx), doneToday = goalsToday.filter((g) => g.done).length;
   const needToday = needFor(st, today);
-  const todayXp = doneToday >= needToday ? xpForDay(st, today, idx) : 0;
+  const okToday = dayOk(goalsToday, needToday);
+  const todayXp = okToday ? xpForDay(st, today, idx) : 0;
   const level0 = levelOf(xp);
   xp += todayXp;
   const level = levelOf(xp);
   const floor = 50 * level * (level - 1), next = 50 * (level + 1) * level;
   return {
     xp, level, title: LEVELS[Math.min(LEVELS.length - 1, level - 1)], into: xp - floor, need: next - floor,
-    today: todayXp, pending: xpForDay(st, today, idx), validated: doneToday >= needToday, need: needToday, yesterday, atStake: doneToday >= needToday ? 0 : Math.min(xp, missPenalty(level0, doneToday, needToday)),
+    today: todayXp, pending: xpForDay(st, today, idx), validated: okToday, need: needToday, yesterday, atStake: okToday ? 0 : Math.min(xp, missPenalty(level0, Math.min(doneToday, needToday - blockedBy(goalsToday).length), needToday)),
   };
 }
 
@@ -142,6 +153,7 @@ export function streakReminder(st) {
   const missing = goals.filter((g) => !g.done).map((g) => g.label.toLowerCase());
   if (s.todayOk) return null;
   const need = needFor(st, dayKeyOffset(0)) - goals.filter((g) => g.done).length;
+  if (need <= 0 && blockedBy(goals).length) return { title: '🔥 Ta série est en jeu !', body: 'Il ne manque que ta routine posture (7 min), obligatoire aujourd’hui.' };
   return {
     title: s.current > 0 || s.atRisk ? `🔥 Ta série est en jeu !` : '🔥 Lance ta série aujourd’hui',
     body: `Encore ${need} quête${need > 1 ? 's' : ''} : ${missing.slice(0, 3).join(', ')}.`,

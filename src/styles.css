@@ -405,7 +405,7 @@ html, body { overflow-x: hidden; }
 .chip.taste span { font-weight: 800; }
 
 /* ---------- Motivation ---------- */
-.quests .quest-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin: 12px 0 6px; }
+.quests .quest-row { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; margin: 12px 0 6px; }
 .quest { position: relative; border: 0; background: none; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 0; color: var(--text-2); }
 .quest svg circle { transition: stroke-dasharray 0.8s cubic-bezier(0.2, 0.8, 0.2, 1); }
 .quest .qi { position: absolute; top: 12px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; }
@@ -522,6 +522,13 @@ span.qcam-side { background: none; }
 .qcam-shot:active { transform: scale(0.9); background: #fff; }
 .qcam-flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
 .qcam-flash.on { animation: flash 0.25s ease-out; }
+.qcam video.mirror { transform: scaleX(-1); }
+.qcam-tools { display: flex; gap: 8px; }
+.qcam-side.sm { width: 46px; height: 46px; font-size: 0.8rem; font-weight: 700; }
+.qcam-hint { position: absolute; top: calc(70px + env(safe-area-inset-top)); left: 16px; right: 16px; padding: 10px 12px; border-radius: 12px; background: rgba(0, 0, 0, 0.5); color: #fff; font-size: 0.85rem; text-align: center; }
+.qcam-count { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 7rem; font-weight: 800; text-shadow: 0 4px 24px rgba(0, 0, 0, 0.6); pointer-events: none; }
+.qcam-count[hidden] { display: none; }
+.qcam-guide { position: absolute; top: 12%; bottom: 18%; left: 50%; width: 0; border-left: 2px dashed rgba(255, 255, 255, 0.45); pointer-events: none; }
 @keyframes flash { 30% { opacity: 0.8; } }
 
 /* ---------- v2.1 ---------- */

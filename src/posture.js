@@ -55,3 +55,15 @@ export function assess(st, days = []) {
 }
 
 export const SOURCES = ['pocovi2024', 'haddadj2025', 'hansraj2014', 'swain2020', 'sheikhhoseini2018', 'nair2015', 'waongenngarm2020'];
+
+// Résultat d'une photo de posture : gardé dans l'historique (sans la photo) ; posture « à travailler »
+// → la routine devient une quête obligatoire pendant 21 jours ; une nouvelle photo correcte la lève.
+export const isBad = (r) => r.usable !== false && r.is_person !== false && (r.verdict === 'a_travailler' || r.score < 60);
+export function applyCheck(s, r, today, addDays) {
+  s.posture ||= {};
+  s.posture.checks = [...(s.posture.checks || []), { date: today, at: Date.now(), score: r.score, verdict: r.verdict, view: r.view, summary: r.summary, findings: r.findings, exercises: r.exercises, tip: r.tip, positives: r.positives }].slice(-20);
+  if (r.usable === false || r.is_person === false) return 'unusable';
+  if (isBad(r)) { s.posture.required = { from: today, until: addDays(today, 21), score: r.score }; return 'required'; }
+  if (s.posture.required && (!s.posture.required.until || s.posture.required.until > today)) { s.posture.required.until = today; return 'lifted'; }
+  return 'ok';
+}
