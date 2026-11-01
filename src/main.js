@@ -126,7 +126,7 @@ function renderView(after, animate = false) {
   view.className = animate ? 'view-enter' : '';
   if (animate) void view.offsetWidth;
   VIEWS[tab].render(view, ctx);
-  if (!animate) { if (Math.abs(window.scrollY - y) > 1) window.scrollTo(0, y); requestAnimationFrame(() => { view.style.minHeight = ''; }); }
+  if (!animate) { if (Math.abs(window.scrollY - y) > 1) { window.scrollTo(0, y); Diana.syncScroll(y); } requestAnimationFrame(() => { view.style.minHeight = ''; }); }
   // l'animation d'entrée ne joue qu'à la navigation, pas à chaque mise à jour
   clearTimeout(renderView.t);
   renderView.t = setTimeout(() => $$('.view-enter').forEach((e) => e.classList.remove('view-enter')), 1200);
@@ -166,6 +166,7 @@ function go(t, after, dir) {
   if (['health', 'home', 'sport'].includes(t)) autoSync(); // données fraîches (Samsung Health envoie pas et séances au fil de l'eau)
   history.replaceState(null, '', '#' + t);
   window.scrollTo(0, 0);
+  Diana.syncScroll(0); // la remontée en haut de la nouvelle page ne fait pas rouler Diana
   // en glissant : simple glissement latéral, sans l'animation d'entrée des cartes (qui partent transparentes → flash noir)
   renderView(after, !dir);
   if (dir) {
@@ -239,6 +240,7 @@ function swipeNav() {
         setTimeout(() => {
           v.style.transition = 'none'; v.style.transform = ''; v.style.opacity = '';
           v.classList.remove('dragging');
+          Diana.fling(d); // elle continue de tourner dans le sens du glissement
           go(ORDER[i], null, d);
           requestAnimationFrame(() => { v.style.transition = ''; leaving = false; });
         }, 100);

@@ -33,16 +33,21 @@ function orbOf(cv) {
   return o;
 }
 
-// Diana roule comme une balle dans le sens du défilement : vitesse angulaire (axes de l'écran) qui s'amortit,
-// puis elle revient doucement face à l'utilisateur.
-const ball = { q: null, wx: 0, wy: 0, t: 0 };
+// Diana roule comme une balle dans le sens du défilement : vitesse angulaire (axes de l'écran) qui s'amortit.
+// Les gestes s'additionnent : un défilement vertical juste après un glissement horizontal tourne Diana à partir
+// de la position où elle se trouve (sans la remettre de face) ; elle ne revient face à l'utilisateur qu'après
+// une courte pause sans geste.
+const ball = { q: null, wx: 0, wy: 0, t: 0, input: 0 };
+const KX = 0.025, KY = 0.012, MAXW = 22, HOLD = 1.3; // gauche/droite plus marqué que haut/bas ; pause avant retour (s)
 export function roll(dx = 0, dy = 0) {
   if (still) return;
-  const k = 0.012;
-  ball.wx = Math.max(-14, Math.min(14, ball.wx - dy * k));
-  ball.wy = Math.max(-14, Math.min(14, ball.wy + dx * k));
+  ball.wx = Math.max(-MAXW, Math.min(MAXW, ball.wx - dy * KY));
+  ball.wy = Math.max(-MAXW, Math.min(MAXW, ball.wy + dx * KX));
+  ball.input = performance.now() / 1000;
   wake();
 }
+// Élan donné à la fin d'un glissement qui change de page (dir : +1 vers la gauche, −1 vers la droite).
+export function fling(dir) { roll(-dir * 60, 0); }
 const _q = typeof THREE !== 'undefined' ? new THREE.Quaternion() : null, _id = _q && new THREE.Quaternion(), _ax = _q && new THREE.Vector3(), _m = _q && new THREE.Matrix4();
 function stepBall(now) {
   if (!_q) return null;
@@ -54,18 +59,21 @@ function stepBall(now) {
   if (w > 1e-3) {
     _ax.set(ball.wx / w, ball.wy / w, 0);
     _q.setFromAxisAngle(_ax, w * dt);
-    ball.q.premultiply(_q);
+    ball.q.premultiply(_q); // la nouvelle rotation s'ajoute à l'orientation actuelle
   }
-  const damp = Math.exp(-dt * 2.6);
+  const damp = Math.exp(-dt * 2.2);
   ball.wx *= damp; ball.wy *= damp;
-  // retour face à l'utilisateur quand elle a presque fini de rouler
-  if (w < 2.5) ball.q.slerp(_id, 1 - Math.exp(-dt * (3.5 - w)));
+  // retour face à l'utilisateur seulement après une pause sans geste
+  if (w < 2.5 && now - ball.input > HOLD) ball.q.slerp(_id, 1 - Math.exp(-dt * (3.5 - w)));
   _m.makeRotationFromQuaternion(ball.q);
   return _m;
 }
 const rolling = () => Math.hypot(ball.wx, ball.wy) > 0.02 || (ball.q && 1 - Math.abs(ball.q.w) > 1e-5);
+let lastY = 0;
+// Remontée automatique en haut de page (changement d'onglet) : ce n'est pas un geste, Diana ne doit pas rouler.
+export function syncScroll(y = 0) { lastY = y; }
 if (typeof window !== 'undefined') {
-  let lastY = window.scrollY || 0;
+  lastY = window.scrollY || 0;
   window.addEventListener('scroll', () => { const y = window.scrollY; roll(0, y - lastY); lastY = y; }, { passive: true });
 }
 
