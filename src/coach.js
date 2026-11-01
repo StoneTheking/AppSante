@@ -5,6 +5,7 @@ import { bestOutdoorHour, envInsights, aqiLabel } from './env.js';
 import { busyBlocks, suggestSlot, usualHour, DEFAULT_WORK } from './schedule.js';
 import { weekPlan, activity as sportActivity, substitute, adaptation, adaptedMinutes } from './sport.js';
 import { sunTimes, PARIS } from './sun.js';
+import * as W from './wearable.js';
 
 const avg = (xs) => {
   const v = xs.filter((x) => x != null && !Number.isNaN(x));
@@ -49,8 +50,8 @@ export function summarize({ profile, days, meals, weights, env, household = [], 
     bedVar: S.bedtimeVariability(week.map((k) => d(k).bed)),
     wakeVar: S.wakeVariability(week.map((k) => d(k).wake)),
     nights: week.map(sleepH).filter((h) => h > 0),
-    modMin: sum(week.map((k) => d(k).modMin)),
-    vigMin: sum(week.map((k) => d(k).vigMin)),
+    modMin: sum(week.map((k) => W.modOf(d(k)))),
+    vigMin: sum(week.map((k) => W.vigOf(d(k)))),
     strength: week.filter((k) => (d(k).strengthMin || 0) > 0).length,
     screenMin: avg(week.map((k) => d(k).screenMin)),
     socialMin: avg(week.map((k) => d(k).socialMin)),
@@ -76,7 +77,7 @@ export function summarize({ profile, days, meals, weights, env, household = [], 
   // Jours de données par pilier : un pilier mesuré 1 jour sur 7 pèse moins qu'un pilier suivi toute la semaine.
   const coverage = {
     sommeil: w.nights.length,
-    activite: week.filter((k) => d(k).steps > 0 || d(k).modMin || d(k).vigMin || d(k).strengthMin).length,
+    activite: week.filter((k) => d(k).steps > 0 || W.modOf(d(k)) || W.vigOf(d(k)) || d(k).strengthMin).length,
     alimentation: dietDays.length,
     numerique: week.filter((k) => d(k).screenMin != null).length,
   };
@@ -107,12 +108,17 @@ export function summarize({ profile, days, meals, weights, env, household = [], 
     age: S.age(profile.birthYear),
   };
 
+  // Forme du jour (montre) : nuit et cœur de ce matin comparés à tes 4 dernières semaines.
+  const ready = W.readiness(days, todayKey, { need });
+  const stages = W.stageSummary(week.map(d));
   const ctx = {
+    lowReadiness: ready?.level === 'basse',
+    highReadiness: ready?.level === 'haute',
     poorSleep: lastNight != null ? lastNight < 6.5 || (today.sleepQuality || 5) <= 2 : (w.sleepH || 8) < 6.5,
     lowMood: (today.mood || w.mood || 3) <= 2.5,
     lowEnergy: (today.energy || w.energy || 3) <= 2,
     highStress: (today.stress || w.stress || 2) >= 4,
-    workout: (today.vigMin || 0) + (today.strengthMin || 0) + (today.modMin || 0) >= 30,
+    workout: W.vigOf(today) + (today.strengthMin || 0) + W.modOf(today) >= 30,
     goal: profile.goal,
   };
 
@@ -123,7 +129,7 @@ export function summarize({ profile, days, meals, weights, env, household = [], 
   const sportToday = weekPlan(profile, workouts, new Date(), days).find((x) => x.today) || null;
   const workoutsToday = workouts.filter((x) => x.date === todayKey);
   const sun = { ...sunTimes(new Date(), location || PARIS), approx: !location };
-  return { sun, busy, usualHour: usualHour(workouts), env: envFresh, mealsToday: mealsOf(todayKey), sportToday, sportFeedback, workoutsToday, household, stools, lateMeals, t, p, body, today, todayKey, lastNight, totToday, w, scores, scoreInfo, dietAvg, kcalAvg, dietDaysCount: dietDays.length, ctx };
+  return { ready, stages, sun, busy, usualHour: usualHour(workouts), env: envFresh, mealsToday: mealsOf(todayKey), sportToday, sportFeedback, workoutsToday, household, stools, lateMeals, t, p, body, today, todayKey, lastNight, totToday, w, scores, scoreInfo, dietAvg, kcalAvg, dietDaysCount: dietDays.length, ctx };
 }
 
 // ---------- Activité physique recommandée ----------
@@ -145,6 +151,7 @@ export function sportOfDay(sm, profile) {
   const easy = () => sportActivity(substitute('marche', profile)).label.toLowerCase();
   if (!slot?.type) { type = 'marche'; minutes = 30; intensity = 'legere'; why.push(`Jour de récupération dans ta semaine type : ${easy()} en douceur suffit.`); }
   if (sm.ctx.poorSleep && intensity === 'intense') { type = 'marche'; intensity = 'moderee'; minutes = 30; why.push(`Nuit courte : on remplace la séance intense par ${easy()} à allure modérée.`); }
+  else if (sm.ctx.lowReadiness && intensity === 'intense') { intensity = 'moderee'; minutes = Math.min(minutes, 30); why.push(`Forme du jour basse (${sm.ready.score}/100 d’après ta montre) : même séance, à allure modérée.`); }
   if (slot?.matches) { type = 'yoga'; intensity = 'legere'; minutes = 20; why.length = 0; why.push('Séance du jour déjà faite 👏 : mobilité ou étirements pour récupérer.'); }
   if (sm.env && (sm.env.aqi > 60 || sm.env.tMax >= 33) && ['course', 'velo', 'randonnee', 'marche'].includes(type)) why.push('Air ou chaleur défavorables : fais-la en intérieur (tapis, vélo d’appartement, salle).');
   type = substitute(type, profile);
@@ -167,6 +174,9 @@ export function recommendActivity(sm, profile) {
   if (ctx.poorSleep) {
     r = { title: L(['marche', 'yoga']), duration: 30, intensity: 'légère à modérée' };
     why.push('Nuit courte : on privilégie une activité modérée, l’effort intense après une privation de sommeil augmente le risque de blessure et le ressenti d’effort.');
+  } else if (ctx.lowReadiness) {
+    r = { title: L(['marche', 'yoga']), duration: 30, intensity: 'légère' };
+    why.push(`Forme du jour basse (${sm.ready.score}/100) : ${sm.ready.advice.split(' : ')[0].toLowerCase()}. Ton corps récupère : une activité douce aujourd’hui, l’intensité demain.`);
   } else if (ctx.workout) {
     r = { title: `Récupération active : ${L(['marche', 'yoga'], 'étirements').toLowerCase()}`, duration: 20, intensity: 'légère' };
     why.push('Tu as déjà fait ta séance aujourd’hui 👏 : une activité douce favorise la récupération.');
@@ -181,6 +191,7 @@ export function recommendActivity(sm, profile) {
     r = { title: 'Séance plaisir ou intervalles (HIIT court)', duration: 25, intensity: 'soutenue' };
     why.push('Objectifs OMS de la semaine atteints : tu peux varier les plaisirs ou progresser en intensité.');
   }
+  if (ctx.highReadiness && !ctx.poorSleep && !ctx.workout) why.push(`Forme du jour haute (${sm.ready.score}/100 d’après ta montre) : bon jour pour pousser un peu plus.`);
   if (ctx.lowMood) {
     why.push('Humeur basse : marche/footing en extérieur, yoga et musculation font partie des interventions les plus efficaces contre les symptômes dépressifs.');
     src.push('noetel2024', 'burns2023');
@@ -437,6 +448,16 @@ export function insights(sm) {
   if (ctx.lowMood) push('attention', 'Humeur basse', 'Activité physique (surtout dehors), lumière du jour, contacts sociaux et alimentation de type méditerranéen ont tous un effet démontré. Si cela dure plus de 2 semaines, parles-en à un médecin ou appelle le 3114 (France) en cas d’idées noires.', ['noetel2024', 'jacka2017']);
   if (w.restingHR != null && w.restingHR > 80) push('attention', 'Fréquence cardiaque au repos élevée', `${Math.round(w.restingHR)} bpm en moyenne. Chaque +10 bpm est associé à environ +9 % de mortalité ; l’endurance régulière la fait baisser.`, ['zhang2016', 'mandsager2018']);
   else if (w.restingHR != null && w.restingHR < 60) push('bon', 'Cœur entraîné', `FC de repos de ${Math.round(w.restingHR)} bpm : signe d’une bonne forme cardio-respiratoire.`, []);
+  // Montre : phases du sommeil, efficacité, éveils, forme du jour
+  const stg = sm.stages;
+  if (stg?.efficiency != null && stg.efficiency < 85) push('attention', 'Sommeil morcelé', `Efficacité du sommeil de ${stg.efficiency} % (temps endormi / temps au lit) : sous les 85 % d’un sommeil de qualité. Ne reste pas au lit éveillé plus de 20 min : lève-toi, lumière douce, et reviens quand le sommeil arrive.`, ['ohayon2017']);
+  if (stg?.wakeups != null && stg.wakeups > 1.5) push('attention', 'Réveils nocturnes', `${String(stg.wakeups).replace('.', ',')} éveils de plus de 5 min par nuit en moyenne (repère : au plus 1). Alcool, dîner tardif, chambre trop chaude ou téléphone la nuit en sont des causes fréquentes.`, ['ohayon2017']);
+  if (stg?.nights >= 3 && stg.deepPct != null && stg.deepPct < 12) push('attention', 'Peu de sommeil profond', `${stg.deepPct} % de sommeil profond (environ ${stg.deepMin} min par nuit) d’après ta montre ; il représente d’habitude 13 à 23 % chez l’adulte. Activité physique en journée, pas d’alcool le soir et horaires réguliers l’augmentent. Les montres estiment les phases avec une marge d’erreur notable : regarde la tendance, pas une nuit isolée.`, []);
+  else if (stg?.nights >= 3 && stg.deepPct >= 13 && stg.remPct >= 18) push('bon', 'Phases du sommeil équilibrées', `Profond ${stg.deepPct} %, paradoxal ${stg.remPct} % : une architecture de sommeil dans les repères habituels.`, []);
+  if (sm.ready && sm.ready.level !== 'moyenne') {
+    const p = sm.ready.parts.filter((x) => ['hrv', 'restingHR', 'sleepHR'].includes(x.k) && Math.abs(x.z) >= 1).map((x) => `${x.label.toLowerCase()} ${x.value} ${x.unit} (habituel ${x.usual})`);
+    push(sm.ready.level === 'basse' ? 'attention' : 'bon', `Forme du jour : ${sm.ready.score}/100`, `${sm.ready.advice}${p.length ? ` Ce matin : ${p.join(', ')}.` : ''}`, []);
+  }
   if (w.sleepH != null && w.sleepH < 7) push('attention', 'Sommeil et appétit', 'Le manque de sommeil fait manger en moyenne ~385 kcal de plus par jour ; dormir plus longtemps a réduit l’apport d’environ 270 kcal/j dans un essai randomisé. Ton sommeil est un levier de poids.', ['alkhatib2017', 'tasali2022']);
   if ((w.screenMin != null && w.screenMin > 180) || (w.steps != null && w.steps < 6000)) push('attention', 'Casser la sédentarité', '5 min de marche toutes les 30 min assis réduisent glycémie et tension ; 3 « snacks d’exercice » d’1–2 min intenses par jour (escaliers, marche très rapide) sont associés à −38 % de mortalité.', ['duran2023', 'stamatakis2022']);
   if (sm.lateMeals >= 3) push('attention', 'Dîners tardifs', `${sm.lateMeals} repas pris après 21 h cette semaine. Manger tard augmente la faim du lendemain et réduit la dépense énergétique.`, ['vujovic2022', 'garaulet2013']);

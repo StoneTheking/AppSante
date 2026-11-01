@@ -2,6 +2,7 @@
 // Un objectif unique, précis et suivi chaque jour est plus efficace qu'une liste de résolutions (Harkin 2016).
 import * as C from './coach.js';
 import { sleepHours, sumNutrients } from './science.js';
+import { modOf, vigOf } from './wearable.js';
 
 const key = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const daysEnding = (end, n) => Array.from({ length: n }, (_, i) => { const d = new Date(end); d.setDate(d.getDate() - (n - 1) + i); return key(d); });
@@ -17,7 +18,7 @@ export const GOALS = {
   strength: { pillar: 'activite', target: 2, text: () => 'Faire 2 séances de renforcement', test: (d) => (d.strengthMin != null ? d.strengthMin > 0 : null) },
   logMeals: { pillar: 'alimentation', target: 5, text: () => 'Noter au moins 2 repas par jour, 5 jours', test: (d, g, p, meals) => meals.filter((m) => !m.snack).length >= 2 },
   veg: { pillar: 'alimentation', target: 4, text: () => '400 g de fruits et légumes au moins 4 jours', test: (d, g, p, meals) => (meals.length ? sumNutrients(meals).fruitVeg >= 400 : null) },
-  active30: { pillar: 'humeur', target: 4, text: () => 'Bouger 30 min au moins 4 jours (le levier le mieux prouvé sur le moral)', test: (d) => ((d.modMin || 0) + (d.vigMin || 0) + (d.strengthMin || 0) >= 30 || (d.steps || 0) >= 8000) },
+  active30: { pillar: 'humeur', target: 4, text: () => 'Bouger 30 min au moins 4 jours (le levier le mieux prouvé sur le moral)', test: (d) => (modOf(d) + vigOf(d) + (d.strengthMin || 0) >= 30 || (d.steps || 0) >= 8000) },
   screen: { pillar: 'numerique', target: 5, text: (g) => `Moins de ${Math.floor(g.value / 60)} h${g.value % 60 ? ' ' + String(g.value % 60).padStart(2, '0') : ''} d’écran par jour, 5 jours`, test: (d, g) => (d.screenMin != null ? d.screenMin <= g.value : null) },
 };
 

@@ -47,7 +47,8 @@ Tout repose sur une **bibliothèque de 115 publications** (OMS, Lancet, BMJ, JAM
 ### Application Android (recommandé)
 1. Sur ton téléphone, ouvre : **https://github.com/StoneTheking/AppSante/releases/latest/download/AppSante.apk**
 2. Ouvre le fichier téléchargé et autorise l'installation depuis Chrome.
-3. Dans l'appli : Santé → Suivi → **Autoriser Health Connect** et **Autoriser le temps d'écran** (Accès aux données d'utilisation → Diana Health).
+3. **Montre Fitbit** : dans l'appli Fitbit → Vous → Paramètres de l'appli → **Health Connect**, active le partage de toutes les données.
+4. Dans l'appli : Santé → Suivi → **Autoriser Health Connect** et **Autoriser le temps d'écran** (Accès aux données d'utilisation → Diana Health).
 
 Chaque push compile un nouvel APK (GitHub Actions → Releases) qui s'installe par-dessus l'ancien sans perdre les données.
 
@@ -63,7 +64,7 @@ https://stonetheking.github.io/AppSante/ → menu ⋮ → *Installer l'applicati
 
 | Source | Données |
 |---|---|
-| Health Connect | pas, sommeil (horaires + temps endormi), FC au repos, variabilité cardiaque, poids, séances (renforcement / intense / modéré) |
+| Health Connect (téléphone, Samsung Health, **montre Fitbit**, Galaxy Watch…) | pas, distance, étages, calories, sommeil (horaires, **phases profond / paradoxal / léger, éveils, efficacité**, siestes), **cœur minute par minute** (minutes en zone cardio, cœur pendant la nuit), FC au repos, variabilité cardiaque, SpO₂, respiration, VO₂max, poids, masse grasse, séances ; 30 jours d'historique à la première synchro |
 | Bien-être numérique (`UsageStatsManager`, plugin `UsageStatsPlugin.java`) | temps d'écran, réseaux sociaux, déverrouillages, usage après 22 h, applis les plus utilisées |
 | Notifications locales | rappels programmés, même application fermée |
 
@@ -85,6 +86,7 @@ npx cap sync android && cd android && ./gradlew assembleRelease   # APK
 | `src/planner.js`, `src/meals.js` | menus de la semaine, liste de courses, banque de repas |
 | `src/reminders.js` | rappels (notifications locales natives / web) |
 | `src/native.js` | Health Connect et temps d'écran (Capacitor) |
+| `src/wearable.js` | données de montre : phases du sommeil, zones cardio, cœur la nuit, **forme du jour** (récupération comparée à tes 4 dernières semaines) |
 | `src/ai.js` | Claude : photo, captures, menus, coach avec recherche scientifique |
 | `src/workouts.js` | bibliothèque d'exercices et générateur de séances |
 | `src/sport.js` | activités (MET), zones cardiaques, semaine type, séances et chronomètre |

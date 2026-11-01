@@ -1,6 +1,7 @@
 // Ce qui joue sur ton sommeil et ton humeur : comparaison de tes propres jours (ex. « tu dors 40 min de plus
 // les nuits qui suivent un jour à plus de 8 000 pas »). Corrélations personnelles, pas des preuves de cause.
 import { sleepHours } from './science.js';
+import { modOf, vigOf } from './wearable.js';
 
 const key = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const mean = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
@@ -26,7 +27,7 @@ export function correlations(st, { days = 60, now = new Date() } = {}) {
   // Facteurs (vrai / faux / inconnu pour un jour donné)
   const drivers = [
     { id: 'steps', on: 'un jour à plus de 8 000 pas', days: 'les jours à plus de 8 000 pas', f: (k) => (day(k).steps ? day(k).steps >= 8000 : null) },
-    { id: 'workout', on: 'un jour avec une séance de sport', days: 'les jours où tu fais du sport', f: (k) => (trained.has(k) || (day(k).modMin || 0) + (day(k).vigMin || 0) + (day(k).strengthMin || 0) >= 20 ? true : day(k).steps != null || Object.keys(day(k)).length ? false : null) },
+    { id: 'workout', on: 'un jour avec une séance de sport', days: 'les jours où tu fais du sport', f: (k) => (trained.has(k) || modOf(day(k)) + vigOf(day(k)) + (day(k).strengthMin || 0) >= 20 ? true : day(k).steps != null || Object.keys(day(k)).length ? false : null) },
     { id: 'alcohol', on: 'un soir avec de l’alcool', days: 'les jours avec de l’alcool', f: (k) => (Object.keys(day(k)).length ? (day(k).alcohol || 0) > 0 : null) },
     { id: 'late', on: 'un dîner après 21 h', days: 'les jours de dîner tardif', f: (k) => ((st.meals || []).some((m) => m.date === k) ? late.has(k) : null) },
     { id: 'screen', on: `plus de ${screenCut != null ? h(screenCut) : '?'} d’écran`, days: `les jours à plus de ${screenCut != null ? h(screenCut) : '?'} d’écran`, f: (k) => (screenCut != null && day(k).screenMin != null ? day(k).screenMin > screenCut : null) },
@@ -37,6 +38,10 @@ export function correlations(st, { days = 60, now = new Date() } = {}) {
   const outcomes = [
     { id: 'sleep', what: 'sommeil', g: (k) => sleepMin(day(next(k))), min: 15, night: true },
     { id: 'sleepQ', what: 'qualité du sommeil', g: (k) => day(next(k)).sleepQuality ?? null, min: 0.35, night: true },
+    // mesures de la montre (Fitbit…) : sommeil profond, variabilité cardiaque au réveil, cœur pendant la nuit
+    { id: 'deep', what: 'sommeil profond', g: (k) => day(next(k)).deepMin ?? null, min: 8, night: true },
+    { id: 'hrv', what: 'variabilité cardiaque', g: (k) => day(next(k)).hrv ?? null, min: 3, night: true },
+    { id: 'nightHR', what: 'cœur la nuit', g: (k) => day(next(k)).sleepHR ?? null, min: 2, night: true, inverse: true },
     { id: 'mood', what: 'humeur', g: (k) => day(k).mood ?? null, min: 0.35 },
     { id: 'energy', what: 'énergie', g: (k) => day(k).energy ?? null, min: 0.35 },
   ];
@@ -57,9 +62,13 @@ export function correlations(st, { days = 60, now = new Date() } = {}) {
     // Avec quelques dizaines de jours, un lien à contre-courant des études (« mieux dormir après l'alcool ») est
     // bien plus souvent du hasard qu'une vraie particularité : on ne montre que les liens dans le sens attendu.
     const harmful = HARMFUL.has(dr.id);
-    if (harmful === up) continue;
+    const better = oc.inverse ? !up : up; // un cœur plus rapide la nuit est moins bon
+    if (harmful === better) continue;
     let text;
     if (oc.id === 'sleep') text = `Tu dors ${h(Math.round(Math.abs(diff) / 5) * 5)} de ${up ? 'plus' : 'moins'} les nuits qui suivent ${dr.on}.`;
+    else if (oc.id === 'deep') text = `Tu as ${Math.round(Math.abs(diff))} min de sommeil profond de ${up ? 'plus' : 'moins'} les nuits qui suivent ${dr.on}.`;
+    else if (oc.id === 'hrv') text = `Ta variabilité cardiaque au réveil est ${up ? 'plus haute' : 'plus basse'} de ${Math.round(Math.abs(diff))} ms après ${dr.on} (${up ? 'meilleure' : 'moins bonne'} récupération).`;
+    else if (oc.id === 'nightHR') text = `Ton cœur bat ${Math.round(Math.abs(diff))} bpm ${up ? 'plus vite' : 'plus lentement'} pendant la nuit qui suit ${dr.on}.`;
     else if (oc.id === 'sleepQ') text = `Ton sommeil est ${up ? 'meilleur' : 'moins bon'} (${up ? '+' : '−'}${Math.abs(diff).toFixed(1).replace('.', ',')} pt sur 5) après ${dr.on}.`;
     else text = `${oc.id === 'mood' ? 'Ton humeur est' : 'Ton énergie est'} ${up ? 'meilleure' : 'moins bonne'} ${dr.days} (${up ? '+' : '−'}${Math.abs(diff).toFixed(1).replace('.', ',')} pt sur 5).`;
     out.push({ driver: dr.id, outcome: oc.id, diff, t, nYes: yes.length, nNo: no.length, good: !harmful, text });

@@ -15,6 +15,7 @@ import { correlations } from '../correlate.js';
 import * as PO from '../posture.js';
 import * as G from '../gamify.js';
 import * as X3 from '../exercise3d.js';
+import * as W from '../wearable.js';
 
 let seg = 'tendances'; // les tendances s'ouvrent en premier
 let dayOffset = 0;
@@ -50,7 +51,16 @@ async function doSync({ silent = false } = {}) {
     const diag = await Promise.race([N.healthDiagnose(), new Promise((r) => setTimeout(() => r({ ok: false, reason: 'error', detail: 'La vérification de Health Connect ne répond pas (plus de 25 s).' }), 25000))]);
     store.update((s) => { s.healthDiag = { ...diag, at: Date.now() }; });
     if (diag.ok) {
-      const h = await N.syncHealth(7);
+      // Première synchro (ou plus d'une semaine sans) : 30 jours d'historique de la montre, pour connaître tes
+      // valeurs habituelles (forme du jour). Sinon les 7 derniers jours suffisent.
+      const deep = !st.hcDeepAt || Date.now() - st.hcDeepAt > 7 * 86400e3;
+      const span = deep ? 30 : 7;
+      // Cœur minute par minute : aujourd'hui et hier à chaque synchro, les jours passés une seule fois.
+      const recent = store.lastDays(7);
+      const hrDays = recent.filter((k, i) => i >= recent.length - 2 || !st.days[k]?.hrDone);
+      const h = await N.syncHealth(span, { hrMax: st.profile.birthYear ? SP.hrZones(st.profile.birthYear).max : null, hrDays });
+      for (const k of hrDays.slice(0, -2)) h.days[k] = { ...(h.days[k] || {}), hrDone: true };
+      if (deep) store.update((s) => { s.hcDeepAt = Date.now(); });
       merge(h.days);
       h.workouts.forEach((w) => SP.addWorkout(w));
       hcSteps = Object.values(h.days).some((d) => d.steps);
@@ -116,11 +126,39 @@ function watchStats(d) {
     d.restingHR && stat('Cœur au repos', d.restingHR, 'bpm', 'heart'),
     d.hrv && stat('Variabilité cardiaque', d.hrv, 'ms', 'activity'),
     d.spo2 && stat('Oxygène du sang', d.spo2, '%'),
+    d.sleepHR && stat('Cœur la nuit', d.sleepHRMin ? `${d.sleepHR} (min ${d.sleepHRMin})` : d.sleepHR, 'bpm', 'moon'),
     d.respRate && stat('Respiration', fmt(d.respRate, 1), '/min'),
     d.vo2max && stat('VO₂ max', fmt(d.vo2max, 1), 'mL/kg/min'),
     d.bodyFat && stat('Masse grasse', fmt(d.bodyFat, 1), '%'),
   ].filter(Boolean);
-  return items.length ? `${section('heart', 'Cœur et forme', 'var(--bad)', '<span class="tiny muted">montre · Samsung Health</span>')}<div class="ro-grid">${items.join('')}</div>` : '';
+  return items.length ? `${section('heart', 'Cœur et forme', 'var(--bad)', `<span class="tiny muted">${esc(d.sleepSource && d.sleepSource !== 'capteur du téléphone' ? d.sleepSource : 'montre')}</span>`)}<div class="ro-grid">${items.join('')}</div>` : '';
+}
+
+// Phases du sommeil de la montre (profond, paradoxal, léger, éveillé) : barre et détail.
+function sleepStages(d) {
+  const bits = [];
+  if (d.deepMin != null) {
+    const parts = [['Profond', d.deepMin, 'var(--c-sleep)'], ['Paradoxal', d.remMin, 'color-mix(in srgb,var(--c-sleep) 60%,var(--c-mood))'], ['Léger', d.lightMin, 'color-mix(in srgb,var(--c-sleep) 45%,transparent)'], ['Éveillé', d.awakeMin, 'var(--warn)']].filter(([, m]) => m > 0);
+    const tot = parts.reduce((a, [, m]) => a + m, 0) || 1;
+    bits.push(`<div style="display:flex;height:12px;border-radius:6px;overflow:hidden;margin:6px 0 4px">${parts.map(([, m, c]) => `<span style="width:${(m / tot) * 100}%;background:${c}"></span>`).join('')}</div>
+      <div class="tiny muted" style="display:flex;flex-wrap:wrap;gap:4px 12px">${parts.map(([l, m, c]) => `<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${c};margin-right:4px"></span>${l} ${fmtMin(m)}${l !== 'Éveillé' && d.sleepMinutes ? ` · ${Math.round((m / d.sleepMinutes) * 100)} %` : ''}</span>`).join('')}</div>`);
+  }
+  const extra = [d.sleepEfficiency && `efficacité ${d.sleepEfficiency} %`, d.wakeups != null && `${d.wakeups} éveil${d.wakeups > 1 ? 's' : ''} de plus de 5 min`, d.napMin && `sieste ${fmtMin(d.napMin)}`, d.sleepSource && `mesuré par ${esc(d.sleepSource)}`].filter(Boolean);
+  if (extra.length) bits.push(`<p class="tiny muted" style="margin:4px 0 6px">${extra.join(' · ')}</p>`);
+  return bits.join('');
+}
+
+// Forme du jour : nuit et cœur de ce matin comparés à tes 4 dernières semaines.
+function readinessCard(st) {
+  const r = W.readiness(st.days, store.today(), { need: S.sleepNeed(st.profile) });
+  if (!r) return '';
+  const col = r.level === 'haute' ? 'var(--good)' : r.level === 'moyenne' ? 'var(--warn)' : 'var(--bad)';
+  const row = (p) => `<div class="between tiny" style="padding:3px 0"><span>${esc(p.label)}</span><span class="muted">${fmt(p.value, p.unit === 'h' ? 1 : 0)} ${p.unit}${p.k === 'sleep' || p.k === 'eff' || p.k === 'load' ? '' : ` · habituel ${p.usual}`}</span></div>`;
+  return `<div class="card">
+    <div class="between"><div><b>Forme du jour</b><div class="tiny muted">d’après ta montre, comparée à tes 4 dernières semaines</div></div><div style="font-size:28px;font-weight:800;color:${col}">${r.score}<small class="tiny muted">/100</small></div></div>
+    <p class="small" style="margin:8px 0">${esc(r.advice)}</p>
+    <details><summary class="tiny muted">Détail</summary>${r.parts.map(row).join('')}</details>
+  </div>`;
 }
 
 // Ce que Health Connect a réellement renvoyé à la dernière synchro (pour comprendre des pas qui ne bougent pas).
@@ -132,12 +170,13 @@ function hcReportLine(r) {
   const txt = r.todaySteps
     ? `Aujourd’hui : <b>${fmt(r.todaySteps)} pas</b> reçus${r.sources?.length ? ` de ${esc(r.sources.join(', '))}` : ''}${r.firstStep && r.lastStep ? ` (relevés de ${hm(r.firstStep)} à ${hm(r.lastStep)})` : r.lastStep ? ` (dernier relevé ${hm(r.lastStep)})` : ''}.${r.firstStep && new Date(r.firstStep).getHours() >= 10 ? ` <span style="color:var(--warn)">Rien avant ${hm(r.firstStep)} : Samsung Health n’a pas transmis le début de journée à Health Connect.</span>` : ''}`
     : `<span style="color:var(--warn)">Aucun pas reçu de Health Connect aujourd’hui.</span> Dans Samsung Health → Paramètres → Health Connect, autorise l’<b>écriture</b> des pas ; Samsung Health les envoie ensuite toutes les quelques minutes à quelques heures.`;
-  const SRC = { 'com.sec.android.app.shealth': 'Samsung Health', 'com.google.android.apps.fitness': 'Google Fit', 'com.google.android.apps.healthdata': 'capteur du téléphone', android: 'capteur du téléphone' };
+  const SRC = W.SOURCES;
   const per = (r.perSource || []).length > 1 || (r.aggregated && r.aggregated !== r.todaySteps)
     ? ` <span style="display:block;margin-top:2px">Par source : ${(r.perSource || []).map((x) => `${esc(SRC[x.name] || x.name)} ${fmt(x.steps)}`).join(' · ')}${r.aggregated ? ` · total Santé Connect ${fmt(r.aggregated)}` : ''}. On garde la plus complète.</span>`
     : '';
   const phone = r.phoneSteps != null ? ` Podomètre du téléphone : <b>${fmt(r.phoneSteps)} pas</b>${r.phoneSteps > (r.todaySteps || 0) ? ' (utilisé, plus complet)' : ''}.` : '';
-  return `<div style="margin:-2px 0 6px"><div class="between" style="gap:8px;align-items:flex-start"><span class="tiny muted">${txt}${per}${phone} Synchro ${hm(r.at)}.</span>${btn}</div>
+  const watch = r.sleepSources?.length || r.hrSamples ? ` <span style="display:block;margin-top:2px">Montre : ${[r.sleepSources?.length && `sommeil de ${esc(r.sleepSources.join(', '))}${r.staged ? ` (phases sur ${r.staged} nuit${r.staged > 1 ? 's' : ''})` : ''}`, r.hrSamples && `${fmt(r.hrSamples)} relevés de cœur`].filter(Boolean).join(', ')}.</span>` : '';
+  return `<div style="margin:-2px 0 6px"><div class="between" style="gap:8px;align-items:flex-start"><span class="tiny muted">${txt}${per}${phone}${watch} Synchro ${hm(r.at)}.</span>${btn}</div>
     ${errs.length ? `<details class="tiny muted"><summary>${errs.length} donnée(s) non lue(s) : ${esc(errs.map(([k]) => k).join(', '))}</summary>${errs.map(([k, v]) => `${esc(k)} : ${esc(v)}`).join('<br>')}</details>` : ''}</div>`;
 }
 
@@ -188,6 +227,7 @@ function renderTrack(el, ctx) {
   const kg = st.profile.weight || 70;
   const due = E.weighDue(st);
   el.innerHTML = `
+    ${dayOffset === 0 ? readinessCard(st) : ''}
     ${dayOffset === 0 ? sleepWeekCard(st) : ''}
     <div class="card">
       <div class="between">
@@ -198,6 +238,7 @@ function renderTrack(el, ctx) {
 
       ${section('moon', 'Sommeil', 'var(--c-sleep)', d.sleepMinutes ? `<span class="small muted">${fmtMin(d.sleepMinutes)} de sommeil</span>` : '')}
       <div class="grid2"><div><label class="lbl" style="margin-top:0">Couché à</label><input data-k="bed" type="time" value="${esc(d.bed || '')}"></div><div><label class="lbl" style="margin-top:0">Levé à</label><input data-k="wake" type="time" value="${esc(d.wake || '')}"></div></div>
+      ${sleepStages(d)}
       <label class="lbl">Qualité</label>${faces('sleepQuality', d.sleepQuality)}
 
       ${section('smile', 'Humeur', 'var(--c-mood)')}
@@ -206,11 +247,12 @@ function renderTrack(el, ctx) {
       <label class="lbl">Énergie</label>${faces('energy', d.energy)}
       <label class="lbl">Stress</label>${faces('stress', d.stress)}</details>
 
-      ${section('steps', 'Activité', 'var(--c-move)', '<span class="tiny muted">mesurée par le téléphone</span>')}
+      ${section('steps', 'Activité', 'var(--c-move)', '<span class="tiny muted">téléphone · montre</span>')}
       <div class="ro-grid">
         ${stat('Pas', d.steps != null ? fmt(d.steps) : '—', '', 'steps')}
         ${stat('Calories brûlées', d.steps != null || ws.length ? fmt(E.activeKcal(d, ws, kg)) : '—', 'kcal', 'flame')}
-        ${stat('Activité modérée', fmtMin((d.modMin || 0) + (d.vigMin || 0)), '', 'activity')}
+        ${stat('Activité modérée', fmtMin(W.modOf(d) + W.vigOf(d)), '', 'activity')}
+        ${d.zoneMod != null ? stat('Minutes en zone cardio', `${fmt(d.zoneMod + 2 * d.zoneVig)}`, `min (${d.zoneVig} soutenues ×2)`, 'heart') : ''}
         ${stat('Séances', ws.length ? ws.map((w) => `${SP.activity(w.type).label.split(' ')[0]} ${w.minutes}′`).join(', ') : '0', '', 'dumbbell')}
         ${d.walkMin ? stat('Temps de marche', fmtMin(d.walkMin), '', 'steps') : ''}
         ${d.distanceM ? stat('Distance', fmt(d.distanceM / 1000, 1), 'km', 'pin') : ''}

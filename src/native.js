@@ -1,6 +1,7 @@
 // Ponts vers l'application Android native (Capacitor) : Health Connect et statistiques d'utilisation.
 // Dans le navigateur, isNative est faux et ces fonctions ne sont pas proposées.
 import { Capacitor, registerPlugin } from '@capacitor/core';
+import * as W from './wearable.js';
 
 export const isNative = Capacitor.isNativePlatform();
 export const platform = Capacitor.getPlatform();
@@ -35,6 +36,9 @@ export async function healthStatus() {
 const HEALTH_PERMS = ['STEPS', 'SLEEP', 'HEART_RATE', 'RESTING_HEART_RATE', 'HEART_RATE_VARIABILITY', 'WEIGHT', 'ACTIVE_CALORIES_BURNED', 'EXERCISE',
   'DISTANCE', 'TOTAL_CALORIES_BURNED', 'FLOORS_CLIMBED', 'OXYGEN_SATURATION', 'RESPIRATORY_RATE', 'VO2_MAX', 'BODY_FAT']
   .map((x) => `android.permission.health.READ_${x}`);
+// Historique au-delà des 30 jours qui précèdent l'autorisation (Android 14+) : utile pour reprendre l'historique
+// d'une montre (Fitbit…). Demandé en plus, il ne correspond à aucun type lu.
+const REQUEST_PERMS = [...HEALTH_PERMS, 'android.permission.health.READ_HEALTH_DATA_HISTORY'];
 
 // Accès accordés lus directement auprès d'Android 14+ (null si inconnu : Android plus ancien ou APK sans cette fonction).
 const nativeGranted = () => timeout(UsageStats.healthGranted({ permissions: HEALTH_PERMS }), 3000, '')
@@ -81,7 +85,7 @@ export async function connectHealth(onStep = () => {}) {
     }, 500);
   });
   try {
-    const r = await Promise.race([UsageStats.requestHealth({ permissions: HEALTH_PERMS }), watchdog]);
+    const r = await Promise.race([UsageStats.requestHealth({ permissions: REQUEST_PERMS }), watchdog]);
     log.push(r?.lost ? 'réponse non transmise à l’appli : lecture directe des accès' : `réponse reçue : ${(r?.granted || []).length} accès`);
   } catch (e) {
     if (/not implemented/i.test(e.message || '')) {
@@ -186,8 +190,23 @@ export function walkMinutes(samples) {
 
 const todayStart = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
 
+// Fréquence cardiaque brute (montre) sur [from, to], lue par tranches de 4 h : une montre écrit jusqu'à un
+// relevé toutes les quelques secondes, une seule lecture serait tronquée. 4 lectures à la fois au plus.
+async function readHeartRate(H, from, to) {
+  const slices = [];
+  for (let t = from; t < to; t += 4 * 3600e3) slices.push([t, Math.min(to, t + 4 * 3600e3)]);
+  const out = [];
+  for (let i = 0; i < slices.length; i += 4) {
+    const res = await Promise.all(slices.slice(i, i + 4).map(([a, b]) => timeout(H.readSamples({ dataType: 'heartRate', startDate: new Date(a).toISOString(), endDate: new Date(b).toISOString(), limit: 8000 }), 15000, 'pas de réponse').catch(() => null)));
+    for (const r of res) out.push(...(r?.samples || []));
+  }
+  return out;
+}
+
 // Lit les N derniers jours depuis Health Connect : { days: { 'AAAA-MM-JJ': {...} }, workouts: [...] }.
-export async function syncHealth(days = 7) {
+// hrMax : FC max (zones d'effort) ; hrDays : jours dont on lit le cœur minute par minute (lecture lourde,
+// faite une fois par jour passé, et à chaque synchro pour aujourd'hui).
+export async function syncHealth(days = 7, { hrMax = null, hrDays = [] } = {}) {
   const { H } = await health();
   const end = new Date();
   const start = new Date();
@@ -247,18 +266,32 @@ export async function syncHealth(days = 7) {
   last(vo2?.samples, (d, v) => { d.vo2max = Math.round(v * 10) / 10; });
   last(fat?.samples, (d, v) => { d.bodyFat = Math.round((v > 1 ? v : v * 100) * 10) / 10; });
 
-  // Sommeil : on rattache chaque session au jour du réveil ; durée = temps endormi (hors éveil / au lit).
-  const byWake = {};
-  for (const s of sleep?.samples || []) {
-    const k = localKey(new Date(s.endDate));
-    const g = (byWake[k] ||= { start: s.startDate, end: s.endDate, asleep: 0 });
-    if (s.startDate < g.start) g.start = s.startDate;
-    if (s.endDate > g.end) g.end = s.endDate;
-    if (!['awake', 'inBed'].includes(s.sleepState)) g.asleep += s.value || (new Date(s.endDate) - new Date(s.startDate)) / 60000;
-  }
-  for (const [k, g] of Object.entries(byWake)) {
-    if (new Date(g.end) - new Date(g.start) < 3 * 3600e3) continue; // ignore les siestes
-    Object.assign(day(k), { bed: hhmm(g.start), wake: hhmm(g.end), sleepMinutes: Math.round(g.asleep) });
+  // Sommeil : une nuit par jour de réveil, avec phases (profond, paradoxal, léger), éveils et efficacité
+  // quand la montre les fournit (Fitbit, Galaxy Watch…). Les siestes sont notées à part.
+  const nights = W.nightsFromSessions(sleep?.samples || []);
+  for (const [k, n] of Object.entries(nights)) Object.assign(day(k), n);
+
+  // Cœur minute par minute : minutes en zone d'effort (comme les « minutes en zone active » de Fitbit)
+  // et cœur pendant la nuit.
+  let hrSamples = 0;
+  const hrSet = new Set(hrDays);
+  if (hrSet.size) {
+    const first = [...hrSet].sort()[0];
+    const from = new Date(first + 'T00:00').getTime() - 12 * 3600e3; // la nuit commence la veille au soir
+    const raw = await readHeartRate(H, Math.max(from, start.getTime() - 12 * 3600e3), end.getTime()).catch((e) => { errors['cœur minute'] = e.message || String(e); return []; });
+    hrSamples = raw.length;
+    if (raw.length) {
+      const byMin = W.hrByMinute(raw);
+      const zones = W.zoneMinutes(byMin, hrMax);
+      for (const k of hrSet) {
+        const z = zones[k] || { zoneMod: 0, zoneVig: 0, peakMin: 0 };
+        // un jour sans aucun relevé (montre pas portée) ne doit pas afficher 0 minute
+        const worn = [...byMin.keys()].some((t) => localKey(new Date(t)) === k);
+        if (worn && hrMax) Object.assign(day(k), z);
+        const n = out[k]?.sleepStart ? W.nightHR(byMin, new Date(out[k].sleepStart).getTime(), new Date(out[k].sleepEnd).getTime()) : null;
+        if (n) Object.assign(day(k), n);
+      }
+    }
   }
 
   // Séances Health Connect → séances Diana Health (les minutes du jour sont recalculées à partir des séances).
@@ -281,7 +314,9 @@ export async function syncHealth(days = 7) {
   const lastRec = (stepRecs?.samples || []).reduce((a, x) => (x.endDate > a ? x.endDate : a), '');
   // premier relevé du jour : montre si Samsung Health n'a envoyé qu'une partie de la journée
   const firstRec = (stepRecs?.samples || []).filter((x) => localKey(new Date(x.startDate)) === tk && x.value > 0).reduce((a, x) => (!a || x.startDate < a ? x.startDate : a), '');
-  const report = { at: Date.now(), todaySteps: out[tk]?.steps ?? 0, records: stepRecs?.samples?.length ?? null, sources: srcToday, perSource, aggregated: Math.round(steps?.samples?.find((x) => localKey(new Date(x.startDate)) === tk)?.value || 0), firstStep: firstRec || null, lastStep: lastRec || null, errors };
+  const sleepSources = [...new Set(Object.values(nights).map((n) => n.sleepSource).filter(Boolean))];
+  const watch = [...(stepRecs?.samples || []), ...(sleep?.samples || [])].some(W.isFitbit) || sleepSources.includes('Fitbit');
+  const report = { at: Date.now(), fitbit: watch, sleepSources, hrSamples, hrDays: [...hrSet], staged: Object.values(nights).filter((n) => n.deepMin != null).length, todaySteps: out[tk]?.steps ?? 0, records: stepRecs?.samples?.length ?? null, sources: srcToday, perSource, aggregated: Math.round(steps?.samples?.find((x) => localKey(new Date(x.startDate)) === tk)?.value || 0), firstStep: firstRec || null, lastStep: lastRec || null, errors };
   return { days: out, workouts: sessions, report };
 }
 

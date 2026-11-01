@@ -2,6 +2,7 @@
 import * as N from './native.js';
 import * as store from './store.js';
 import { age as ageOf } from './science.js';
+import * as W from './wearable.js';
 
 // MET de référence d'après le Compendium 2024 des activités physiques (valeurs typiques d'intensité modérée).
 export const ACTIVITIES = [
@@ -101,7 +102,7 @@ export function stopWorkout() {
 export function weekStats(workouts, days, now = new Date()) {
   const keys = Array.from({ length: 7 }, (_, i) => { const d = new Date(now); d.setDate(d.getDate() - i); return localKey(d); });
   const sum = (f) => keys.reduce((a, k) => a + (Number(days[k]?.[f]) || 0), 0);
-  const mod = sum('modMin'), vig = sum('vigMin');
+  const mod = keys.reduce((a, k) => a + W.modOf(days[k]), 0), vig = keys.reduce((a, k) => a + W.vigOf(days[k]), 0);
   return {
     modEq: mod + 2 * vig,
     mod,

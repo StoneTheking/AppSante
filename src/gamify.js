@@ -2,6 +2,7 @@
 // Mécaniques fondées sur l'auto-surveillance (Michie 2009, Harkin 2016), la gamification (Mazeas 2022, Patel 2019)
 // et la formation des habitudes (Lally 2010). Tout est recalculé à partir des données : rien de « perdu ».
 import * as S from './science.js';
+import { modOf, vigOf } from './wearable.js';
 
 const localKey = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 export const dayKeyOffset = (n, from = new Date()) => { const d = new Date(from); d.setDate(d.getDate() + n); return localKey(d); };
@@ -33,7 +34,7 @@ export function dayGoals(st, key, idx = null) {
   const t = idx ? idx.t : S.targets(st.profile);
   const meals = idx ? idx.meals.get(key) || [] : st.meals.filter((m) => m.date === key);
   const tot = S.sumNutrients(meals);
-  const moveMin = (d.modMin || 0) + 2 * (d.vigMin || 0) + (idx ? idx.workouts.get(key) || [] : st.workouts.filter((w) => w.date === key)).filter(() => !(d.modMin || d.vigMin)).reduce((a, w) => a + w.minutes, 0);
+  const moveMin = modOf(d) + 2 * vigOf(d) + (idx ? idx.workouts.get(key) || [] : st.workouts.filter((w) => w.date === key)).filter(() => !(modOf(d) || vigOf(d))).reduce((a, w) => a + w.minutes, 0);
   const sleepH = d.sleepMinutes ? d.sleepMinutes / 60 : S.sleepHours(d.bed, d.wake);
   return [
     { id: 'move', label: 'Bouger 30 min', icon: 'steps', color: 'var(--c-move)', progress: Math.min(1, Math.max(moveMin / 30, (d.steps || 0) / t.steps)), hint: `${Math.round(moveMin)} min · ${d.steps ? d.steps + ' pas' : 'pas non renseignés'}` },
