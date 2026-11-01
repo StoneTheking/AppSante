@@ -16,19 +16,33 @@ import { isOffline } from '../net.js';
 
 const VERDICT = { bon: 'Bon pour toi', moyen: 'Moyen', a_limiter: 'À limiter' };
 
+// Jour où vont les repas ajoutés : aujourd'hui, ou un jour précédent choisi dans Nutrition → Jour
+// (repas oublié). Revient à aujourd'hui dès qu'on quitte cette page.
+let mealDay = null;
+export const setMealDay = (k) => { mealDay = k && k < store.today() ? k : null; };
+export const mealDayKey = () => (mealDay && mealDay < store.today() ? mealDay : store.today());
+// heure enregistrée pour un repas d'un jour passé : l'heure habituelle du moment choisi
+export const SLOT_TIME = { 'petit-dej': '08:00', dejeuner: '12:30', collation: '16:30', diner: '20:00' };
+const pastLabel = (k) => new Date(k + 'T12:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+
 export function addMeal(m) {
   const now = new Date();
+  const date = m.date || mealDayKey(), past = date < store.today();
+  const slot = m.slot || C.currentSlot(now);
   store.update((s) => {
-    s.meals.push({ id: crypto.randomUUID(), date: store.today(), time: now.toTimeString().slice(0, 5), ...m, slot: m.slot || C.currentSlot(now) });
-    // alcool repéré sur la photo, le produit scanné ou le grignotage : compté automatiquement
-    if (m.alcohol) { const k = store.today(); s.days[k] = { ...(s.days[k] || {}), alcohol: Math.round(((s.days[k]?.alcohol || 0) + m.alcohol) * 10) / 10 }; }
+    s.meals.push({ id: crypto.randomUUID(), time: past ? SLOT_TIME[slot] || '12:30' : now.toTimeString().slice(0, 5), ...m, date, slot });
+    // alcool repéré sur la photo, le produit scanné ou le grignotage : compté automatiquement (le jour du repas)
+    if (m.alcohol) s.days[date] = { ...(s.days[date] || {}), alcohol: Math.round(((s.days[date]?.alcohol || 0) + m.alcohol) * 10) / 10 };
   });
+  if (past) { toast(`Repas ajouté au ${pastLabel(date)}`, 1800); return; }
   const [say, mood] = Diana.mealReaction(m);
   setTimeout(() => Diana.pop(say, mood), 400); // après la fermeture de la fenêtre d'ajout
 }
 
 export function openAddMenu(ctx) {
+  const k = mealDayKey();
   const body = sheet(`
+    ${k < store.today() ? `<div class="note" style="margin-top:0">${icon('calendar', 18)}<span>Les repas seront ajoutés au <b>${pastLabel(k)}</b>.</span></div>` : ''}
     <div class="action-grid">
       ${[
         ['photo', 'camera', 'var(--c-food)', 'Photo du repas'],
@@ -114,8 +128,9 @@ export async function openPhoto(ctx, fromGallery = false, slot = null) {
 const MAX_PENDING = 6; // chaque photo pèse ~150-250 ko dans le stockage du téléphone
 function queuePhoto({ dataUrl, note, slot }) {
   const now = new Date();
+  const date = mealDayKey(), past = date < store.today();
   store.update((s) => {
-    s.pendingPhotos = [...(s.pendingPhotos || []), { id: crypto.randomUUID(), dataUrl, note, slot, date: store.today(), time: now.toTimeString().slice(0, 5) }].slice(-MAX_PENDING);
+    s.pendingPhotos = [...(s.pendingPhotos || []), { id: crypto.randomUUID(), dataUrl, note, slot, date, time: past ? SLOT_TIME[slot === 'grignotage' ? 'collation' : slot] || '12:30' : now.toTimeString().slice(0, 5) }].slice(-MAX_PENDING);
   });
 }
 

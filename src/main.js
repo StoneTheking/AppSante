@@ -160,6 +160,7 @@ function syncWorkoutNotif() {
 }
 
 function go(t, after, dir) {
+  if (t !== tab) A.setMealDay(null); // un jour passé choisi dans Nutrition ne vaut que sur cette page
   tab = t;
   if (['health', 'home', 'sport'].includes(t)) autoSync(); // données fraîches (Samsung Health envoie pas et séances au fil de l'eau)
   history.replaceState(null, '', '#' + t);

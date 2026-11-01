@@ -12,13 +12,17 @@ import { tokens, familyFactor } from '../family.js';
 import * as SN from '../snacks.js';
 import { icon, esc, fmt, qtyTxt, segmented, donut, toast, undoToast, sheet, srcLinks, $, $$ } from '../ui.js';
 import { meter } from './home.js';
-import { addMeal, pendingState, processPendingPhotos } from './actions.js';
+import { addMeal, pendingState, processPendingPhotos, setMealDay, SLOT_TIME } from './actions.js';
 import { openTastePicker } from './tastes.js';
 
 let seg = 'jour';
 let slot = null;
 let eatTab = 'plats';
 let shopTab = 'liste';
+// jour affiché dans « Jour » : null = aujourd'hui, sinon un jour passé (pour ajouter un repas oublié)
+let jourKey = null;
+const MAX_BACK = 30;
+const shiftDay = (k, n) => { const d = new Date(k + 'T12:00'); d.setDate(d.getDate() + n); return store.today(d); };
 const VERDICT = { bon: 'Bon', moyen: 'Moyen', a_limiter: 'À limiter' };
 const SLOT_LABEL = { ...P.SLOT_LABEL, grignotage: 'Grignotage' };
 const verdictOf = (q) => (q >= 70 ? 'bon' : q >= 45 ? 'moyen' : 'a_limiter');
@@ -32,6 +36,7 @@ export function render(view, ctx) {
   $$('[data-seg="nut"]', view).forEach((b) => (b.onclick = () => { if (b.dataset.v === seg) return; seg = b.dataset.v; render(view, ctx); }));
   Diana.context('nutrition', store.get(), dsm);
   const body = $('#nut-body', view);
+  if (seg !== 'jour') setMealDay(null);
   ({ jour: renderDay, historique: renderHistory, menus: renderMenus, courses: renderShop })[seg](body, ctx, view);
   setTimeout(() => body.classList.remove('view-enter'), 1200);
 }
@@ -70,6 +75,7 @@ export function openMeal(id, done) {
     ${m.comment ? `<p class="small" style="margin:12px 0 6px">${esc(m.comment)}</p>` : ''}
     ${m.advice ? `<div class="note">${icon('bulb', 18)}<span>${esc(m.advice)}</span></div>` : ''}
     <label class="lbl">Tu as aimé ?</label>${stars(m)}
+    <label class="lbl">Jour du repas</label><input type="date" id="m-date" value="${m.date}" max="${store.today()}" min="${shiftDay(store.today(), -MAX_BACK)}">
     <label class="lbl">C’était</label>
     <div class="chips" style="flex-wrap:wrap">${Object.entries(SLOT_LABEL).map(([k, l]) => `<button class="chip ${(m.snack ? 'grignotage' : m.slot) === k ? 'on' : ''}" data-mslot="${k}">${l}</button>`).join('')}</div>
     <div class="grid2" style="margin-top:14px">
@@ -83,6 +89,21 @@ export function openMeal(id, done) {
     store.update((s) => { const x = s.meals.find((y) => y.id === id); if (x) { x.snack = k === 'grignotage'; x.slot = k === 'grignotage' ? 'collation' : k; } });
     $$('[data-mslot]', body).forEach((x) => x.classList.toggle('on', x === b));
   }));
+  $('#m-date', body).onchange = (e) => {
+    const nd = e.target.value;
+    if (!nd || nd > store.today() || nd === m.date) return;
+    store.update((s) => {
+      const x = s.meals.find((y) => y.id === id); if (!x) return;
+      if (x.alcohol) { // l'alcool du repas passe aussi à son nouveau jour
+        if (s.days[x.date]) s.days[x.date].alcohol = Math.max(0, (s.days[x.date].alcohol || 0) - x.alcohol);
+        s.days[nd] = { ...(s.days[nd] || {}), alcohol: Math.round(((s.days[nd]?.alcohol || 0) + x.alcohol) * 10) / 10 };
+      }
+      if (nd < store.today() && x.date === store.today()) x.time = SLOT_TIME[x.snack ? 'collation' : x.slot] || x.time;
+      x.date = nd;
+    });
+    m.date = nd;
+    toast(`Repas déplacé au ${new Date(nd + 'T12:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}`, 1600);
+  };
   $('#fav', body).onclick = () => { saveDish(m); $('#fav', body).innerHTML = `${icon('star', 18)} Dans mes plats`; toast('Ajouté à « Mes plats » ⭐', 1400); };
   $('#rcp', body).onclick = () => openRecipe({ name: m.title.replace(/\s*\(.*\)$/, '') });
   $('#del', body).onclick = () => { const undo = store.removing((x) => { x.meals = x.meals.filter((y) => y.id !== id); if (m.alcohol && x.days[m.date]) x.days[m.date].alcohol = Math.max(0, (x.days[m.date].alcohol || 0) - m.alcohol); }); body.close(); undoToast('Repas supprimé', undo); };
@@ -142,18 +163,32 @@ function mealsBySlot(meals) {
 function renderDay(el, ctx) {
   const st = store.get();
   const sm = summary();
-  const t = sm.t, tot = sm.totToday;
-  const meals = store.mealsOn().sort((a, b) => a.time.localeCompare(b.time));
+  const today = store.today();
+  if (jourKey && (jourKey >= today || jourKey < shiftDay(today, -MAX_BACK))) jourKey = null;
+  const k = jourKey || today, past = k < today;
+  setMealDay(k); // photo, scan, recherche, manuel, plats… ajoutent au jour affiché
+  const meals = store.mealsOn(k).sort((a, b) => a.time.localeCompare(b.time));
+  const t = sm.t, tot = past ? S.sumNutrients(meals) : sm.totToday;
+  const dayName = k === today ? 'Aujourd’hui' : k === shiftDay(today, -1) ? 'Hier' : new Date(k + 'T12:00').toLocaleDateString('fr-FR', { weekday: 'long' }).replace(/^./, (c) => c.toUpperCase());
+  const dayNav = `<div class="card day-nav" style="padding:8px 10px">
+      <div class="between" style="flex-wrap:nowrap">
+        <button class="btn sm soft" data-dnav="-1" aria-label="Jour précédent" ${k <= shiftDay(today, -MAX_BACK) ? 'disabled' : ''}>${icon('left', 18)}</button>
+        <div style="text-align:center"><b>${dayName}</b><div class="tiny muted">${new Date(k + 'T12:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}</div></div>
+        <button class="btn sm soft" data-dnav="1" aria-label="Jour suivant" ${past ? '' : 'disabled'}>${icon('right', 18)}</button>
+      </div>
+      ${past ? `<div class="between" style="margin-top:8px;flex-wrap:nowrap;gap:8px"><span class="tiny muted">${icon('calendar', 14)} Repas oublié ? Ajoute-le ici, il compte pour ce jour.</span><button class="link-btn tiny" data-dnav="0" style="white-space:nowrap">Aujourd’hui</button></div>` : ''}
+    </div>`;
   const s = slot || C.currentSlot();
   const sugg = C.mealSuggestions(sm, st.profile, s, taste());
-  const planToday = st.plan?.days?.find((d) => d.date === store.today());
+  const planToday = !past && st.plan?.days?.find((d) => d.date === today);
   const left = t.kcal - tot.kcal;
   const dishes = st.dishes || [];
 
-  const askTastes = !st.tastesAsked && !Object.keys(st.profile.tastes || {}).length;
+  const askTastes = !past && !st.tastesAsked && !Object.keys(st.profile.tastes || {}).length;
   el.innerHTML = `
     ${askTastes ? `<div class="card" id="ask-tastes" style="border-color:color-mix(in srgb,var(--primary) 40%,transparent)"><div class="row" style="flex-wrap:nowrap;gap:12px"><span class="icon-badge" style="background:var(--primary-soft);color:var(--primary)">${icon('chef')}</span><div><b>Qu’est-ce que tu aimes manger ?</b><div class="tiny muted">30 secondes pour des menus et des idées à ton goût.</div></div></div>
       <div class="grid2" style="margin-top:10px"><button class="btn ghost" id="tastes-later">Plus tard</button><button class="btn" id="tastes-go">${icon('heart', 16)} Choisir</button></div></div>` : ''}
+    ${dayNav}
     <div class="card">
       <div class="row" style="flex-wrap:nowrap;gap:16px">
         ${donut(tot.kcal, t.kcal, { label: fmt(Math.abs(left)), sub: left >= 0 ? 'kcal restantes' : 'kcal en trop', color: 'var(--c-move)', size: 128 })}
@@ -175,12 +210,12 @@ function renderDay(el, ctx) {
     </div>
 
     <div class="card">
-      <div class="card-head"><h2>${icon('utensils', 18)} Journal du jour</h2><button class="link" data-a="manual">${icon('pencil', 14)} Manuel</button></div>
+      <div class="card-head"><h2>${icon('utensils', 18)} ${past ? `Journal · ${esc(dayName.toLowerCase() === 'hier' ? 'hier' : dayName)}` : 'Journal du jour'}</h2><button class="link" data-a="manual">${icon('pencil', 14)} Manuel</button></div>
       ${pendingCard(st)}
-      ${meals.length ? mealsBySlot(meals) : `<div class="empty">${icon('camera', 28)}<p>Aucun repas aujourd'hui.<br>Photographie ton assiette ou scanne un produit.</p></div>`}
+      ${meals.length ? mealsBySlot(meals) : `<div class="empty">${icon('camera', 28)}<p>${past ? 'Aucun repas noté ce jour-là.<br>Ajoute ce que tu as mangé avec les boutons ci-dessus.' : 'Aucun repas aujourd\'hui.<br>Photographie ton assiette ou scanne un produit.'}</p></div>`}
     </div>
 
-    ${snackCard(st)}
+    ${past ? '' : snackCard(st)}
 
     ${planToday ? `<div class="card">
       <div class="card-head"><h2>${icon('calendar', 18)} Au menu aujourd'hui</h2></div>
@@ -201,6 +236,7 @@ function renderDay(el, ctx) {
     </div>`;
 
   const re = () => renderDay(el, ctx);
+  $$('[data-dnav]', el).forEach((b) => (b.onclick = () => { const n = Number(b.dataset.dnav); jourKey = n === 0 ? null : shiftDay(k, n); if (jourKey >= today) jourKey = null; re(); }));
   $$('[data-a]', el).forEach((b) => (b.onclick = () => ctx.action(b.dataset.a)));
   // photo en attente : l'état (en cours / terminé) se met à jour tout seul
   if (st.pendingPhotos?.length) {
