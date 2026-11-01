@@ -1,0 +1,58 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { geminiClient, contents } from '../src/gemini.js';
+
+const KEY = 'AIza' + 'x'.repeat(35);
+const ok = (text) => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text }] }, finishReason: 'STOP' }] }), { status: 200 });
+const sse = (text) => new Response(`data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text }] }, finishReason: 'STOP' }] })}\n\n`, { status: 200 });
+const invalid = () => new Response(JSON.stringify({ error: { code: 400, message: 'Request contains an invalid argument.', status: 'INVALID_ARGUMENT' } }), { status: 400 });
+
+function mock(handler) {
+  const calls = [];
+  globalThis.fetch = async (url, init) => { const b = JSON.parse(init.body); calls.push({ url, body: b }); return handler(b, url, calls.length); };
+  return calls;
+}
+
+test('historique nettoyé : messages vides retirés, rôles fusionnés, commence et finit par l’utilisateur', () => {
+  const c = contents([
+    { role: 'assistant', content: 'Bonjour !' },
+    { role: 'user', content: 'a' },
+    { role: 'user', content: 'b' },
+    { role: 'assistant', content: '' },
+    { role: 'assistant', content: [{ type: 'text', text: 'réponse' }] },
+    { role: 'user', content: 'c' },
+  ]);
+  assert.deepEqual(c.map((m) => m.role), ['user', 'model', 'user']);
+  assert.equal(c[0].parts.length, 2);
+});
+
+test('coach (mode rapide) : un 400 « invalid argument » est réessayé sans réglage de réflexion', async () => {
+  const calls = mock((b) => (b.generationConfig.thinkingConfig ? invalid() : sse('Voici des idées')));
+  const c = geminiClient(KEY);
+  let got = '';
+  const s = c.beta.messages.stream({ model: 'gemini-fast', max_tokens: 4000, output_config: { effort: 'low' }, system: [{ type: 'text', text: 'Tu es un coach.' }], messages: [{ role: 'user', content: 'Idées de petit-déjeuner ?' }] });
+  s.on('text', (t) => (got += t));
+  const m = await s.finalMessage();
+  assert.equal(m.content[0].text, 'Voici des idées');
+  assert.equal(got, 'Voici des idées');
+  assert.equal(calls.length, 2);
+  // le refus est retenu : la requête suivante part directement sans réflexion
+  const calls2 = mock((b) => (b.generationConfig.thinkingConfig ? invalid() : ok('ok')));
+  await c.beta.messages.create({ model: 'gemini-fast', max_tokens: 100, messages: [{ role: 'user', content: 'x' }] });
+  assert.equal(calls2.length, 1);
+});
+
+test('400 persistant : dernier recours sur les modèles stables avec la requête la plus simple', async () => {
+  const calls = mock((b, url) => (url.includes('gemini-2.5-flash-lite:') ? ok('{"a":1}') : invalid()));
+  const c = geminiClient(KEY);
+  const m = await c.beta.messages.create({ model: 'gemini', max_tokens: 100, output_config: { format: { type: 'json_schema', schema: { type: 'object' } } }, messages: [{ role: 'user', content: 'x' }] });
+  assert.equal(m.content[0].text, '{"a":1}');
+  assert.ok(calls.at(-1).url.includes('gemini-2.5-flash-lite'));
+  assert.equal(calls.at(-1).body.generationConfig.responseJsonSchema, undefined);
+});
+
+test('clé invalide : pas de nouvelle tentative', async () => {
+  const calls = mock(() => new Response(JSON.stringify({ error: { message: 'API key not valid.' } }), { status: 400 }));
+  await assert.rejects(geminiClient(KEY).beta.messages.create({ model: 'gemini-fast', messages: [{ role: 'user', content: 'x' }] }), /Clé Gemini invalide/);
+  assert.equal(calls.length, 1);
+});

@@ -27,7 +27,9 @@ export const L = { thigh: 0.44, shin: 0.43, arm: 0.29, fore: 0.27, spine: 0.25, 
 export const RAD = { torso: 0.115, chest: 0.125, thigh: 0.07, shin: 0.05, arm: 0.047, fore: 0.04, foot: 0.035, head: 0.105 };
 
 // Coude ou genou par cinématique inverse à deux segments : racine, cible, longueurs, direction de pliage.
-function ik(root, target, a, b, pole) {
+// Quand le membre s'aligne sur la direction de pliage (bras tendus au-dessus de la tête…), le coude basculait
+// d'un côté à l'autre : on mélange alors en douceur une seconde direction (« alt », coude vers l'extérieur).
+function ik(root, target, a, b, pole, alt) {
   let d = sub(target, root);
   let dl = len(d);
   const max = (a + b) * 0.999;
@@ -37,8 +39,19 @@ function ik(root, target, a, b, pole) {
   const along = (a * a - b * b + dl * dl) / (2 * dl);
   const h = Math.sqrt(Math.max(0, a * a - along * along));
   let p = sub(pole, mul(dir, dot(pole, dir)));
+  if (alt) {
+    const r = len(p) / (len(pole) || 1), w = r >= 0.5 ? 0 : (1 - r / 0.5) ** 2;
+    if (w) p = add(mul(norm(p), 1 - w), mul(norm(sub(alt, mul(dir, dot(alt, dir)))), w));
+  }
   if (len(p) < 1e-4) p = [0, 0, 1];
-  return [add(add(root, mul(dir, along)), mul(norm(p), h)), add(root, d)];
+  return [add(add(root, mul(dir, along)), mul(norm(p), h)), add(root, d), norm(p)];
+}
+
+// Pointe de pied ou main qui irait sous le sol : elle se pose à plat (direction redressée).
+function floor(from, dir, l) {
+  if (from[1] + dir[1] * l >= 0.01) return dir;
+  const y = Math.max(-1, Math.min(1, (0.01 - from[1]) / l)), hz = Math.hypot(dir[0], dir[2]), r = Math.sqrt(1 - y * y);
+  return hz < 1e-4 ? [0, y, r] : [dir[0] / hz * r, y, dir[2] / hz * r];
 }
 
 // Pose → points du squelette.
@@ -61,24 +74,17 @@ export function skeleton(P) {
     const foot = P['f' + k] || (P.fL && [-P.fL[0], P.fL[1], P.fL[2]]);
     const eP = P['e' + k] || P.eP || [0.5, -1, -0.5];
     const kP = P['k' + k] || P.kP || [0.15, 0, 1];
-    const [elbow, wrist] = ik(shoulder, hand, L.arm, L.fore, mv(T2, [s * eP[0], eP[1], eP[2]]));
-    const [knee, ankle] = ik(hip, foot, L.thigh, L.shin, mv(R, [s * kP[0], kP[1], kP[2]]));
+    const [elbow, wrist, eb] = ik(shoulder, hand, L.arm, L.fore, mv(T2, [s * eP[0], eP[1], eP[2]]), mv(T2, [s, -0.3, -0.2]));
+    const [knee, ankle, kb] = ik(hip, foot, L.thigh, L.shin, mv(R, [s * kP[0], kP[1], kP[2]]), mv(R, [s * 0.3, 0, 1]));
     const t = P['t' + k] || (P.tL && P['t' + k] === undefined && k === 'R' ? [-P.tL[0], P.tL[1], P.tL[2]] : null) || mv(Ry(P.yaw * D), [0, 0, 1]);
-    const toe = add(ankle, mul(norm(t), L.foot));
-    const handEnd = add(wrist, mul(norm(sub(wrist, elbow)), 0.075));
-    out.side[k] = { shoulder, hip, elbow, wrist, knee, ankle, toe, handEnd };
+    const toe = add(ankle, mul(floor(ankle, norm(t), L.foot), L.foot));
+    const handEnd = add(wrist, mul(floor(wrist, norm(sub(wrist, elbow)), 0.075), 0.075));
+    out.side[k] = { shoulder, hip, elbow, wrist, knee, ankle, toe, handEnd, eb, kb };
   }
   return out;
 }
 
 const BASE = { root: [0, 0.95, 0], pitch: 0, yaw: 0, roll: 0, tilt: 0, bend: 0, curve: 0, twist: 0, side: 0, head: 0, hL: [0.22, 0.9, 0.03], fL: [0.12, 0.08, 0] };
-const lerp = (a, b, t) => (typeof a === 'number' && typeof b === 'number' ? a + (b - a) * t : Array.isArray(a) && Array.isArray(b) && a.length === b.length ? a.map((x, i) => lerp(x, b[i], t)) : t < 0.5 ? a : b);
-function blend(A, B, t) {
-  const o = {};
-  for (const k of new Set([...Object.keys(A), ...Object.keys(B)])) o[k] = lerp(A[k] ?? B[k], B[k] ?? A[k], t);
-  return o;
-}
-const ease = (t) => t * t * (3 - 2 * t);
 
 // ---------- Poses de base ----------
 const k = (base, patch) => ({ ...base, ...patch });
@@ -99,9 +105,9 @@ const SUPINE = k(BASE, { root: [0, 0.12, 0], pitch: -90, hL: [0.26, 0.08, -0.25]
 // Allongé sur le ventre (tête vers +z, regard vers le sol).
 const PRONE = k(BASE, { root: [0, 0.12, 0], pitch: 90, head: -10, hL: [0.26, 0.06, 0.25], fL: [0.12, 0.07, -0.88], tL: [0, -0.3, -1], kP: [0.1, -1, 0] });
 // Planche sur les avant-bras : coudes sous les épaules, pointes de pieds au sol.
-const PLANK = k(BASE, { root: [0, 0.3, 0], pitch: 80, head: -8, hL: [0.15, 0.03, 0.78], eP: [0.2, 0, 1], fL: [0.1, 0.1, -0.85], tL: [0, -1, 0.35], kP: [0, -1, 0] });
+const PLANK = k(BASE, { root: [0, 0.3, 0], pitch: 80, head: -8, hL: [0.15, 0.03, 0.78], eP: [0.2, 0, 1], fL: [0.1, 0.12, -0.82], tL: [0, -1, 0.45], kP: [0, -1, 0] });
 // Planche bras tendus (position de pompe).
-const HIGH_PLANK = k(BASE, { root: [0, 0.45, 0], pitch: 72, head: -10, hL: [0.2, 0.04, 0.66], eP: [0.6, -0.2, -1], fL: [0.1, 0.1, -0.86], tL: [0, -1, 0.35], kP: [0, -1, 0] });
+const HIGH_PLANK = k(BASE, { root: [0, 0.43, 0], pitch: 72, head: -10, hL: [0.2, 0.05, 0.62], eP: [0.6, -0.2, -1], fL: [0.1, 0.12, -0.8], tL: [0, -1, 0.45], kP: [0, -1, 0] });
 // Quatre pattes.
 const ALL4 = k(BASE, { root: [0, 0.52, 0], pitch: 90, head: -5, hL: [0.17, 0.03, 0.5], eP: [0.3, 0, -1], fL: [0.1, 0.06, -0.48], tL: [0, 0, -1], kP: [0, 0.5, 1] });
 // Assis sur un banc (haut du banc à 0,45 m).
@@ -131,8 +137,8 @@ const PU_UP = HIGH_PLANK;
 const PU_DOWN = k(HIGH_PLANK, { root: [0, 0.24, 0.02], pitch: 82, cue: 'Descends le corps gainé, coudes à 45°' });
 const pushup = { cam: 70, work: ['chest', 'arm'], keys: [k(PU_UP, { cue: 'Mains sous les épaules, corps aligné', hold: 0.3 }), k(PU_DOWN, { t: 1.2, hold: 0.2 }), k(PU_UP, { t: 1, cue: 'Pousse le sol, sans creuser le dos', hold: 0.3 })] };
 // Pompes en V : bassin haut, tête vers le sol
-const PIKE_UP = k(BASE, { root: [0, 0.98, 0], pitch: 125, bend: 0, head: 20, hL: [0.2, 0.04, 0.62], eP: [0.6, 0, -1], fL: [0.12, 0.08, -0.55], tL: [0, -1, 0.5], kP: [0, 0, 1] });
-const pike = { cam: 80, work: ['shoulder', 'arm'], keys: [k(PIKE_UP, { cue: 'Bassin haut, corps en V inversé', hold: 0.3 }), k(PIKE_UP, { root: [0, 0.74, 0.12], pitch: 108, cue: 'Plie les coudes, tête vers le sol', t: 1.2, hold: 0.2 }), k(PIKE_UP, { t: 1, cue: 'Pousse pour remonter', hold: 0.3 })] };
+const PIKE_UP = k(BASE, { root: [0, 0.79, 0], pitch: 120, bend: 0, head: 20, hL: [0.2, 0.04, 0.62], eP: [0.6, 0, -1], fL: [0.12, 0.08, -0.55], tL: [0, -1, 0.5], kP: [0, 0, 1] });
+const pike = { cam: 80, work: ['shoulder', 'arm'], keys: [k(PIKE_UP, { cue: 'Bassin haut, corps en V inversé', hold: 0.3 }), k(PIKE_UP, { root: [0, 0.7, 0.1], pitch: 108, cue: 'Plie les coudes, tête vers le sol', t: 1.2, hold: 0.2 }), k(PIKE_UP, { t: 1, cue: 'Pousse pour remonter', hold: 0.3 })] };
 
 // Développé couché (allongé sur un banc)
 const BENCH = ['box', [0, 0.22, -0.15, 0.32, 0.44, 1.15]];
@@ -145,7 +151,7 @@ const pullover = { cam: 85, work: ['back', 'chest'], props: [BENCH, 'dbPull'], k
 
 // Rowing inversé sous une table
 const TABLE = ['box', [0, 0.76, -0.45, 0.9, 0.04, 0.7]];
-const IR_DOWN = k(SUPINE, { root: [0, 0.32, -0.08], pitch: -76, hL: [0.24, 0.73, -0.45], eP: [0.6, -1, 0], fL: [0.12, 0.08, 0.95], tL: [0, 1, 0.2], kP: [0.1, 0, 1] });
+const IR_DOWN = k(SUPINE, { root: [0, 0.32, -0.08], pitch: -76, hL: [0.24, 0.73, -0.45], eP: [0.6, -1, 0], fL: [0.12, 0.08, 0.76], tL: [0, 1, 0.2], kP: [0.1, 0, 1] });
 const IR_UP = k(IR_DOWN, { root: [0, 0.48, 0.05], pitch: -66, cue: 'Tire la poitrine vers la table, omoplates serrées' });
 const invRow = { cam: 80, work: ['back', 'arm'], props: [TABLE], keys: [k(IR_DOWN, { cue: 'Sous la table, corps gainé, bras tendus', hold: 0.3 }), k(IR_UP, { t: 1.1, hold: 0.3 }), k(IR_DOWN, { t: 1.2, cue: 'Redescends lentement' })] };
 // Rowing un bras, genou et main sur un banc
@@ -204,17 +210,42 @@ const deadbug = { cam: 70, tilt: 22, work: ['core'], keys: [one(DB0, { cue: 'Dos
 
 // Cardio
 const SQJ = k(SQ_DOWN, { hL: [0.25, 0.85, -0.05] });
-const jumpSquat = (soft) => ({ cam: 62, work: ['thigh', 'glute'], keys: [k(SQ_UP, { hL: [0.25, 0.85, -0.05], cue: 'Debout', hold: 0.15 }), k(SQJ, { t: 0.7, cue: 'Descends en squat' }), k(SQ_UP, { root: [0, 1.25, 0], fL: [0.16, 0.36, -0.02], tL: [0, -0.6, 0.8], hL: [0.2, 1.95, 0.15], t: 0.35, cue: 'Saute en poussant fort' }), k(SQ_UP, { hL: [0.25, 0.85, -0.05], t: 0.3, cue: soft ? 'Réception souple sur la pointe des pieds' : 'Réception amortie' }), k(SQJ, { t: 0.45, hold: 0.3, cue: soft ? 'Genoux souples, dans l’axe' : 'Enchaîne' })] });
-const MC = k(HIGH_PLANK, { root: [0, 0.5, 0], pitch: 68 });
+// Sauts en phases réelles : flexion (chargement), poussée jusqu'à la pointe des pieds, envol balistique (fly),
+// contact sur l'avant du pied puis amorti. Les bras balancent vers l'arrière puis vers le haut pour l'élan.
+const SQJ_TOE = k(SQ_UP, { root: [0, 1.0, 0], fL: [0.16, 0.11, 0], tL: [0, -0.75, 0.65] });
+const jumpSquat = (soft) => ({ cam: 62, work: ['thigh', 'glute'], keys: [
+  k(SQ_UP, { hL: [0.22, 0.88, 0.04], cue: 'Debout', hold: 0.25 }),
+  k(SQJ, { hL: [0.24, 0.9, -0.22], t: 0.65, cue: 'Descends en squat, bras en arrière', hold: 0.05 }),
+  k(SQJ_TOE, { hL: [0.2, 1.55, 0.35], t: 0.2, cue: 'Pousse fort dans le sol' }),
+  k(SQ_UP, { root: [0, 1.22, 0], fL: [0.16, 0.32, -0.02], tL: [0, -0.6, 0.8], hL: [0.2, 1.95, 0.15], t: 0.2, fly: 1, cue: 'Saute' }),
+  k(SQJ_TOE, { hL: [0.2, 1.35, 0.35], t: 0.2, cue: soft ? 'Réception souple sur la pointe des pieds' : 'Réception amortie' }),
+  k(SQJ, { hL: [0.2, 1.0, 0.38], t: 0.32, hold: 0.3, cue: soft ? 'Genoux souples, dans l’axe' : 'Enchaîne' }),
+] });
+const MC = k(HIGH_PLANK, { root: [0, 0.44, 0], pitch: 71 });
 const climbers = { cam: 72, work: ['core', 'thigh'], keys: [one(MC, { cue: 'Position de pompe', hold: 0.1 }), one(MC, { fL: [0.12, 0.3, -0.1], tL: [0, -0.4, 1], kL: [0.1, 0.5, 1], t: 0.3, cue: 'Genou vers la poitrine' }), one(MC, { t: 0.3 }), one(MC, { fR: [-0.12, 0.3, -0.1], tR: [0, -0.4, 1], kR: [0.1, 0.5, 1], t: 0.3, cue: 'Alterne rapidement' }), one(MC, { t: 0.3 })] };
-const burpees = { cam: 75, work: ['thigh', 'chest', 'core'], keys: [k(STAND, { cue: 'Debout', hold: 0.2 }), k(SQ_DOWN, { root: [0, 0.48, -0.1], bend: 70, hL: [0.18, 0.04, 0.4], eP: [0.5, -1, -0.5], t: 0.6, cue: 'Mains au sol' }), k(HIGH_PLANK, { root: [0, 0.45, -0.25], hL: [0.2, 0.04, 0.4], fL: [0.1, 0.1, -1.1], t: 0.45, cue: 'Pieds en arrière : planche', hold: 0.2 }), k(SQ_DOWN, { root: [0, 0.48, -0.1], bend: 70, hL: [0.18, 0.04, 0.4], eP: [0.5, -1, -0.5], t: 0.45, cue: 'Ramène les pieds' }), k(STAND, { root: [0, 1.2, 0], fL: [0.12, 0.33, -0.02], tL: [0, -0.6, 0.8], hL: [0.2, 2, 0.1], t: 0.45, cue: 'Saute, bras en l’air' }), k(STAND, { t: 0.35 })] };
-const jumpLunge = { cam: 80, work: ['thigh', 'glute'], keys: [k(lungeDown(1), { cue: 'En fente', hold: 0.2 }), k(LU_UP, { root: [0, 1.15, 0.02], fL: [0.13, 0.3, 0.05], fR: [-0.13, 0.3, -0.1], hL: [0.2, 1.1, 0.25], t: 0.4, cue: 'Saute et change de jambe en l’air' }), k(lungeDown(-1), { t: 0.4, hold: 0.25, cue: 'Réception amortie' }), k(LU_UP, { root: [0, 1.15, 0.02], fL: [0.13, 0.3, -0.1], fR: [-0.13, 0.3, 0.05], hL: [0.2, 1.1, 0.25], t: 0.4 }), k(lungeDown(1), { t: 0.4, hold: 0.25 })] };
+const BP_SQ = k(SQ_DOWN, { root: [0, 0.46, -0.1], bend: 82, head: -30, hL: [0.18, 0.05, 0.3], eP: [0.5, -1, -0.5] });
+const burpees = { cam: 75, work: ['thigh', 'chest', 'core'], keys: [
+  k(STAND, { cue: 'Debout', hold: 0.2, t: 0.25 }),
+  k(BP_SQ, { t: 0.55, cue: 'Mains au sol' }),
+  k(HIGH_PLANK, { root: [0, 0.43, -0.25], hL: [0.2, 0.05, 0.3], fL: [0.1, 0.12, -1.02], t: 0.35, cue: 'Pieds en arrière : planche', hold: 0.2 }),
+  k(BP_SQ, { t: 0.35, cue: 'Ramène les pieds' }),
+  k(SQJ_TOE, { fL: [0.12, 0.11, 0], hL: [0.2, 1.7, 0.25], t: 0.35, cue: 'Pousse et saute, bras en l’air' }),
+  k(STAND, { root: [0, 1.17, 0], fL: [0.12, 0.3, -0.02], tL: [0, -0.6, 0.8], hL: [0.2, 2, 0.1], t: 0.2, fly: 1 }),
+  k(SQJ_TOE, { root: [0, 0.97, 0], fL: [0.12, 0.11, 0], hL: [0.2, 1.5, 0.25], t: 0.2 }),
+] };
+const JL_AIR = (a, b) => k(LU_UP, { root: [0, 1.1, 0.02], fL: [0.13, 0.3, a], fR: [-0.13, 0.3, b], tL: [0, -0.5, 0.85], tR: [0, -0.5, 0.85], hL: [0.2, 1.05, 0.25], t: 0.3, fly: 1 });
+const jumpLunge = { cam: 80, work: ['thigh', 'glute'], keys: [
+  k(lungeDown(1), { cue: 'En fente, genou arrière près du sol', hold: 0.25, t: 0.25 }),
+  { ...JL_AIR(0.15, -0.2), cue: 'Saute et change de jambe en l’air' },
+  k(lungeDown(-1), { t: 0.25, hold: 0.25, cue: 'Réception amortie, buste droit' }),
+  JL_AIR(-0.2, 0.15),
+] };
 const ATH = k(STAND, { root: [0, 0.8, -0.05], bend: 25, fL: [0.25, 0.08, 0], hL: [0.25, 1.0, 0.35], kP: [0.4, 0, 1] });
-const shuffle = (touch) => ({ cam: 10, work: ['thigh'], keys: [k(ATH, { cue: 'Position athlétique, genoux fléchis', hold: 0.2 }), k(ATH, { root: [0, 0.88, -0.05], fL: [0.25, 0.2, 0], t: 0.18, cue: touch ? 'Pars en pas chassés' : 'Petit sautillement (split-step)' }), k(ATH, { t: 0.18 }), k(ATH, { root: [0.55, 0.8, -0.05], fL: [0.85, 0.08, 0], fR: [0.35, 0.08, 0], t: 0.5, cue: 'Pas chassés sur le côté' }), ...(touch ? [k(ATH, { root: [0.6, 0.6, -0.1], bend: 60, fL: [0.85, 0.08, 0], fR: [0.35, 0.08, 0], hL: [0.9, 0.06, 0.3], t: 0.3, cue: 'Touche la ligne au sol', hold: 0.1 })] : []), k(ATH, { root: [-0.55, 0.8, -0.05], fL: [-0.3, 0.08, 0], fR: [-0.8, 0.08, 0], t: 0.8, cue: 'Repars de l’autre côté' }), k(ATH, { t: 0.5 })] });
+const shuffle = (touch) => ({ cam: 10, work: ['thigh'], keys: [k(ATH, { cue: 'Position athlétique, genoux fléchis', hold: 0.2 }), k(ATH, { root: [0, 0.88, -0.05], fL: [0.25, 0.2, 0], t: 0.18, cue: touch ? 'Pars en pas chassés' : 'Petit sautillement (split-step)' }), k(ATH, { t: 0.18 }), k(ATH, { root: [0.55, 0.8, -0.05], fL: [0.85, 0.08, 0], fR: [0.35, 0.08, 0], t: 0.5, cue: 'Pas chassés sur le côté' }), ...(touch ? [k(ATH, { root: [0.6, 0.6, -0.1], bend: 60, fL: [0.85, 0.08, 0], fR: [0.35, 0.08, 0], hL: [0.9, 0.06, 0.3], hR: [0.35, 0.85, 0.25], t: 0.3, cue: 'Touche la ligne au sol', hold: 0.1 })] : []), k(ATH, { root: [-0.55, 0.8, -0.05], fL: [-0.3, 0.08, 0], fR: [-0.8, 0.08, 0], t: 0.8, cue: 'Repars de l’autre côté' }), k(ATH, { t: 0.5 })] });
 const dance = { cam: 20, work: [], keys: [k(STAND, { hL: [0.3, 1.0, 0.15], cue: 'Step-touch : un pas sur le côté', hold: 0.05 }), k(STAND, { root: [0.25, 0.92, 0], fL: [0.5, 0.08, 0], fR: [0.12, 0.12, 0], hL: [0.45, 1.3, 0.2], hR: [-0.1, 1.2, 0.35], t: 0.4 }), k(STAND, { root: [0.32, 0.95, 0], fL: [0.5, 0.08, 0], fR: [0.32, 0.14, 0.05], t: 0.35, cue: 'Ramène le pied, bras en rythme' }), k(STAND, { root: [-0.25, 0.92, 0], fL: [-0.12, 0.12, 0], fR: [-0.5, 0.08, 0], hR: [-0.45, 1.3, 0.2], hL: [0.1, 1.2, 0.35], t: 0.55, cue: 'Puis de l’autre côté' }), k(STAND, { root: [-0.32, 0.95, 0], fL: [-0.32, 0.14, 0.05], fR: [-0.5, 0.08, 0], t: 0.35 }), k(STAND, { hL: [0.3, 1.0, 0.15], t: 0.45 })] };
 
 // Étirements
-const quadStretch = { cam: 80, work: ['thigh'], keys: [one(STAND, { cue: 'Debout, en équilibre', hold: 0.2 }), one(STAND, { fR: [-0.12, 0.62, -0.32], tR: [0, 0.5, -0.2], kR: [0, -1, 0.1], hR: [-0.15, 0.72, -0.3], eR: [0.3, -0.2, -1], hL: [0.5, 1.2, 0.1], t: 1, cue: 'Talon vers la fesse, genoux serrés', hold: 2.2 }), one(STAND, { t: 1 })] };
+const quadStretch = { cam: 80, work: ['thigh'], keys: [one(STAND, { cue: 'Debout, en équilibre', hold: 0.2 }), one(STAND, { bend: 5, fR: [-0.12, 0.8, -0.2], tR: [0, 0.6, -0.4], kR: [0, -1, 0.1], hR: [-0.15, 0.88, -0.2], eR: [0.3, -0.2, -1], hL: [0.5, 1.2, 0.1], t: 1, cue: 'Talon vers la fesse, genoux serrés', hold: 2.2 }), one(STAND, { t: 1 })] };
 const STEP = ['box', [0, 0.1, 0.48, 0.5, 0.2, 0.3]];
 const HAM0 = k(STAND, { fL: [0.12, 0.28, 0.48], tL: [0, 1, 0.4], kL: [0.1, 1, 0.1], hL: [0.18, 0.88, 0.2] });
 const hamStretch = { cam: 85, work: ['hams'], props: [STEP], keys: [k(HAM0, { cue: 'Talon sur la marche, jambe tendue', hold: 0.4 }), k(HAM0, { root: [0, 0.92, -0.1], bend: 45, curve: -4, head: -20, hL: [0.18, 0.55, 0.4], t: 1.4, cue: 'Penche-toi dos droit, jusqu’à sentir l’étirement', hold: 2 }), k(HAM0, { t: 1.1 })] };
@@ -222,22 +253,22 @@ const WALL = ['box', [0.6, 1.1, 0.25, 0.08, 2.2, 1.4]];
 const PEC0 = k(STAND, { root: [0, 0.95, 0], hL: [0.53, 1.55, 0.25], eL: [0, -1, 0], fL: [0.14, 0.08, 0.05] });
 const pecStretch = { cam: -20, work: ['chest'], props: [WALL], keys: [one(PEC0, { cue: 'Avant-bras contre le mur, coude à hauteur d’épaule', hold: 0.4 }), one(PEC0, { yaw: -30, root: [0, 0.95, 0.05], hR: [-0.3, 0.92, 0.1], t: 1.4, cue: 'Tourne doucement le buste à l’opposé', hold: 2 }), one(PEC0, { t: 1.2 })] };
 const shoulderStretch = { cam: 30, work: ['shoulder'], keys: [k(STAND, { cue: 'Debout, épaules basses', hold: 0.2 }), k(STAND, { hL: [-0.28, 1.4, 0.18], eL: [0, -1, 1], hR: [-0.05, 1.25, 0.35], eR: [0.6, -1, 0], t: 1, cue: 'Bras tendu devant la poitrine, tire avec l’autre main', hold: 2 }), k(STAND, { t: 0.8 }), k(STAND, { hR: [0.28, 1.4, 0.18], eR: [0, -1, 1], hL: [0.05, 1.25, 0.35], eL: [0.6, -1, 0], t: 1, cue: 'Puis l’autre bras', hold: 2 }), k(STAND, { t: 0.8 })] };
-const CHILD = k(ALL4, { root: [0, 0.3, -0.35], pitch: 120, curve: 12, head: 10, hL: [0.2, 0.03, 0.55], eP: [0.3, 1, 0], fL: [0.12, 0.05, -0.55], tL: [0, 0, -1] });
+const CHILD = k(ALL4, { root: [0, 0.4, -0.32], pitch: 112, curve: 10, head: 0, hL: [0.2, 0.03, 0.55], eP: [0.3, 1, 0], fL: [0.12, 0.05, -0.55], tL: [0, 0, -1] });
 const child = { cam: 75, work: ['back'], keys: [k(ALL4, { cue: 'À quatre pattes', hold: 0.3 }), k(CHILD, { t: 1.6, cue: 'Fesses vers les talons, front au sol, bras devant', hold: 2.4 }), k(ALL4, { t: 1.4 })] };
 
 // Yoga
 const catCow = { cam: 80, work: ['back'], keys: [k(ALL4, { cue: 'À quatre pattes, dos neutre', hold: 0.3 }), k(ALL4, { curve: 24, head: 30, root: [0, 0.55, 0], t: 1.4, cue: 'Expire : dos rond, menton vers la poitrine', hold: 0.6 }), k(ALL4, { curve: -18, head: -40, root: [0, 0.5, 0], t: 1.6, cue: 'Inspire : dos creux, regard devant', hold: 0.6 }), k(ALL4, { t: 1.2 })] };
-const DOG = k(ALL4, { root: [0, 0.95, -0.1], pitch: 132, head: 15, hL: [0.22, 0.03, 0.62], eP: [0.3, 0, -1], fL: [0.12, 0.08, -0.58], tL: [0, -0.15, 1], kP: [0, 0, 1] });
-const dog = { cam: 82, work: ['hams', 'shoulder'], keys: [k(ALL4, { cue: 'À quatre pattes', hold: 0.3 }), k(DOG, { t: 1.5, cue: 'Pousse le bassin vers le haut et l’arrière', hold: 0.6 }), k(DOG, { fL: [0.12, 0.08, -0.62], fR: [-0.12, 0.08, -0.62], tL: [0, -0.4, 1], root: [0, 0.92, -0.12], t: 1, cue: 'Talons vers le sol, dos long', hold: 1.5 }), k(ALL4, { t: 1.4 })] };
-const LOW = k(STAND, { root: [0, 0.42, 0.05], fL: [0.14, 0.08, 0.48], fR: [-0.14, 0.06, -0.68], tR: [0, 0, -1], kR: [0.1, -1, 0.3], hL: [0.18, 0.03, 0.62], eP: [0.5, -1, -0.5] });
-const lowLunge = { cam: 80, work: ['thigh'], keys: [k(LOW, { cue: 'Genou arrière au sol, mains de chaque côté du pied', hold: 0.5 }), k(LOW, { root: [0, 0.4, 0.15], hL: [0.25, 1.65, 0.3], head: -10, t: 1.4, cue: 'Bassin vers l’avant, bras vers le ciel', hold: 2 }), k(LOW, { t: 1.2 })] };
+const DOG = k(ALL4, { root: [0, 0.79, -0.08], pitch: 126, head: 15, hL: [0.22, 0.03, 0.62], eP: [0.3, 0, -1], fL: [0.12, 0.08, -0.58], tL: [0, -0.15, 1], kP: [0, 0, 1] });
+const dog = { cam: 82, work: ['hams', 'shoulder'], keys: [k(ALL4, { cue: 'À quatre pattes', hold: 0.3 }), k(DOG, { t: 1.5, cue: 'Pousse le bassin vers le haut et l’arrière', hold: 0.6 }), k(DOG, { fL: [0.12, 0.08, -0.6], fR: [-0.12, 0.08, -0.6], tL: [0, -0.4, 1], root: [0, 0.76, -0.12], t: 1, cue: 'Talons vers le sol, dos long', hold: 1.5 }), k(ALL4, { t: 1.4 })] };
+const LOW = k(STAND, { root: [0, 0.42, 0.05], bend: 78, head: -30, fL: [0.14, 0.08, 0.48], fR: [-0.14, 0.06, -0.68], tR: [0, 0, -1], kR: [0.1, -1, 0.3], hL: [0.24, 0.04, 0.56], eP: [0.5, -1, -0.5] });
+const lowLunge = { cam: 80, work: ['thigh'], keys: [k(LOW, { cue: 'Genou arrière au sol, mains de chaque côté du pied', hold: 0.5 }), k(LOW, { root: [0, 0.4, 0.15], bend: -4, hL: [0.2, 1.42, 0.2], eP: [0.5, -1, -0.2], head: -10, t: 1.4, cue: 'Bassin vers l’avant, bras vers le ciel', hold: 2 }), k(LOW, { t: 1.2 })] };
 const W_BASE = k(STAND, { yaw: 90, root: [0, 0.93, 0], fL: [0, 0.08, -0.5], fR: [0, 0.08, 0.5], tL: [0, 0, -1], tR: [1, 0, 0.25], kL: [1, 0, 0.3], kR: [0.2, 0, 1] });
 const W2 = k(W_BASE, { root: [0, 0.68, 0.02], hL: [0, 1.4, -0.8], hR: [0, 1.4, 0.8], eP: [0.3, -1, 0] });
 const warrior = { cam: 70, work: ['thigh'], keys: [k(W_BASE, { cue: 'Pieds écartés, pied avant tourné', hold: 0.4 }), k(W2, { t: 1.4, cue: 'Plie le genou avant au-dessus de la cheville, bras tendus', hold: 2.2 }), k(W_BASE, { t: 1.2 })] };
 const PG0 = k(SUPINE, { fL: [0.14, 0.08, 0.42], tL: [0, 0, 1], kP: [0.1, 0.3, 1], hL: [0.3, 0.06, 0.15] });
 const pigeon = { cam: 55, tilt: 24, work: ['glute'], keys: [k(PG0, { cue: 'Sur le dos, pieds au sol', hold: 0.3 }), k(PG0, { fR: [0.12, 0.38, 0.33], tR: [1, 0, 0.2], kR: [1, 0.3, 0.6], t: 1, cue: 'Cheville sur le genou opposé', hold: 0.5 }), k(PG0, { fR: [0.08, 0.6, 0.12], tR: [1, 0, 0.2], kR: [1, 0.3, 0.6], fL: [0.14, 0.55, 0.32], tL: [0, 0.6, 1], kL: [0.2, 0.8, 1], hL: [0.12, 0.42, 0.12], eP: [1, 0, 0], t: 1.3, cue: 'Rapproche la jambe vers la poitrine', hold: 2 }), k(PG0, { t: 1.3 })] };
 const TW0 = k(SUPINE, { hL: [0.72, 0.06, -0.38], eP: [0, 1, 0], fL: [0.12, 0.08, 0.42], tL: [0, 0, 1], kP: [0.1, 0.3, 1] });
-const twist = { cam: 20, tilt: 40, work: ['back'], keys: [k(TW0, { cue: 'Sur le dos, bras en croix, genoux pliés', hold: 0.4 }), k(TW0, { fL: [0.5, 0.12, 0.35], fR: [0.3, 0.12, 0.42], kL: [1, 0.2, 0.5], kR: [1, 0.2, 0.5], head: 0, t: 1.5, cue: 'Genoux d’un côté, épaules au sol', hold: 1.6 }), k(TW0, { t: 1.2 }), k(TW0, { fR: [-0.5, 0.12, 0.35], fL: [-0.3, 0.12, 0.42], kR: [1, 0.2, 0.5], kL: [1, 0.2, 0.5], t: 1.5, cue: 'Puis de l’autre côté', hold: 1.6 }), k(TW0, { t: 1.2 })] };
+const twist = { cam: 20, tilt: 40, noArc: true, work: ['back'], keys: [k(TW0, { cue: 'Sur le dos, bras en croix, genoux pliés', hold: 0.4 }), k(TW0, { fL: [0.5, 0.12, 0.35], fR: [0.3, 0.12, 0.42], kL: [1, 0.2, 0.5], kR: [1, 0.2, 0.5], head: 0, t: 1.5, cue: 'Genoux d’un côté, épaules au sol', hold: 1.6 }), k(TW0, { t: 1.2 }), k(TW0, { fR: [-0.5, 0.12, 0.35], fL: [-0.3, 0.12, 0.42], kR: [1, 0.2, 0.5], kL: [1, 0.2, 0.5], t: 1.5, cue: 'Puis de l’autre côté', hold: 1.6 }), k(TW0, { t: 1.2 })] };
 const mobility = { cam: 40, work: ['glute'], keys: [one(STAND, { hL: [0.22, 0.98, 0.1], cue: 'Mains sur les hanches', hold: 0.1 }), one(STAND, { hL: [0.22, 0.98, 0.1], fR: [-0.12, 0.45, 0.35], tR: [0, -0.3, 1], kR: [0, 0.5, 1], t: 0.7, cue: 'Monte le genou' }), one(STAND, { hL: [0.22, 0.98, 0.1], fR: [-0.48, 0.45, 0.05], tR: [-0.5, -0.3, 0.6], kR: [1, 0.5, 0.2], t: 0.7, cue: 'Ouvre la hanche sur le côté' }), one(STAND, { hL: [0.22, 0.98, 0.1], t: 0.7 }), one(STAND, { hL: [0.22, 0.98, 0.1], fR: [-0.12, 0.2, 0.25], tR: [0.6, -0.5, 0.6], t: 0.5, cue: 'Cercles de cheville' }), one(STAND, { hL: [0.22, 0.98, 0.1], fR: [-0.12, 0.2, 0.25], tR: [-0.6, -0.5, 0.6], t: 0.6 }), one(STAND, { hL: [0.22, 0.98, 0.1], t: 0.6 })] };
 
 
@@ -248,7 +279,11 @@ const armCircles = { cam: 35, work: ['shoulder'], keys: [k(AC, { hL: [0.72, 1.4,
 const kneesHeels = { cam: 70, work: ['thigh'], keys: [one(STAND, { hL: [0.22, 1.1, 0.2], cue: 'Montées de genoux' }), one(STAND, { fL: [0.12, 0.5, 0.35], tL: [0, -0.3, 1], hR: [-0.2, 1.2, 0.3], t: 0.3 }), one(STAND, { t: 0.25 }), one(STAND, { fR: [-0.12, 0.5, 0.35], tR: [0, -0.3, 1], hL: [0.2, 1.2, 0.3], t: 0.3 }), one(STAND, { t: 0.25, cue: 'Puis talons-fesses' }), one(STAND, { fL: [0.12, 0.6, -0.3], tL: [0, 0.4, -0.5], kL: [0, -1, 0.2], t: 0.3 }), one(STAND, { t: 0.25 }), one(STAND, { fR: [-0.12, 0.6, -0.3], tR: [0, 0.4, -0.5], kR: [0, -1, 0.2], t: 0.3 }), one(STAND, { t: 0.25 })] };
 const highKnees = { ...kneesHeels, keys: kneesHeels.keys.slice(0, 4).map((x, i) => (i === 0 ? { ...x, cue: 'Genoux à hauteur de hanches, bras actifs' } : x)) };
 const lungeTwist = { cam: 60, work: ['thigh', 'core'], keys: [k(LU_UP, { hL: [0.15, 1.25, 0.3], cue: 'Debout, bras devant la poitrine' }), k(lungeDown(1), { hL: [0.15, 1.25, 0.3], twist: 45, t: 1, cue: 'Fente avant et rotation du buste côté jambe avant', hold: 0.3 }), k(LU_UP, { hL: [0.15, 1.25, 0.3], t: 0.8 }), k(lungeDown(-1), { hL: [0.15, 1.25, 0.3], twist: -45, t: 1, cue: 'Puis de l’autre côté', hold: 0.3 }), k(LU_UP, { hL: [0.15, 1.25, 0.3], t: 0.8 })] };
-const jacks = { cam: 15, work: ['thigh', 'shoulder'], keys: [k(STAND, { fL: [0.1, 0.08, 0], cue: 'Pieds joints, bras le long du corps' }), k(STAND, { root: [0, 1.05, 0], fL: [0.3, 0.2, 0], hL: [0.35, 1.95, 0.05], t: 0.22, cue: 'Saute : pieds écartés, bras en l’air' }), k(STAND, { fL: [0.32, 0.08, 0], hL: [0.3, 2.0, 0.05], t: 0.18 }), k(STAND, { root: [0, 1.05, 0], fL: [0.15, 0.2, 0], t: 0.22, cue: 'Atterrissage souple' }), k(STAND, { fL: [0.1, 0.08, 0], t: 0.18 })] };
+// Jumping jacks : petits sauts, bras qui décrivent un grand arc sur les côtés, réception genoux souples.
+const JJ_IN = k(STAND, { root: [0, 0.92, 0], fL: [0.1, 0.08, 0], hL: [0.22, 0.88, 0.03] });
+const JJ_OUT = k(STAND, { root: [0, 0.9, 0], fL: [0.33, 0.08, 0], hL: [0.24, 2.0, 0.05], kP: [0.5, 0, 1] });
+const JJ_AIR = k(STAND, { root: [0, 1.02, 0], fL: [0.22, 0.17, 0], tL: [0, -0.5, 0.85], hL: [0.68, 1.45, 0.05], fly: 1, t: 0.24 });
+const jacks = { cam: 15, work: ['thigh', 'shoulder'], keys: [k(JJ_IN, { cue: 'Pieds joints, bras le long du corps', t: 0.24, hold: 0.04 }), { ...JJ_AIR, cue: 'Saute : pieds écartés, bras en l’air' }, k(JJ_OUT, { t: 0.24, hold: 0.04 }), { ...JJ_AIR, cue: 'Atterrissage souple' }] };
 const breath = (base, cue) => ({ cam: 50, work: ['core'], keys: [k(base, { cue: cue[0] }), k(base, { root: add(base.root, [0, 0.015, 0]), curve: -3, head: -4, hL: base.hL && add(base.hL, [0.02, 0.03, 0]), t: 3.5, cue: cue[1], hold: 0.4 }), k(base, { t: 4.5, cue: cue[2], hold: 0.6 })] });
 const breathStand = breath(STAND, ['Debout, épaules relâchées', 'Inspire par le nez, ventre qui se gonfle', 'Expire longuement par la bouche']);
 const breathLying = { ...breath(k(SUPINE, { fL: [0.14, 0.08, 0.42], tL: [0, 0, 1], kP: [0.1, 0.3, 1], hL: [0.3, 0.06, 0.15] }), ['Allongé, genoux pliés', 'Deux inspirations par le nez', 'Longue expiration par la bouche']), tilt: 24 };
@@ -333,25 +368,144 @@ export const ANIMS = {
 };
 export const hasAnim = (label) => !!ANIMS[label];
 
+// ---------- Moteur de mouvement ----------
+// Chaque pose clé est d'abord « résolue » : les deux côtés (mains, pieds, pointes, coudes, genoux) sont écrits
+// explicitement, sinon un membre absent d'une pose sautait d'un coup en fin de transition.
+// Puis chaque valeur suit une courbe d'Hermite monotone à travers toutes les poses : vitesse continue quand
+// le mouvement passe par une pose sans s'y arrêter (cercles de bras, marche), arrêt en douceur (profil
+// « minimum jerk » des gestes humains) aux poses tenues et aux points de retournement, jamais de dépassement
+// (un pied ne traverse pas le sol). Par-dessus : pied qui se lève quand il change d'appui au sol, phase
+// aérienne balistique des sauts, tête légèrement en retard sur le buste, respiration pendant les maintiens.
+const SIDED = ['h', 'f', 't', 'e', 'k'];
+const META = new Set(['t', 'hold', 'cue', 'fly']);
+function resolve(P) {
+  const o = { ...P };
+  const fwd = mv(Ry((P.yaw || 0) * D), [0, 0, 1]);
+  o.hR = P.hR || mir(P.hL); o.hL = P.hL || mir(P.hR);
+  o.fR = P.fR || mir(P.fL); o.fL = P.fL || mir(P.fR);
+  o.tL = P.tL || fwd;
+  o.tR = P.tR || (P.tR === undefined && P.tL ? mir(P.tL) : null) || fwd;
+  for (const c of ['e', 'k']) for (const s of ['L', 'R']) o[c + s] = P[c + s] || P[c + 'P'] || (c === 'e' ? [0.5, -1, -0.5] : [0.15, 0, 1]);
+  delete o.eP; delete o.kP;
+  return o;
+}
+const channels = (keys) => [...new Set(keys.flatMap(Object.keys))].filter((c) => !META.has(c) && keys.every((x) => typeof x[c] === 'number' || Array.isArray(x[c])));
+
+// Interpolation d'un nombre : départ p0 (vitesse v0), arrivée p1 (vitesse v1), u ∈ [0,1], durée dur.
+function herm(p0, p1, v0, v1, u, dur, mode) {
+  if (mode === 'out') return p0 + (p1 - p0) * (1 - (1 - u) * (1 - u)); // décélère (montée d'un saut)
+  if (mode === 'in') return p0 + (p1 - p0) * u * u; // accélère (chute)
+  if (!v0 && !v1) return p0 + (p1 - p0) * u * u * u * (10 + u * (6 * u - 15)); // minimum jerk
+  const u2 = u * u, u3 = u2 * u;
+  return (2 * u3 - 3 * u2 + 1) * p0 + (u3 - 2 * u2 + u) * v0 * dur + (-2 * u3 + 3 * u2) * p1 + (u3 - u2) * v1 * dur;
+}
+// Vitesse à une pose de passage (Fritsch-Butland) : nulle à un extremum, moyenne harmonique des pentes sinon.
+function slope(prev, cur, next, dtA, dtB) {
+  const a = (cur - prev) / dtA, b = (next - cur) / dtB;
+  if (a * b <= 0) return 0;
+  return 2 / (1 / a + 1 / b);
+}
+const grounded = (f) => f[1] < 0.14;
+function slerp(a, b, t) {
+  const c = Math.max(-1, Math.min(1, dot(a, b))), th = Math.acos(c);
+  if (th < 1e-3) return norm(add(mul(a, 1 - t), mul(b, t)));
+  // directions presque opposées : on passe par l'avant du corps plutôt qu'à travers lui
+  if (Math.PI - th < 0.05) return norm(add(add(mul(a, 1 - t), mul(b, t)), [0, 0, Math.sin(Math.PI * t) * 0.5]));
+  const sn = Math.sin(th);
+  return add(mul(a, Math.sin((1 - t) * th) / sn), mul(b, Math.sin(t * th) / sn));
+}
+
 // Pose à l'instant t (secondes) d'une animation : keys = [pose, …], chaque pose a t (durée pour y arriver) et hold.
 export function timeline(a) {
-  const keys = a.keys.map((x) => ({ ...BASE, ...x }));
-  const seg = keys.map((x, i) => ({ dur: i === 0 ? 0.6 : x.t || 1, hold: x.hold || 0 }));
+  const keys = a.keys.map((x) => resolve({ ...BASE, ...x }));
+  // la première pose est rejointe depuis la dernière (boucle) : 0,6 s sauf durée donnée (mouvements cycliques)
+  const seg = a.keys.map((x, i) => ({ dur: x.t || (i === 0 ? 0.6 : 1), hold: x.hold || 0 }));
   const total = seg.reduce((s, x) => s + x.dur + x.hold, 0);
-  return { keys, seg, total };
+  const n = keys.length, ch = channels(keys);
+  const prevI = (i) => (i - 1 + n) % n, nextI = (i) => (i + 1) % n;
+  // vitesse de chaque valeur à chaque pose (nulle si la pose est tenue)
+  const vel = keys.map((x, i) => {
+    const v = {};
+    const p = keys[prevI(i)], q = keys[nextI(i)], dA = seg[i].dur, dB = seg[nextI(i)].dur;
+    const still = seg[i].hold > 0;
+    for (const c of ch) {
+      const f = (pv, cv, nv) => (still ? 0 : slope(pv, cv, nv, dA, dB));
+      v[c] = Array.isArray(x[c]) ? x[c].map((cv, j) => f(p[c][j], cv, q[c][j])) : f(p[c], x[c], q[c]);
+    }
+    return v;
+  });
+  return { keys, seg, total, ch, vel, arc: a.noArc ? 0 : 1 };
 }
-export function poseAt(tl, time) {
-  let t = time % tl.total;
-  const n = tl.keys.length;
-  for (let i = 0; i < n; i++) {
-    // l'étape 0 revient de la dernière pose à la première (boucle)
-    const from = tl.keys[(i - 1 + n) % n], to = tl.keys[i], { dur, hold } = tl.seg[i];
-    if (t < dur) return { pose: blend(from, to, ease(t / dur)), cue: to.cue || from.cue || '' };
+
+function between(tl, i, u, dur) {
+  const n = tl.keys.length, j = (i - 1 + n) % n;
+  const A = tl.keys[j], B = tl.keys[i], vA = tl.vel[j], vB = tl.vel[i];
+  // saut : montée qui ralentit jusqu'au point haut, chute qui accélère, puis amorti qui ralentit
+  const rootMode = B.fly ? 'out' : A.fly ? 'in' : tl.keys[(j - 1 + n) % n].fly ? 'out' : null;
+  const o = { ...B };
+  for (const c of tl.ch) {
+    const m = c === 'root' ? rootMode : null;
+    if (Array.isArray(A[c])) o[c] = A[c].map((x, k) => herm(x, B[c][k], vA[c][k], vB[c][k], u, dur, c === 'root' && k === 1 ? m : null));
+    else o[c] = herm(A[c], B[c], vA[c], vB[c], u, dur, null);
+  }
+  // les mains décrivent un arc autour de l'épaule (bras qui balancent, montent au-dessus de la tête) au lieu
+  // de passer en ligne droite à travers le corps ; une main posée au sol ou qui bouge peu garde sa trajectoire.
+  const SA = skeleton(A), SB = skeleton(B), SO = skeleton(o);
+  for (const s of ['L', 'R']) {
+    const a = A['h' + s], b = B['h' + s], d = sub(b, a), dd = dot(d, d);
+    const w = grounded(a) && grounded(b) ? 0 : Math.min(1, Math.max(0, (Math.sqrt(dd) - 0.08) / 0.17));
+    if (!w) continue;
+    const hw = o['h' + s];
+    const g = Math.min(1, Math.max(0, dot(sub(hw, a), d) / dd));
+    const ra = sub(a, SA.side[s].shoulder), rb = sub(b, SB.side[s].shoulder);
+    const la = len(ra), lb = len(rb);
+    const hr = add(SO.side[s].shoulder, mul(slerp(norm(ra), norm(rb), g), la + (lb - la) * g));
+    o['h' + s] = add(mul(hw, 1 - w), mul(hr, w));
+  }
+  // coudes et genoux : on fait tourner la direction de pliage réelle autour du membre (dans le repère du buste
+  // ou du bassin) au lieu de mélanger les directions demandées, qui faisaient basculer le coude d'un coup.
+  const local = (S, M, v, sg) => { const q = [dot([M[0][0], M[1][0], M[2][0]], v), dot([M[0][1], M[1][1], M[2][1]], v), dot([M[0][2], M[1][2], M[2][2]], v)]; return [sg * q[0], q[1], q[2]]; };
+  const pu = u * u * (3 - 2 * u);
+  for (const [s, sg] of [['L', 1], ['R', -1]]) {
+    o['e' + s] = slerp(local(SA, SA.chestR, SA.side[s].eb, sg), local(SB, SB.chestR, SB.side[s].eb, sg), pu);
+    o['k' + s] = slerp(local(SA, SA.pelvisR, SA.side[s].kb, sg), local(SB, SB.pelvisR, SB.side[s].kb, sg), pu);
+  }
+  // un pied (ou une main) qui change d'appui au sol se soulève (sinon il glisse sur le sol)
+  if (tl.arc) {
+    for (const c of ['fL', 'fR', 'hL', 'hR']) {
+      const a = A[c], b = B[c];
+      const d = Math.hypot(b[0] - a[0], b[2] - a[2]);
+      if (d > 0.07 && grounded(a) && grounded(b)) o[c] = [o[c][0], o[c][1] + Math.sin(Math.PI * u) * Math.min(0.12, 0.04 + d * 0.22), o[c][2]];
+    }
+  }
+  return o;
+}
+
+function sample(tl, time) {
+  let t = ((time % tl.total) + tl.total) % tl.total;
+  for (let i = 0; i < tl.keys.length; i++) {
+    const { dur, hold } = tl.seg[i];
+    if (t < dur) return { pose: between(tl, i, t / dur, dur), i, moving: true };
     t -= dur;
-    if (t < hold) return { pose: to, cue: to.cue || '' };
+    if (t < hold) return { pose: { ...tl.keys[i] }, i, moving: false };
     t -= hold;
   }
-  return { pose: tl.keys[0], cue: tl.keys[0].cue || '' };
+  return { pose: { ...tl.keys[0] }, i: 0, moving: false };
+}
+
+export function poseAt(tl, time) {
+  const s = sample(tl, time);
+  const pose = s.pose;
+  const to = tl.keys[s.i], from = tl.keys[(s.i - 1 + tl.keys.length) % tl.keys.length];
+  // la tête suit le buste avec un léger retard (et pas d'à-coup quand le buste s'arrête)
+  const lag = sample(tl, time - 0.07).pose;
+  pose.head = lag.head;
+  // respiration : le thorax se soulève doucement, surtout visible quand la pose est tenue
+  const br = Math.sin(time * Math.PI * 2 / 3.6);
+  pose.curve += br * 0.9;
+  pose.head += br * 0.6;
+  delete pose.t; delete pose.hold; delete pose.fly;
+  return { pose, cue: (s.moving ? to.cue || from.cue : to.cue) || '' };
 }
 
 // ---------- Rendu ----------
