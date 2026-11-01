@@ -81,3 +81,11 @@ test('clé invalide : pas de nouvelle tentative', async () => {
   await assert.rejects(geminiClient(KEY).beta.messages.create({ model: 'gemini-fast', messages: [{ role: 'user', content: 'x' }] }), /Clé Gemini invalide/);
   assert.equal(calls.length, 1);
 });
+
+test('correction : la note renvoyée avec la photo contient l’analyse fausse et toutes les précisions', async () => {
+  const { correctionNote } = await import('../src/ai.js');
+  const t = correctionNote({ title: 'Cracottes', items: [{ name: 'Cracottes', grams: 15 }, { name: 'Jus', grams: 180, liquid: true }] }, ['granola et crêpe whaou', '1 sachet']);
+  assert.match(t, /Cracottes \(15 g\)/);
+  assert.match(t, /Jus \(180 mL\)/);
+  assert.match(t, /- granola et crêpe whaou\n- 1 sachet/);
+});
