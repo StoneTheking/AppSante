@@ -140,7 +140,7 @@ Identification (le plus important) :
 2. Ne devine jamais un produit d'après sa seule forme quand l'emballage est visible : compare les marques plausibles (tailles, couleurs, logos typiques des marques vendues en France) et choisis la plus cohérente avec ce que tu vois. En cas de doute réel, donne le nom générique le plus sûr (ex. « biscuit sec au chocolat ») et mets la confiance à « faible ».
 3. Compte les unités visibles (2 biscuits, 1 sachet…) et estime les portions avec les repères d'échelle (couverts, assiette, mains, taille habituelle des emballages).
 4. Nutriments : tables CIQUAL/USDA pour les aliments bruts, valeurs de l'étiquette pour les produits de marque.
-5. Fruits et légumes (fruitVeg) : seulement les fruits et légumes entiers, en morceaux, en compote ou en soupe. Un jus de fruits 100 % compte au plus pour 80 g ; nectars, sodas, sirops, biscuits ou barres « aux fruits » comptent pour 0.
+5. Fruits et légumes (fruitVeg) : seulement les fruits et légumes entiers, en morceaux, en compote ou en soupe. Un jus de fruits (pomme, orange… : pur jus par défaut, sauf mention « nectar » ou « boisson aux fruits ») compte pour exactement min(80, volume en mL × 0,5) g, donc 80 g pour un verre ou une petite bouteille ; nectars, sodas, sirops, biscuits ou barres « aux fruits » comptent pour 0.
 6. Si l'utilisateur donne une précision ou une correction, elle prime toujours sur ce que tu crois voir.`;
 
 export async function analyzePlate(settings, dataUrl, personContext, note = '') {
