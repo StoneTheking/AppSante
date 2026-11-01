@@ -90,7 +90,7 @@ export async function openPhoto(ctx, fromGallery = false, slot = null) {
   // Un emballage photographié de près : on lit son code-barres (Open Food Facts, plus précis que l'IA).
   const code = await BC.detectInImage(file);
   if (code) { navigator.vibrate?.(60); return openScanner(ctx, slot, code); }
-  const dataUrl = await compressImage(file, 1024, 0.8); // assez net pour l'IA, plus rapide à envoyer
+  const dataUrl = await compressImage(file, 1280, 0.85); // assez net pour lire marques et emballages, léger à envoyer
   const body = sheet(`<img class="preview" src="${dataUrl}" alt=""><div id="res" style="margin-top:14px">
       <label class="lbl">Une précision ? (facultatif)</label><input id="note" placeholder="ex. sauce à la crème, moitié mangée…">
       <button class="btn block" id="go" style="margin-top:12px">${icon('sparkles', 18)} Analyser ce repas</button>
@@ -169,6 +169,29 @@ export async function processPendingPhotos() {
   return added;
 }
 
+// « Ce n'est pas ça ? » : l'utilisateur dit ce qu'il a vraiment mangé, l'IA refait le calcul (texte seul, rapide).
+export const correctionHtml = () => `<details class="fix" style="margin:12px 0 4px"><summary class="small" style="justify-content:flex-start;gap:6px;color:var(--accent)">${icon('pencil', 16)} L’IA s’est trompée ? Corriger</summary>
+  <input id="fix-txt" placeholder="ex. biscuits Granola et crêpe Whaou au chocolat" style="margin-top:8px">
+  <button class="btn soft block" id="fix-go" style="margin-top:8px">${icon('sparkles', 18)} Recalculer</button></details>`;
+export function bindCorrection(root, prev, onResult) {
+  const go = $('#fix-go', root);
+  if (!go) return;
+  go.onclick = async () => {
+    const txt = $('#fix-txt', root).value.trim();
+    if (!txt) return $('#fix-txt', root).focus();
+    go.disabled = true;
+    go.innerHTML = '<span class="spinner"></span> Recalcul…';
+    try {
+      const r = await AI.correctPlate(store.get().settings, prev(), txt, personContext(summary()));
+      onResult({ ...r, is_food: true });
+    } catch (e) {
+      toast(AI.friendlyError(e), 3000);
+      go.disabled = false;
+      go.innerHTML = `${icon('sparkles', 18)} Recalculer`;
+    }
+  };
+}
+
 const scaled = (n, k) => Object.fromEntries(Object.entries(n).map(([a, v]) => [a, Math.round(v * k * 10) / 10]));
 
 function showResult(res, p, body) {
@@ -184,6 +207,7 @@ function showResult(res, p, body) {
       <div class="stat"><div class="k">Fibres</div><div class="v"><span data-n="fiber">${fmt(n.fiber)}</span><small>g</small></div></div>
     </div>
     <table>${p.items.map((i) => `<tr><td>${esc(i.name)}</td><td class="num" data-ig="${i.grams}" data-liq="${isDrink(i) ? 1 : ''}">${qtyTxt(i, p.factor)}</td><td class="num" data-ik="${i.kcal}">${fmt(i.kcal * p.factor)} kcal</td></tr>`).join('')}</table>
+    ${correctionHtml()}
     <p class="small" style="margin:14px 0 10px">${esc(p.comment)}</p>
     <div class="note">${icon('bulb', 18)}<span>${esc(p.advice)}</span></div>
     ${p.alcohol_drinks ? `<div class="note warn">${icon('wine', 18)}<span>${fmt(p.alcohol_drinks * p.factor, 1)} verre(s) standard d’alcool détecté(s) : ajouté(s) automatiquement à ta journée.</span></div>` : ''}
@@ -193,6 +217,7 @@ function showResult(res, p, body) {
     <label class="lbl">C’était</label>
     <div class="chips" style="flex-wrap:wrap">${MEAL_TYPES.map(([k, l]) => `<button class="chip ${p.slot === k ? 'on' : ''}" data-slot="${k}">${l}</button>`).join('')}</div>
     <button class="btn block" id="save" style="margin-top:14px">${icon('check', 18)} Enregistrer</button>`;
+  bindCorrection(res, () => p, (r) => showResult(res, { ...p, ...r }, body));
   $$('[data-slot]', res).forEach((b) => (b.onclick = () => { p.slot = b.dataset.slot; $$('[data-slot]', res).forEach((x) => x.classList.toggle('on', x === b)); }));
   // Le curseur met les chiffres à jour en direct, pendant le glissement (sans redessiner la fiche).
   $('#factor', res).oninput = (e) => {

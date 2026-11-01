@@ -132,6 +132,17 @@ function imageBlock(dataUrl) {
   return { type: 'image', source: { type: 'base64', media_type, data } };
 }
 
+// Consignes d'identification : la plupart des erreurs viennent de produits emballés devinés d'après leur forme
+// (un biscuit Granola pris pour une Cracotte, une crêpe fourrée pour une barre de céréales…).
+const PLATE_RULES = `Tu es un diététicien-nutritionniste expert. Tu analyses la photo d'un repas.
+Identification (le plus important) :
+1. Commence par LIRE tout texte visible : marque, nom du produit, logo, couleurs de l'emballage, mentions (« chocolat au lait », « fourré »…). Un produit emballé dont le nom ou la marque est lisible ou reconnaissable doit être nommé précisément (ex. « Biscuits Granola – LU », « Crêpe fourrée chocolat – Whaou! »), et ses valeurs nutritionnelles sont celles de ce produit précis (étiquette Open Food Facts), pas celles d'un aliment générique.
+2. Ne devine jamais un produit d'après sa seule forme quand l'emballage est visible : compare les marques plausibles (tailles, couleurs, logos typiques des marques vendues en France) et choisis la plus cohérente avec ce que tu vois. En cas de doute réel, donne le nom générique le plus sûr (ex. « biscuit sec au chocolat ») et mets la confiance à « faible ».
+3. Compte les unités visibles (2 biscuits, 1 sachet…) et estime les portions avec les repères d'échelle (couverts, assiette, mains, taille habituelle des emballages).
+4. Nutriments : tables CIQUAL/USDA pour les aliments bruts, valeurs de l'étiquette pour les produits de marque.
+5. Fruits et légumes (fruitVeg) : seulement les fruits et légumes entiers, en morceaux, en compote ou en soupe. Un jus de fruits 100 % compte au plus pour 80 g ; nectars, sodas, sirops, biscuits ou barres « aux fruits » comptent pour 0.
+6. Si l'utilisateur donne une précision ou une correction, elle prime toujours sur ce que tu crois voir.`;
+
 export async function analyzePlate(settings, dataUrl, personContext, note = '') {
   const { apiKey } = settings;
   const model = modelFor(settings, 'photo');
@@ -142,16 +153,34 @@ export async function analyzePlate(settings, dataUrl, personContext, note = '') 
     ...fallbackParams(model),
     output_config: { effort: 'medium', format: { type: 'json_schema', schema: PLATE_SCHEMA } },
     system:
-      "Tu es un diététicien-nutritionniste expert. Tu analyses la photo d'un repas : identifie chaque aliment, estime les portions (utilise couverts, assiette, mains comme repères d'échelle), puis les nutriments en t'appuyant sur les tables CIQUAL/USDA. Évalue le repas pour la personne décrite (objectif, activité, sommeil, humeur, apports déjà consommés aujourd'hui, besoins restants). Sois honnête sur l'incertitude. Réponds en français.\n\nRepères scientifiques à appliquer dans ton évaluation :\n" + FOOD_EVIDENCE,
+      PLATE_RULES + "\n\nÉvalue le repas pour la personne décrite (objectif, activité, sommeil, humeur, apports déjà consommés aujourd'hui, besoins restants). Sois honnête sur l'incertitude. Réponds en français.\n\nRepères scientifiques à appliquer dans ton évaluation :\n" + FOOD_EVIDENCE,
     messages: [
       {
         role: 'user',
         content: [
           imageBlock(dataUrl),
-          { type: 'text', text: `Contexte de la personne :\n${personContext}\n\n${note ? `Précision de l'utilisateur : ${note}\n\n` : ''}Analyse ce repas.` },
+          { type: 'text', text: `Contexte de la personne :\n${personContext}\n\n${note ? `Précision de l'utilisateur (elle prime sur la photo) : ${note}\n\n` : ''}Lis d'abord les emballages visibles, puis analyse ce repas.` },
         ],
       },
     ],
+  });
+  return parseJson(resp);
+}
+
+// Correction d'une analyse par l'utilisateur (« c'est du granola et une crêpe Whaou ») : nouveau calcul en
+// texte seul, sans renvoyer la photo, donc bien plus rapide.
+export async function correctPlate(settings, previous, correction, personContext) {
+  const { apiKey } = settings;
+  const model = modelFor(settings, 'quick');
+  const c = await client(apiKey);
+  const before = `${previous.title || ''} : ${(previous.items || []).map((i) => `${i.name} (${Math.round(i.grams)} ${i.liquid ? 'mL' : 'g'})`).join(', ')}`;
+  const resp = await c.beta.messages.create({
+    model,
+    max_tokens: 6000,
+    ...fallbackParams(model),
+    output_config: { effort: 'low', format: { type: 'json_schema', schema: PLATE_SCHEMA } },
+    system: PLATE_RULES + "\n\nTu n'as pas la photo : une première analyse s'est trompée et l'utilisateur la corrige. Sa correction est la vérité. Garde les quantités de la première analyse pour les aliments qu'il ne mentionne pas, remplace ceux qu'il corrige (même quantité ou portion habituelle du produit corrigé, sauf quantité donnée), puis recalcule tout. is_food = true. Évalue le repas pour la personne décrite. Réponds en français.\n\nRepères scientifiques :\n" + FOOD_EVIDENCE,
+    messages: [{ role: 'user', content: `Contexte de la personne :\n${personContext}\n\nPremière analyse (erronée) : ${before}\n\nCorrection de l'utilisateur : ${correction}\n\nRefais l'analyse de ce repas.` }],
   });
   return parseJson(resp);
 }

@@ -37,3 +37,15 @@ test('saut : phase aérienne, les deux pieds quittent le sol', () => {
   for (let t = 0; t < tl.total; t += 0.02) { const S = skeleton(poseAt(tl, t).pose); if (S.side.L.ankle[1] > 0.2 && S.side.R.ankle[1] > 0.2) air++; }
   assert.ok(air >= 3);
 });
+
+test('étirement des ischios : une seule jambe sur la marche à la fois, puis l’autre', () => {
+  const tl = timeline(ANIMS['Étirement des ischios (jambe tendue sur une marche)']);
+  const up = { L: 0, R: 0 };
+  for (let t = 0; t < tl.total; t += 0.05) {
+    const S = skeleton(poseAt(tl, t).pose);
+    const l = S.side.L.ankle[1] > 0.2, r = S.side.R.ankle[1] > 0.2;
+    assert.ok(!(l && r), `les deux pieds en l’air à t=${t.toFixed(2)}`);
+    if (l) up.L++; if (r) up.R++;
+  }
+  assert.ok(up.L > 20 && up.R > 20);
+});

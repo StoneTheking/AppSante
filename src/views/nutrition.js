@@ -12,7 +12,7 @@ import { tokens, familyFactor } from '../family.js';
 import * as SN from '../snacks.js';
 import { icon, esc, fmt, qtyTxt, segmented, donut, toast, undoToast, sheet, srcLinks, $, $$ } from '../ui.js';
 import { meter } from './home.js';
-import { addMeal, pendingState, processPendingPhotos, setMealDay, SLOT_TIME } from './actions.js';
+import { addMeal, pendingState, processPendingPhotos, setMealDay, SLOT_TIME, correctionHtml, bindCorrection } from './actions.js';
 import { openTastePicker } from './tastes.js';
 
 let seg = 'jour';
@@ -68,10 +68,11 @@ export function openMeal(id, done) {
       <div class="stat"><div class="k">Fibres</div><div class="v">${fmt(n.fiber)}<small>g</small></div></div>
       <div class="stat"><div class="k">Glucides</div><div class="v">${fmt(n.carbs)}<small>g</small></div></div>
       <div class="stat"><div class="k">Lipides</div><div class="v">${fmt(n.fat)}<small>g</small></div></div>
-      <div class="stat"><div class="k">Légumes</div><div class="v">${fmt(n.fruitVeg)}<small>g</small></div></div>
+      <div class="stat"><div class="k">Fruits/lég.</div><div class="v">${fmt(n.fruitVeg)}<small>g</small></div></div>
     </div>
     <p class="tiny muted" style="margin:0">Sucres ${fmt(n.sugar)} g · graisses saturées ${fmt(n.satFat)} g · sodium ${fmt(n.sodium)} mg${m.alcohol ? ` · ${fmt(m.alcohol, 1)} verre(s) d’alcool` : ''}${m.quality != null ? ` · qualité ${m.quality}/100` : ''}</p>
     ${m.items?.length ? `<table style="margin-top:10px">${m.items.map((i) => `<tr><td>${esc(i.name)}</td><td class="num">${qtyTxt(i)}</td><td class="num">${fmt(i.kcal)} kcal</td></tr>`).join('')}</table>` : ''}
+    ${m.items?.length && !m.barcode ? correctionHtml() : ''}
     ${m.comment ? `<p class="small" style="margin:12px 0 6px">${esc(m.comment)}</p>` : ''}
     ${m.advice ? `<div class="note">${icon('bulb', 18)}<span>${esc(m.advice)}</span></div>` : ''}
     <label class="lbl">Tu as aimé ?</label>${stars(m)}
@@ -84,6 +85,18 @@ export function openMeal(id, done) {
     </div>
     <button class="btn danger block" id="del" style="margin-top:8px">${icon('trash', 18)} Supprimer ce repas</button>`, { title: 'Repas', full: true, onClose: done });
   bindStars(body, () => {});
+  // correction : le repas enregistré est mis à jour (alcool du jour compris), puis la fiche se réaffiche
+  bindCorrection(body, () => m, (r) => {
+    store.update((s) => {
+      const x = s.meals.find((y) => y.id === id); if (!x) return;
+      const dAlc = (r.alcohol_drinks || 0) - (x.alcohol || 0);
+      Object.assign(x, { title: r.title, items: r.items, nutrients: r.nutrients, nova: r.nova, quality: r.quality, verdict: r.verdict, comment: r.comment, advice: r.advice, alcohol: r.alcohol_drinks || 0 });
+      if (dAlc) s.days[x.date] = { ...(s.days[x.date] || {}), alcohol: Math.max(0, Math.round(((s.days[x.date]?.alcohol || 0) + dAlc) * 10) / 10) };
+    });
+    toast('Repas corrigé ✅', 1400);
+    body.close();
+    openMeal(id, done);
+  });
   $$('[data-mslot]', body).forEach((b) => (b.onclick = () => {
     const k = b.dataset.mslot;
     store.update((s) => { const x = s.meals.find((y) => y.id === id); if (x) { x.snack = k === 'grignotage'; x.slot = k === 'grignotage' ? 'collation' : k; } });

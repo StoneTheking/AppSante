@@ -245,10 +245,29 @@ const shuffle = (touch) => ({ cam: 10, work: ['thigh'], keys: [k(ATH, { cue: 'Po
 const dance = { cam: 20, work: [], keys: [k(STAND, { hL: [0.3, 1.0, 0.15], cue: 'Step-touch : un pas sur le côté', hold: 0.05 }), k(STAND, { root: [0.25, 0.92, 0], fL: [0.5, 0.08, 0], fR: [0.12, 0.12, 0], hL: [0.45, 1.3, 0.2], hR: [-0.1, 1.2, 0.35], t: 0.4 }), k(STAND, { root: [0.32, 0.95, 0], fL: [0.5, 0.08, 0], fR: [0.32, 0.14, 0.05], t: 0.35, cue: 'Ramène le pied, bras en rythme' }), k(STAND, { root: [-0.25, 0.92, 0], fL: [-0.12, 0.12, 0], fR: [-0.5, 0.08, 0], hR: [-0.45, 1.3, 0.2], hL: [0.1, 1.2, 0.35], t: 0.55, cue: 'Puis de l’autre côté' }), k(STAND, { root: [-0.32, 0.95, 0], fL: [-0.32, 0.14, 0.05], fR: [-0.5, 0.08, 0], t: 0.35 }), k(STAND, { hL: [0.3, 1.0, 0.15], t: 0.45 })] };
 
 // Étirements
-const quadStretch = { cam: 80, work: ['thigh'], keys: [one(STAND, { cue: 'Debout, en équilibre', hold: 0.2 }), one(STAND, { bend: 5, fR: [-0.12, 0.8, -0.2], tR: [0, 0.6, -0.4], kR: [0, -1, 0.1], hR: [-0.15, 0.88, -0.2], eR: [0.3, -0.2, -1], hL: [0.5, 1.2, 0.1], t: 1, cue: 'Talon vers la fesse, genoux serrés', hold: 2.2 }), one(STAND, { t: 1 })] };
-const STEP = ['box', [0, 0.1, 0.48, 0.5, 0.2, 0.3]];
-const HAM0 = k(STAND, { fL: [0.12, 0.28, 0.48], tL: [0, 1, 0.4], kL: [0.1, 1, 0.1], hL: [0.18, 0.88, 0.2] });
-const hamStretch = { cam: 85, work: ['hams'], props: [STEP], keys: [k(HAM0, { cue: 'Talon sur la marche, jambe tendue', hold: 0.4 }), k(HAM0, { root: [0, 0.92, -0.1], bend: 45, curve: -4, head: -20, hL: [0.18, 0.55, 0.4], t: 1.4, cue: 'Penche-toi dos droit, jusqu’à sentir l’étirement', hold: 2 }), k(HAM0, { t: 1.1 })] };
+// une jambe après l'autre : talon droit vers la fesse, puis le gauche
+const QUAD_UP = (s) => ({ bend: 5, ['f' + s]: [(s === 'R' ? -1 : 1) * 0.12, 0.8, -0.2], ['t' + s]: [0, 0.6, -0.4], ['k' + s]: [0, -1, 0.1], ['h' + s]: [(s === 'R' ? -1 : 1) * 0.15, 0.88, -0.2], ['e' + s]: [0.3, -0.2, -1], ['h' + (s === 'R' ? 'L' : 'R')]: [(s === 'R' ? 1 : -1) * 0.5, 1.2, 0.1] });
+const quadStretch = { cam: 80, work: ['thigh'], keys: [one(STAND, { cue: 'Debout, en équilibre', hold: 0.2 }), one(STAND, { ...QUAD_UP('R'), t: 1, cue: 'Talon vers la fesse, genoux serrés', hold: 2.2 }), one(STAND, { t: 1, hold: 0.2 }), one(STAND, { ...QUAD_UP('L'), t: 1, cue: 'Puis l’autre jambe', hold: 2.2 }), one(STAND, { t: 1 })] };
+const STEP = ['box', [0, 0.1, 0.56, 0.5, 0.2, 0.3]];
+// Une seule jambe sur la marche (l'autre reste au sol, tendue), mains qui glissent vers le genou, puis on change de jambe.
+const hamUp = (s) => { const x = s === 'L' ? 1 : -1; return { ['f' + s]: [x * 0.12, 0.27, 0.55], ['t' + s]: [0, 1, 0.4], ['k' + s]: [0.1, 1, 0.1], hL: [0.17, 0.88, 0.2], hR: [-0.17, 0.88, 0.2] }; };
+const hamLift = (s) => { const x = s === 'L' ? 1 : -1; return { ['f' + s]: [x * 0.12, 0.42, 0.34], ['t' + s]: [0, 0.3, 1], ['k' + s]: [0.1, 0, 1] }; };
+const hamLean = (s) => { const x = s === 'L' ? 1 : -1; return { root: [x * 0.02, 0.92, -0.05], bend: 45, curve: -4, head: -20, hL: [x * 0.07 + 0.1, 0.58, 0.4], hR: [x * 0.07 - 0.1, 0.58, 0.4], eP: [0.6, -1, -0.2] }; };
+const hamStretch = { cam: 85, work: ['hams'], props: [STEP], keys: [
+  one(STAND, { cue: 'Face à une marche, debout', hold: 0.2 }),
+  one(STAND, { ...hamLift('L'), t: 0.5 }),
+  one(STAND, { ...hamUp('L'), t: 0.5, cue: 'Un talon sur la marche, jambe tendue, l’autre au sol', hold: 0.4 }),
+  one(STAND, { ...hamUp('L'), ...hamLean('L'), t: 1.4, cue: 'Penche-toi dos droit, jusqu’à sentir l’étirement', hold: 2 }),
+  one(STAND, { ...hamUp('L'), t: 1.1, hold: 0.2 }),
+  one(STAND, { ...hamLift('L'), t: 0.5 }),
+  one(STAND, { t: 0.5, hold: 0.2 }),
+  one(STAND, { ...hamLift('R'), t: 0.5 }),
+  one(STAND, { ...hamUp('R'), t: 0.5, cue: 'Change de jambe', hold: 0.4 }),
+  one(STAND, { ...hamUp('R'), ...hamLean('R'), t: 1.4, cue: 'Penche-toi dos droit, jusqu’à sentir l’étirement', hold: 2 }),
+  one(STAND, { ...hamUp('R'), t: 1.1, hold: 0.2 }),
+  one(STAND, { ...hamLift('R'), t: 0.5 }),
+  one(STAND, { t: 0.5 }),
+] };
 const WALL = ['box', [0.6, 1.1, 0.25, 0.08, 2.2, 1.4]];
 const PEC0 = k(STAND, { root: [0, 0.95, 0], hL: [0.53, 1.55, 0.25], eL: [0, -1, 0], fL: [0.14, 0.08, 0.05] });
 const pecStretch = { cam: -20, work: ['chest'], props: [WALL], keys: [one(PEC0, { cue: 'Avant-bras contre le mur, coude à hauteur d’épaule', hold: 0.4 }), one(PEC0, { yaw: -30, root: [0, 0.95, 0.05], hR: [-0.3, 0.92, 0.1], t: 1.4, cue: 'Tourne doucement le buste à l’opposé', hold: 2 }), one(PEC0, { t: 1.2 })] };
@@ -269,7 +288,7 @@ const PG0 = k(SUPINE, { fL: [0.14, 0.08, 0.42], tL: [0, 0, 1], kP: [0.1, 0.3, 1]
 const pigeon = { cam: 55, tilt: 24, work: ['glute'], keys: [k(PG0, { cue: 'Sur le dos, pieds au sol', hold: 0.3 }), k(PG0, { fR: [0.12, 0.38, 0.33], tR: [1, 0, 0.2], kR: [1, 0.3, 0.6], t: 1, cue: 'Cheville sur le genou opposé', hold: 0.5 }), k(PG0, { fR: [0.08, 0.6, 0.12], tR: [1, 0, 0.2], kR: [1, 0.3, 0.6], fL: [0.14, 0.55, 0.32], tL: [0, 0.6, 1], kL: [0.2, 0.8, 1], hL: [0.12, 0.42, 0.12], eP: [1, 0, 0], t: 1.3, cue: 'Rapproche la jambe vers la poitrine', hold: 2 }), k(PG0, { t: 1.3 })] };
 const TW0 = k(SUPINE, { hL: [0.72, 0.06, -0.38], eP: [0, 1, 0], fL: [0.12, 0.08, 0.42], tL: [0, 0, 1], kP: [0.1, 0.3, 1] });
 const twist = { cam: 20, tilt: 40, noArc: true, work: ['back'], keys: [k(TW0, { cue: 'Sur le dos, bras en croix, genoux pliés', hold: 0.4 }), k(TW0, { fL: [0.5, 0.12, 0.35], fR: [0.3, 0.12, 0.42], kL: [1, 0.2, 0.5], kR: [1, 0.2, 0.5], head: 0, t: 1.5, cue: 'Genoux d’un côté, épaules au sol', hold: 1.6 }), k(TW0, { t: 1.2 }), k(TW0, { fR: [-0.5, 0.12, 0.35], fL: [-0.3, 0.12, 0.42], kR: [1, 0.2, 0.5], kL: [1, 0.2, 0.5], t: 1.5, cue: 'Puis de l’autre côté', hold: 1.6 }), k(TW0, { t: 1.2 })] };
-const mobility = { cam: 40, work: ['glute'], keys: [one(STAND, { hL: [0.22, 0.98, 0.1], cue: 'Mains sur les hanches', hold: 0.1 }), one(STAND, { hL: [0.22, 0.98, 0.1], fR: [-0.12, 0.45, 0.35], tR: [0, -0.3, 1], kR: [0, 0.5, 1], t: 0.7, cue: 'Monte le genou' }), one(STAND, { hL: [0.22, 0.98, 0.1], fR: [-0.48, 0.45, 0.05], tR: [-0.5, -0.3, 0.6], kR: [1, 0.5, 0.2], t: 0.7, cue: 'Ouvre la hanche sur le côté' }), one(STAND, { hL: [0.22, 0.98, 0.1], t: 0.7 }), one(STAND, { hL: [0.22, 0.98, 0.1], fR: [-0.12, 0.2, 0.25], tR: [0.6, -0.5, 0.6], t: 0.5, cue: 'Cercles de cheville' }), one(STAND, { hL: [0.22, 0.98, 0.1], fR: [-0.12, 0.2, 0.25], tR: [-0.6, -0.5, 0.6], t: 0.6 }), one(STAND, { hL: [0.22, 0.98, 0.1], t: 0.6 })] };
+const mobility = { cam: 40, work: ['glute'], keys: [one(STAND, { hL: [0.22, 0.98, 0.1], hR: [-0.22, 0.98, 0.1], cue: 'Mains sur les hanches', hold: 0.1 }), one(STAND, { hL: [0.22, 0.98, 0.1], hR: [-0.22, 0.98, 0.1], fR: [-0.12, 0.45, 0.35], tR: [0, -0.3, 1], kR: [0, 0.5, 1], t: 0.7, cue: 'Monte le genou' }), one(STAND, { hL: [0.22, 0.98, 0.1], hR: [-0.22, 0.98, 0.1], fR: [-0.48, 0.45, 0.05], tR: [-0.5, -0.3, 0.6], kR: [1, 0.5, 0.2], t: 0.7, cue: 'Ouvre la hanche sur le côté' }), one(STAND, { hL: [0.22, 0.98, 0.1], hR: [-0.22, 0.98, 0.1], t: 0.7 }), one(STAND, { hL: [0.22, 0.98, 0.1], hR: [-0.22, 0.98, 0.1], fR: [-0.12, 0.2, 0.25], tR: [0.6, -0.5, 0.6], t: 0.5, cue: 'Cercles de cheville' }), one(STAND, { hL: [0.22, 0.98, 0.1], hR: [-0.22, 0.98, 0.1], fR: [-0.12, 0.2, 0.25], tR: [-0.6, -0.5, 0.6], t: 0.6 }), one(STAND, { hL: [0.22, 0.98, 0.1], hR: [-0.22, 0.98, 0.1], t: 0.6 })] };
 
 
 // Échauffement, retour au calme, respiration
@@ -278,7 +297,9 @@ const AC = k(STAND, { fL: [0.15, 0.08, 0] });
 const armCircles = { cam: 35, work: ['shoulder'], keys: [k(AC, { hL: [0.72, 1.4, 0], cue: 'Bras tendus sur les côtés' }), k(AC, { hL: [0.62, 1.45, 0.3], t: 0.4, cue: 'Grands cercles de bras' }), k(AC, { hL: [0.55, 1.8, 0.1], t: 0.4 }), k(AC, { hL: [0.62, 1.4, -0.3], t: 0.4 }), k(AC, { hL: [0.72, 1.4, 0], t: 0.4 }), k(AC, { hL: [0.22, 1.0, 0.05], t: 0.5, cue: 'Puis cercles de hanches, mains sur la taille' }), k(AC, { hL: [0.22, 1.0, 0.05], root: [0.06, 0.94, 0.04], t: 0.5 }), k(AC, { hL: [0.22, 1.0, 0.05], root: [0, 0.94, 0.08], t: 0.5 }), k(AC, { hL: [0.22, 1.0, 0.05], root: [-0.06, 0.94, 0.04], t: 0.5 }), k(AC, { t: 0.5 })] };
 const kneesHeels = { cam: 70, work: ['thigh'], keys: [one(STAND, { hL: [0.22, 1.1, 0.2], cue: 'Montées de genoux' }), one(STAND, { fL: [0.12, 0.5, 0.35], tL: [0, -0.3, 1], hR: [-0.2, 1.2, 0.3], t: 0.3 }), one(STAND, { t: 0.25 }), one(STAND, { fR: [-0.12, 0.5, 0.35], tR: [0, -0.3, 1], hL: [0.2, 1.2, 0.3], t: 0.3 }), one(STAND, { t: 0.25, cue: 'Puis talons-fesses' }), one(STAND, { fL: [0.12, 0.6, -0.3], tL: [0, 0.4, -0.5], kL: [0, -1, 0.2], t: 0.3 }), one(STAND, { t: 0.25 }), one(STAND, { fR: [-0.12, 0.6, -0.3], tR: [0, 0.4, -0.5], kR: [0, -1, 0.2], t: 0.3 }), one(STAND, { t: 0.25 })] };
 const highKnees = { ...kneesHeels, keys: kneesHeels.keys.slice(0, 4).map((x, i) => (i === 0 ? { ...x, cue: 'Genoux à hauteur de hanches, bras actifs' } : x)) };
-const lungeTwist = { cam: 60, work: ['thigh', 'core'], keys: [k(LU_UP, { hL: [0.15, 1.25, 0.3], cue: 'Debout, bras devant la poitrine' }), k(lungeDown(1), { hL: [0.15, 1.25, 0.3], twist: 45, t: 1, cue: 'Fente avant et rotation du buste côté jambe avant', hold: 0.3 }), k(LU_UP, { hL: [0.15, 1.25, 0.3], t: 0.8 }), k(lungeDown(-1), { hL: [0.15, 1.25, 0.3], twist: -45, t: 1, cue: 'Puis de l’autre côté', hold: 0.3 }), k(LU_UP, { hL: [0.15, 1.25, 0.3], t: 0.8 })] };
+// bras tendus devant la poitrine qui tournent avec le buste (sinon les mains restaient figées pendant la rotation)
+const armsTurn = (deg, y = 1.25, z0 = 0.02) => { const a = deg * D, c = Math.cos(a), sn = Math.sin(a); const r = ([x, y, z]) => [x * c + (z - z0) * sn, y, -x * sn + (z - z0) * c + z0]; return { hL: r([0.12, y, 0.42]), hR: r([-0.12, y, 0.42]), eP: [0.8, -1, 0] }; };
+const lungeTwist = { cam: 60, work: ['thigh', 'core'], keys: [k(LU_UP, { ...armsTurn(0), cue: 'Debout, bras tendus devant la poitrine' }), k(lungeDown(1), { ...armsTurn(0, 0.86), t: 0.8 }), k(lungeDown(1), { ...armsTurn(40, 0.86), twist: 45, t: 0.7, cue: 'Fente avant et rotation du buste côté jambe avant', hold: 0.3 }), k(lungeDown(1), { ...armsTurn(0, 0.86), t: 0.6 }), k(LU_UP, { ...armsTurn(0), t: 0.8 }), k(lungeDown(-1), { ...armsTurn(0, 0.86), t: 0.8 }), k(lungeDown(-1), { ...armsTurn(-40, 0.86), twist: -45, t: 0.7, cue: 'Puis de l’autre côté', hold: 0.3 }), k(lungeDown(-1), { ...armsTurn(0, 0.86), t: 0.6 }), k(LU_UP, { ...armsTurn(0), t: 0.8 })] };
 // Jumping jacks : petits sauts, bras qui décrivent un grand arc sur les côtés, réception genoux souples.
 const JJ_IN = k(STAND, { root: [0, 0.92, 0], fL: [0.1, 0.08, 0], hL: [0.22, 0.88, 0.03] });
 const JJ_OUT = k(STAND, { root: [0, 0.9, 0], fL: [0.33, 0.08, 0], hL: [0.24, 2.0, 0.05], kP: [0.5, 0, 1] });

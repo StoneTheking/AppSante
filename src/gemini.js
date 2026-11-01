@@ -9,9 +9,28 @@ const MODELS = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-flash-lite-la
 // mode rapide (coach, recettes, captures) : Flash-Lite d'abord, bien plus réactif, puis Flash en secours
 const FAST = ['gemini-flash-lite-latest', 'gemini-2.5-flash-lite', 'gemini-flash-latest', 'gemini-2.5-flash'];
 const BUSY = [500, 502, 503, 504];
-// Certains modèles (les plus récents derrière les alias « -latest ») refusent le réglage thinkingBudget :
-// une fois le refus constaté, on ne l'envoie plus pendant la session.
-let thinkRefused = false;
+
+// Réglage de réflexion, modèle par modèle : c'est ce qui décide du temps de réponse.
+// Les modèles 2.5 prennent un budget en jetons (0 = pas de réflexion) ; les modèles 3 et suivants (derrière
+// les alias « -latest ») prennent un niveau (« minimal », « low »…). Sans réglage, un modèle 3 réfléchit au
+// maximum : 10 à 30 s d'attente. Un réglage refusé (400) n'est retiré que pour CE modèle, pas pour les autres.
+const refused = new Map(); // modèle → réglages refusés ('level', 'budget')
+export function thinkOptions(model, p) {
+  const fast = p.model === 'gemini-fast', effort = p.output_config?.effort;
+  if (!fast && effort !== 'low' && effort !== 'medium') return [null];
+  const level = { thinkingLevel: fast ? 'minimal' : 'low' };
+  const budget = { thinkingBudget: fast ? 0 : effort === 'low' ? 512 : 1024 };
+  const order = /2\.5/.test(model) ? [['budget', budget], ['level', level]] : [['level', level], ['budget', budget]];
+  const no = refused.get(model) || new Set();
+  return [...order.filter(([k]) => !no.has(k)), [null, null]].map(([k, v]) => v && { kind: k, ...v });
+}
+
+// Modèle saturé (503) ou quota atteint (429) : mis de côté une minute, la requête suivante part tout de suite
+// sur un modèle disponible au lieu de réessayer (et d'attendre) le modèle saturé.
+const cooldown = new Map();
+const COOL_MS = 60000;
+const order = (list) => { const now = Date.now(), ok = list.filter((m) => !(cooldown.get(m) > now)); return ok.length ? [...ok, ...list.filter((m) => !ok.includes(m))] : list; };
+export const _reset = () => { refused.clear(); cooldown.clear(); };
 
 export const isGeminiKey = (k) => /^AIza[\w-]{30,}$/.test(String(k || '').trim());
 
@@ -57,15 +76,12 @@ export function contents(messages) {
 }
 
 // opts : schema (schéma JSON natif), think (réglage de réflexion), tools (recherche Google)
-export function body(p, { schema = true, think = true, tools = true } = {}) {
+export function body(p, { schema = true, tools = true } = {}, thinking = null) {
   const fmt = p.output_config?.format;
   let system = textOf(p.system);
   const gen = { maxOutputTokens: Math.min(p.max_tokens || 8192, 32768) };
-  // Réflexion limitée pour les tâches courantes (analyse photo, lecture de capture) : réponse bien plus rapide.
-  const effort = p.output_config?.effort;
-  // mode rapide : pas de réflexion du tout (le premier mot arrive beaucoup plus tôt)
-  if (think && !thinkRefused && p.model === 'gemini-fast') gen.thinkingConfig = { thinkingBudget: 0 };
-  else if (think && !thinkRefused && (effort === 'low' || effort === 'medium')) gen.thinkingConfig = { thinkingBudget: effort === 'low' ? 512 : 1024 };
+  // réflexion limitée (voir thinkOptions) : réponse bien plus rapide
+  if (thinking) { const { kind, ...cfg } = thinking; void kind; gen.thinkingConfig = cfg; }
   if (fmt?.type === 'json_schema') {
     gen.responseMimeType = 'application/json';
     if (schema) gen.responseJsonSchema = fmt.schema;
@@ -97,62 +113,72 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const STABLE = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
 
-async function post(key, path, payload, fast, { stable = false } = {}, signal) {
+// Essaie les modèles dans l'ordre (les modèles saturés en dernier) ; pour chacun, les réglages de réflexion
+// qu'il accepte, en retirant celui qu'il refuse.
+async function post(key, path, p, opts, signal) {
   let last;
-  for (const model of stable ? STABLE : fast ? FAST : MODELS) {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const res = await fetch(`${BASE}${model}:${path}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-        body: JSON.stringify(payload),
-        signal,
-      });
-      if (res.ok) return res;
-      const err = await res.json().catch(() => ({}));
-      last = new GeminiError(res.status, friendly(res.status, err));
-      last.raw = err?.error?.message || '';
-      // surcharge passagère (503 « overloaded » très fréquent sur l'offre gratuite) : une nouvelle tentative, puis modèle suivant
-      if (BUSY.includes(res.status)) { if (!attempt) await wait(1200); continue; }
-      break;
+  const list = opts.stable ? STABLE : p.model === 'gemini-fast' ? FAST : MODELS;
+  for (let round = 0; round < 2; round++) {
+    for (const model of order(list)) {
+      if (round && !BUSY.includes(cooldown.get(model + ':status'))) continue;
+      const failed = []; // réglages refusés pour CE modèle, retenus seulement si la requête passe sans eux
+      const remember = (kinds) => { if (!refused.has(model)) refused.set(model, new Set()); kinds.forEach((k) => refused.get(model).add(k)); };
+      for (const th of opts.stable ? [null] : thinkOptions(model, p)) {
+        const res = await fetch(`${BASE}${model}:${path}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+          body: JSON.stringify(body(p, opts, th)),
+          signal,
+        });
+        if (res.ok) { cooldown.delete(model); remember(failed); return res; }
+        const err = await res.json().catch(() => ({}));
+        last = new GeminiError(res.status, friendly(res.status, err));
+        last.raw = err?.error?.message || '';
+        // réglage de réflexion refusé par ce modèle : retenu, on réessaie aussitôt sans
+        if (res.status === 400 && th && !keyError(last)) { failed.push(th.kind); if (/think/i.test(last.raw)) remember([th.kind]); continue; }
+        break;
+      }
+      if ([429, ...BUSY].includes(last.status)) { cooldown.set(model, Date.now() + COOL_MS); cooldown.set(model + ':status', last.status); continue; }
+      if (last.status === 404) { cooldown.set(model, Date.now() + 3600000); continue; }
+      // clé refusée ou requête invalide : inutile d'essayer un autre modèle (sauf en dernier recours sur les modèles stables)
+      if (!(opts.stable && last.status === 400 && !keyError(last))) throw last;
     }
-    // clé refusée ou requête invalide : inutile d'essayer un autre modèle (sauf en dernier recours sur les modèles stables)
-    if (![404, 429, ...BUSY].includes(last.status) && !(stable && last.status === 400 && !/API key/i.test(last.raw))) throw last;
+    // tous saturés : une courte pause, puis un second passage sur les modèles surchargés (pas ceux sans quota)
+    if (!BUSY.includes(last?.status)) break;
+    await wait(1200);
   }
   throw last;
 }
 
 // Une requête refusée (400 « invalid argument ») est réessayée en retirant, une à une, les options qu'un modèle
-// peut ne pas accepter : réglage de réflexion, schéma JSON natif (anyOf, additionalProperties…), recherche Google ;
+// peut ne pas accepter : schéma JSON natif (anyOf, additionalProperties…), recherche Google ;
 // puis, en dernier recours, la requête la plus simple possible sur les modèles 2.5 stables.
 const keyError = (e) => /API key/i.test(e.raw || '');
 async function withSchemaRetry(fn, p, opts = {}) {
   try {
-    const r = await fn(body(p, opts), opts);
-    if (opts.thinkFailed) thinkRefused = true;
-    return r;
+    if (!contents(p.messages).length) body(p, opts); // message vide : erreur claire, sans appel réseau
+    return await fn(opts);
   } catch (e) {
     if (!(e instanceof GeminiError) || keyError(e) || e.empty) throw e;
     const bad = e.status === 400;
-    const usesThink = p.model === 'gemini-fast' || ['low', 'medium'].includes(p.output_config?.effort);
-    if (bad && opts.think !== false && usesThink && !thinkRefused) return withSchemaRetry(fn, p, { ...opts, think: false, thinkFailed: true });
     // schéma refusé (400) ou qui fait planter le serveur (500) : schéma passé dans la consigne
-    if ((bad || e.status === 500) && p.output_config?.format && opts.schema !== false) return withSchemaRetry(fn, p, { ...opts, schema: false, thinkFailed: false });
-    if (p.tools && opts.tools !== false && (bad || BUSY.includes(e.status))) return withSchemaRetry(fn, p, { ...opts, tools: false, thinkFailed: false });
-    if (bad && !opts.stable) return withSchemaRetry(fn, p, { schema: false, think: false, tools: false, stable: true });
+    if ((bad || e.status === 500) && p.output_config?.format && opts.schema !== false) return withSchemaRetry(fn, p, { ...opts, schema: false });
+    if (p.tools && opts.tools !== false && (bad || BUSY.includes(e.status))) return withSchemaRetry(fn, p, { ...opts, tools: false });
+    if (bad && !opts.stable) return withSchemaRetry(fn, p, { schema: false, tools: false, stable: true });
     throw e;
   }
 }
 
 export function geminiClient(apiKey) {
   const key = apiKey.trim();
-  const create = (p) => withSchemaRetry(async (payload, opts) => {
-    const j = await (await post(key, 'generateContent', payload, p.model === 'gemini-fast', opts)).json();
+  const create = (p) => withSchemaRetry(async (opts) => {
+    const j = await (await post(key, 'generateContent', p, opts, p.signal)).json();
     return toMessage(textFrom(j), j.candidates);
   }, p);
   const stream = (p) => {
     const listeners = [];
-    const done = withSchemaRetry(async (payload, opts) => {
-      const res = await post(key, 'streamGenerateContent?alt=sse', payload, p.model === 'gemini-fast', opts);
+    const done = withSchemaRetry(async (opts) => {
+      const res = await post(key, 'streamGenerateContent?alt=sse', p, opts, p.signal);
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let buf = '', text = '', cands = null;
