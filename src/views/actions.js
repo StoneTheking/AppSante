@@ -13,6 +13,7 @@ import * as SN from '../snacks.js';
 import * as Diana from '../diana.js';
 import { allowedMeals } from '../meals.js';
 import { isOffline } from '../net.js';
+import { savePhoto, getPhoto } from '../photos.js';
 
 const VERDICT = { bon: 'Bon pour toi', moyen: 'Moyen', a_limiter: 'À limiter' };
 
@@ -108,7 +109,7 @@ export async function openPhoto(ctx, fromGallery = false, slot = null) {
       if (!r.is_food) throw new Error('Je ne vois pas de nourriture sur cette photo.');
       const thumb = await compressImage(await (await fetch(dataUrl)).blob(), 160, 0.7);
       stepsT.forEach(clearTimeout);
-      showResult(res, { ...r, thumb, factor: 1, slot: slot || C.currentSlot() }, body);
+      showResult(res, { ...r, thumb, dataUrl, ...(note ? { fixes: [note] } : {}), factor: 1, slot: slot || C.currentSlot() }, body);
     } catch (e) {
       stepsT.forEach(clearTimeout);
       // Pas de réseau (ou trop faible) : la photo est gardée et analysée dès que la connexion revient.
@@ -154,7 +155,9 @@ export async function processPendingPhotos() {
         store.update((s) => {
           s.pendingPhotos = (s.pendingPhotos || []).filter((x) => x.id !== ph.id);
           if (!r.is_food) return;
-          s.meals.push({ id: crypto.randomUUID(), date: ph.date, time: ph.time, title: r.title, nutrients: r.nutrients, items: r.items, nova: r.nova, quality: r.quality, verdict: r.verdict, comment: r.comment, advice: r.advice, thumb, slot: ph.slot === 'grignotage' ? 'collation' : ph.slot, snack: ph.slot === 'grignotage', alcohol: r.alcohol_drinks || 0 });
+          const id = crypto.randomUUID();
+          savePhoto(id, ph.dataUrl);
+          s.meals.push({ id, ...(ph.note ? { fixes: [ph.note] } : {}), date: ph.date, time: ph.time, title: r.title, nutrients: r.nutrients, items: r.items, nova: r.nova, quality: r.quality, verdict: r.verdict, comment: r.comment, advice: r.advice, thumb, slot: ph.slot === 'grignotage' ? 'collation' : ph.slot, snack: ph.slot === 'grignotage', alcohol: r.alcohol_drinks || 0 });
           if (r.alcohol_drinks) s.days[ph.date] = { ...(s.days[ph.date] || {}), alcohol: Math.round(((s.days[ph.date]?.alcohol || 0) + r.alcohol_drinks) * 10) / 10 };
         });
         if (r.is_food) added++;
@@ -169,25 +172,32 @@ export async function processPendingPhotos() {
   return added;
 }
 
-// « Ce n'est pas ça ? » : l'utilisateur dit ce qu'il a vraiment mangé, l'IA refait le calcul (texte seul, rapide).
+// « Ce n'est pas ça ? » : l'utilisateur dit ce qu'il a vraiment mangé. Si la photo est gardée, l'IA la regarde
+// à nouveau avec toutes ses précisions ; sinon elle refait le calcul en texte seul.
 export const correctionHtml = (open = false) => `<details class="fix" style="margin:12px 0 4px"${open ? ' open' : ''}><summary class="small" style="justify-content:flex-start;gap:6px;color:var(--accent)">${icon('pencil', 16)} L’IA s’est trompée ? Corriger</summary>
-  <input id="fix-txt" placeholder="ex. biscuits Granola et crêpe Whaou au chocolat" style="margin-top:8px">
+  <input id="fix-txt" placeholder="ex. 1 sachet de 2 biscuits Granola, petite bouteille de jus 20 cL" style="margin-top:8px">
+  <p class="tiny muted" id="fix-how" style="margin:6px 0 0">Précise le nom, la marque ou la quantité : plus c’est précis, plus le calcul est juste.</p>
   <button class="btn soft block" id="fix-go" style="margin-top:8px">${icon('sparkles', 18)} Recalculer</button></details>`;
-export function bindCorrection(root, prev, onResult) {
+export function bindCorrection(root, prev, onResult, { photo = async () => null, fixes = () => [] } = {}) {
   const go = $('#fix-go', root);
   if (!go) return;
+  const label = (has) => `${icon('sparkles', 18)} ${has ? 'Ré-analyser la photo' : 'Recalculer'}`;
+  photo().then((d) => { if (d && !go.disabled) { go.innerHTML = label(true); const h = $('#fix-how', root); if (h) h.textContent = 'L’IA regarde à nouveau la photo avec tes précisions (et celles déjà notées).'; } });
   go.onclick = async () => {
     const txt = $('#fix-txt', root).value.trim();
     if (!txt) return $('#fix-txt', root).focus();
     go.disabled = true;
-    go.innerHTML = '<span class="spinner"></span> Recalcul…';
+    go.innerHTML = '<span class="spinner"></span> Analyse…';
+    const list = [...fixes(), txt];
     try {
-      const r = await AI.correctPlate(store.get().settings, prev(), txt, personContext(summary()));
-      onResult({ ...r, is_food: true });
+      const st = store.get(), ctxTxt = personContext(summary());
+      const img = await photo();
+      const r = img ? await AI.analyzePlate(st.settings, img, ctxTxt, AI.correctionNote(prev(), list)) : await AI.correctPlate(st.settings, prev(), list.join(' ; '), ctxTxt);
+      onResult({ ...r, is_food: true, fixes: list });
     } catch (e) {
       toast(AI.friendlyError(e), 3000);
       go.disabled = false;
-      go.innerHTML = `${icon('sparkles', 18)} Recalculer`;
+      go.innerHTML = label(!!(await photo()));
     }
   };
 }
@@ -217,7 +227,7 @@ function showResult(res, p, body) {
     <label class="lbl">C’était</label>
     <div class="chips" style="flex-wrap:wrap">${MEAL_TYPES.map(([k, l]) => `<button class="chip ${p.slot === k ? 'on' : ''}" data-slot="${k}">${l}</button>`).join('')}</div>
     <button class="btn block" id="save" style="margin-top:14px">${icon('check', 18)} Enregistrer</button>`;
-  bindCorrection(res, () => p, (r) => showResult(res, { ...p, ...r }, body));
+  bindCorrection(res, () => p, (r) => showResult(res, { ...p, ...r }, body), { photo: async () => p.dataUrl || null, fixes: () => p.fixes || [] });
   $$('[data-slot]', res).forEach((b) => (b.onclick = () => { p.slot = b.dataset.slot; $$('[data-slot]', res).forEach((x) => x.classList.toggle('on', x === b)); }));
   // Le curseur met les chiffres à jour en direct, pendant le glissement (sans redessiner la fiche).
   $('#factor', res).oninput = (e) => {
@@ -231,7 +241,9 @@ function showResult(res, p, body) {
   $('#factor', res).onchange = () => showResult(res, p, body); // au lâcher : sucres, alcool… recalculés
   $('#save', res).onclick = () => {
     const n = scaled(p.nutrients, p.factor);
-    addMeal({ title: p.title, nutrients: n, items: p.items, nova: p.nova, quality: p.quality, verdict: p.verdict, comment: p.comment, advice: p.advice, thumb: p.thumb, slot: p.slot === 'grignotage' ? 'collation' : p.slot, snack: p.slot === 'grignotage', alcohol: p.alcohol_drinks ? Math.round(p.alcohol_drinks * p.factor * 10) / 10 : 0 });
+    const id = crypto.randomUUID();
+    if (p.dataUrl) savePhoto(id, p.dataUrl); // gardée pour une ré-analyse et un affichage net
+    addMeal({ id, title: p.title, nutrients: n, items: p.items, nova: p.nova, quality: p.quality, verdict: p.verdict, comment: p.comment, advice: p.advice, thumb: p.thumb, ...(p.fixes?.length ? { fixes: p.fixes } : {}), slot: p.slot === 'grignotage' ? 'collation' : p.slot, snack: p.slot === 'grignotage', alcohol: p.alcohol_drinks ? Math.round(p.alcohol_drinks * p.factor * 10) / 10 : 0 });
     body.close();
   };
 }

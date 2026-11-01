@@ -167,6 +167,16 @@ export async function analyzePlate(settings, dataUrl, personContext, note = '') 
   return parseJson(resp);
 }
 
+// Précision envoyée avec la photo quand l'utilisateur corrige une analyse : l'IA regarde à nouveau l'image en
+// sachant ce qui était faux, et réestime les quantités d'après la photo (au lieu de les deviner sans la voir).
+export function correctionNote(previous, fixes) {
+  const items = (previous?.items || []).map((i) => `${i.name} (${Math.round(i.grams)} ${i.liquid ? 'mL' : 'g'})`).join(', ');
+  return `Une première analyse de cette photo avait trouvé : ${previous?.title || ''}${items ? ` — ${items}` : ''}.
+L'utilisateur la corrige (ses corrections sont la vérité, de la plus ancienne à la plus récente) :
+${fixes.map((f) => `- ${f}`).join('\n')}
+Regarde à nouveau la photo avec ces informations : garde ce qui était juste, remplace ce qui est corrigé, et réestime chaque quantité d'après l'image (nombre d'unités visibles, taille réelle des emballages, contenance de la bouteille ou du verre). Une quantité donnée par l'utilisateur prime.`;
+}
+
 // Correction d'une analyse par l'utilisateur (« c'est du granola et une crêpe Whaou ») : nouveau calcul en
 // texte seul, sans renvoyer la photo, donc bien plus rapide.
 export async function correctPlate(settings, previous, correction, personContext) {

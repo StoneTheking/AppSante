@@ -354,6 +354,7 @@ async function onForeground() {
   if (events.length && ['home', 'health'].includes(tab)) renderView();
   A.repairScannedMeals().then((n) => { if (n && ['home', 'nutrition'].includes(tab)) renderView(); });
   A.processPendingPhotos().then((n) => { if (n && ['home', 'nutrition'].includes(tab)) renderView(); });
+  setTimeout(() => import('./photos.js').then((P) => P.prunePhotos(store.get().meals.map((m) => m.id))), 15000); // ménage des photos de repas supprimés
 }
 
 function widgetAsk(e) {
