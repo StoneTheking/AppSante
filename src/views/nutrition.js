@@ -10,7 +10,7 @@ import * as S from '../science.js';
 import * as D from '../digestion.js';
 import { tokens, familyFactor } from '../family.js';
 import * as SN from '../snacks.js';
-import { icon, esc, fmt, qtyTxt, segmented, donut, toast, undoToast, sheet, srcLinks, $, $$ } from '../ui.js';
+import { icon, esc, fmt, qtyTxt, isDrink, segmented, donut, toast, undoToast, sheet, srcLinks, $, $$ } from '../ui.js';
 import { meter } from './home.js';
 import { addMeal, pendingState, processPendingPhotos, setMealDay, SLOT_TIME, correctionHtml, bindCorrection } from './actions.js';
 import { openTastePicker } from './tastes.js';
@@ -83,7 +83,9 @@ export function openMeal(id, done) {
       <button class="btn soft" id="fav">${icon('star', 18)} ${isDish(m.title) ? 'Dans mes plats' : 'Ajouter à mes plats'}</button>
       <button class="btn soft" id="rcp">${icon('book', 18)} Recette</button>
     </div>
+    <button class="btn soft block" id="edit" style="margin-top:8px">${icon('pencil', 18)} Modifier le repas</button>
     <button class="btn danger block" id="del" style="margin-top:8px">${icon('trash', 18)} Supprimer ce repas</button>`, { title: 'Repas', full: true, onClose: done });
+  $('#edit', body).onclick = () => { body.close(); setTimeout(() => openMealEdit(id, done), 200); };
   bindStars(body, () => {});
   // correction : le repas enregistré est mis à jour (alcool du jour compris), puis la fiche se réaffiche
   bindCorrection(body, () => m, (r) => {
@@ -120,6 +122,90 @@ export function openMeal(id, done) {
   $('#fav', body).onclick = () => { saveDish(m); $('#fav', body).innerHTML = `${icon('star', 18)} Dans mes plats`; toast('Ajouté à « Mes plats » ⭐', 1400); };
   $('#rcp', body).onclick = () => openRecipe({ name: m.title.replace(/\s*\(.*\)$/, '') });
   $('#del', body).onclick = () => { const undo = store.removing((x) => { x.meals = x.meals.filter((y) => y.id !== id); if (m.alcohol && x.days[m.date]) x.days[m.date].alcohol = Math.max(0, (x.days[m.date].alcohol || 0) - m.alcohol); }); body.close(); undoToast('Repas supprimé', undo); };
+}
+
+// Modification d'un repas enregistré : nom, aliments (nom, quantité, calories), ajout/suppression d'aliments
+// et nutriments. Changer une quantité ajuste les calories de l'aliment ; changer les calories du repas ajuste
+// les autres nutriments dans la même proportion, sauf ceux que l'utilisateur a modifiés lui-même.
+const NUTRI_FIELDS = [['kcal', 'Calories', 'kcal'], ['protein', 'Protéines', 'g'], ['carbs', 'Glucides', 'g'], ['fat', 'Lipides', 'g'], ['fiber', 'Fibres', 'g'], ['sugar', 'Sucres', 'g'], ['satFat', 'Graisses sat.', 'g'], ['sodium', 'Sodium', 'mg'], ['fruitVeg', 'Fruits/lég.', 'g']];
+const r1 = (v) => Math.round((Number(v) || 0) * 10) / 10;
+export function openMealEdit(id, done) {
+  const m = store.get().meals.find((x) => x.id === id);
+  if (!m) return;
+  const items = (m.items || []).map((i) => ({ ...i, liquid: isDrink(i) }));
+  const n = { ...Object.fromEntries(NUTRI_FIELDS.map(([k]) => [k, 0])), ...(m.nutrients || {}) };
+  const base = { ...n }; // nutriments d'origine : base de la mise à l'échelle
+  const touched = new Set();
+  const body = sheet(`
+    <label class="lbl">Nom du repas</label><input id="e-title" value="${esc(m.title)}">
+    <label class="lbl">Aliments</label>
+    <div id="e-items"></div>
+    <button class="btn soft block" id="e-add" style="margin-top:8px">${icon('plus', 18)} Ajouter un aliment</button>
+    <label class="lbl" style="margin-top:14px">Nutriments du repas</label>
+    <p class="tiny muted" style="margin:0 0 6px">Les nutriments suivent les calories quand tu changes un aliment ; tu peux aussi les corriger un par un.</p>
+    <div class="grid3">${NUTRI_FIELDS.map(([k, l, u]) => `<div><label class="lbl" style="margin-top:6px">${l} <span class="muted">${u}</span></label><input id="e-${k}" data-nk="${k}" type="number" inputmode="decimal" min="0" value="${r1(n[k])}"></div>`).join('')}</div>
+    <label class="lbl">Niveau de transformation</label>
+    <select id="e-nova">${[[1, 'Brut / fait maison'], [2, 'Ingrédient culinaire'], [3, 'Transformé (fromage, pain…)'], [4, 'Ultra-transformé (biscuits, soda…)']].map(([v, l]) => `<option value="${v}" ${Number(m.nova) === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    <button class="btn block" id="e-save" style="margin-top:16px">${icon('check', 18)} Enregistrer les modifications</button>`, { title: 'Modifier le repas', full: true, onClose: done });
+
+  const setN = (k, v) => { n[k] = r1(v); const el = $('#e-' + k, body); if (el && document.activeElement !== el) el.value = n[k]; };
+  // calories totales = somme des aliments ; les autres nutriments non retouchés suivent proportionnellement
+  const syncKcal = () => {
+    if (!items.length) return;
+    const kcal = items.reduce((a, i) => a + (Number(i.kcal) || 0), 0);
+    setN('kcal', kcal);
+    const k = base.kcal > 0 ? kcal / base.kcal : 1;
+    for (const [f] of NUTRI_FIELDS) if (f !== 'kcal' && !touched.has(f)) setN(f, base[f] * k);
+  };
+  const row = (i, idx) => `<div class="e-item" data-i="${idx}" style="display:grid;grid-template-columns:1fr 74px 74px 36px;gap:6px;align-items:end;margin-top:6px">
+      <input data-f="name" value="${esc(i.name)}" placeholder="Aliment" aria-label="Aliment">
+      <label class="tiny muted">${i.liquid ? 'cL' : 'g'}<input data-f="qty" type="number" inputmode="decimal" min="0" value="${i.liquid ? r1((i.grams || 0) / 10) : Math.round(i.grams || 0)}"></label>
+      <label class="tiny muted">kcal<input data-f="kcal" type="number" inputmode="decimal" min="0" value="${Math.round(i.kcal || 0)}"></label>
+      <button class="icon-btn" data-del aria-label="Retirer">${icon('x', 16)}</button></div>`;
+  const draw = () => {
+    const box = $('#e-items', body);
+    box.innerHTML = items.length ? items.map(row).join('') : '<p class="tiny muted" style="margin:0">Aucun aliment détaillé : modifie directement les nutriments ci-dessous.</p>';
+    $$('.e-item', box).forEach((el) => {
+      const i = items[Number(el.dataset.i)];
+      $('[data-f="name"]', el).oninput = (e) => { i.name = e.target.value; };
+      $('[data-f="qty"]', el).oninput = (e) => {
+        const g = (Number(e.target.value) || 0) * (i.liquid ? 10 : 1);
+        if (i.grams > 0) { i.kcal = Math.round((i.kcal || 0) * (g / i.grams)); $('[data-f="kcal"]', el).value = i.kcal; }
+        i.grams = g;
+        syncKcal();
+      };
+      $('[data-f="kcal"]', el).oninput = (e) => { i.kcal = Number(e.target.value) || 0; syncKcal(); };
+      $('[data-del]', el).onclick = () => { items.splice(Number(el.dataset.i), 1); draw(); syncKcal(); };
+    });
+  };
+  draw();
+  $('#e-add', body).onclick = () => {
+    // un aliment ajouté : sa part des autres nutriments est estimée au prorata des calories
+    if (!base.kcal && items.length === 0) base.kcal = n.kcal;
+    items.push({ name: '', grams: 100, kcal: 0, liquid: false, added: true });
+    draw();
+    $$('.e-item [data-f="name"]', body).at(-1)?.focus();
+  };
+  $$('[data-nk]', body).forEach((el) => (el.oninput = () => {
+    const k = el.dataset.nk;
+    n[k] = Number(el.value) || 0;
+    if (k === 'kcal') { // calories du repas changées à la main : les nutriments non retouchés suivent
+      const r = base.kcal > 0 ? n.kcal / base.kcal : 1;
+      for (const [f] of NUTRI_FIELDS) if (f !== 'kcal' && !touched.has(f)) setN(f, base[f] * r);
+    } else touched.add(k);
+  }));
+  $('#e-save', body).onclick = () => {
+    const title = $('#e-title', body).value.trim();
+    if (!title) return toast('Donne un nom au repas');
+    const kept = items.filter((i) => i.name.trim()).map((i) => ({ name: i.name.trim(), grams: r1(i.grams), kcal: Math.round(i.kcal || 0), liquid: i.added ? isDrink({ name: i.name }) : !!i.liquid }));
+    store.update((s) => {
+      const x = s.meals.find((y) => y.id === id); if (!x) return;
+      Object.assign(x, { title, items: kept, nutrients: { ...(x.nutrients || {}), ...Object.fromEntries(NUTRI_FIELDS.map(([k]) => [k, r1(n[k])])) }, nova: Number($('#e-nova', body).value) || x.nova, edited: true });
+    });
+    toast('Repas modifié ✅', 1400);
+    body.close();
+    setTimeout(() => openMeal(id, done), 200);
+  };
 }
 
 // ---------- Mes plats (favoris et plats préparés à l'avance) ----------
