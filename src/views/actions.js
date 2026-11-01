@@ -170,7 +170,7 @@ export async function processPendingPhotos() {
 }
 
 // « Ce n'est pas ça ? » : l'utilisateur dit ce qu'il a vraiment mangé, l'IA refait le calcul (texte seul, rapide).
-export const correctionHtml = () => `<details class="fix" style="margin:12px 0 4px"><summary class="small" style="justify-content:flex-start;gap:6px;color:var(--accent)">${icon('pencil', 16)} L’IA s’est trompée ? Corriger</summary>
+export const correctionHtml = (open = false) => `<details class="fix" style="margin:12px 0 4px"${open ? ' open' : ''}><summary class="small" style="justify-content:flex-start;gap:6px;color:var(--accent)">${icon('pencil', 16)} L’IA s’est trompée ? Corriger</summary>
   <input id="fix-txt" placeholder="ex. biscuits Granola et crêpe Whaou au chocolat" style="margin-top:8px">
   <button class="btn soft block" id="fix-go" style="margin-top:8px">${icon('sparkles', 18)} Recalculer</button></details>`;
 export function bindCorrection(root, prev, onResult) {

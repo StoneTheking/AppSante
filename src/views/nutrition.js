@@ -53,6 +53,17 @@ function bindMeals(el, rerender) {
   $$('[data-meal]', el).forEach((r) => (r.onclick = () => openMeal(r.dataset.meal, rerender)));
 }
 
+// Correction par l'IA : le repas enregistré est mis à jour (alcool du jour compris).
+function applyCorrection(id, r) {
+  store.update((s) => {
+    const x = s.meals.find((y) => y.id === id); if (!x) return;
+    const dAlc = (r.alcohol_drinks || 0) - (x.alcohol || 0);
+    Object.assign(x, { title: r.title, items: r.items, nutrients: r.nutrients, nova: r.nova, quality: r.quality, verdict: r.verdict, comment: r.comment, advice: r.advice, alcohol: r.alcohol_drinks || 0 });
+    if (dAlc) s.days[x.date] = { ...(s.days[x.date] || {}), alcohol: Math.max(0, Math.round(((s.days[x.date]?.alcohol || 0) + dAlc) * 10) / 10) };
+  });
+  toast('Repas corrigé ✅', 1400);
+}
+
 // Détail d'un repas : nutriments, aliments, avis, note, type de repas, plat favori, suppression.
 export function openMeal(id, done) {
   const m = store.get().meals.find((x) => x.id === id);
@@ -72,7 +83,7 @@ export function openMeal(id, done) {
     </div>
     <p class="tiny muted" style="margin:0">Sucres ${fmt(n.sugar)} g · graisses saturées ${fmt(n.satFat)} g · sodium ${fmt(n.sodium)} mg${m.alcohol ? ` · ${fmt(m.alcohol, 1)} verre(s) d’alcool` : ''}${m.quality != null ? ` · qualité ${m.quality}/100` : ''}</p>
     ${m.items?.length ? `<table style="margin-top:10px">${m.items.map((i) => `<tr><td>${esc(i.name)}</td><td class="num">${qtyTxt(i)}</td><td class="num">${fmt(i.kcal)} kcal</td></tr>`).join('')}</table>` : ''}
-    ${m.items?.length && !m.barcode ? correctionHtml() : ''}
+    ${store.get().settings.apiKey ? correctionHtml() : ''}
     ${m.comment ? `<p class="small" style="margin:12px 0 6px">${esc(m.comment)}</p>` : ''}
     ${m.advice ? `<div class="note">${icon('bulb', 18)}<span>${esc(m.advice)}</span></div>` : ''}
     <label class="lbl">Tu as aimé ?</label>${stars(m)}
@@ -88,17 +99,7 @@ export function openMeal(id, done) {
   $('#edit', body).onclick = () => { body.close(); setTimeout(() => openMealEdit(id, done), 200); };
   bindStars(body, () => {});
   // correction : le repas enregistré est mis à jour (alcool du jour compris), puis la fiche se réaffiche
-  bindCorrection(body, () => m, (r) => {
-    store.update((s) => {
-      const x = s.meals.find((y) => y.id === id); if (!x) return;
-      const dAlc = (r.alcohol_drinks || 0) - (x.alcohol || 0);
-      Object.assign(x, { title: r.title, items: r.items, nutrients: r.nutrients, nova: r.nova, quality: r.quality, verdict: r.verdict, comment: r.comment, advice: r.advice, alcohol: r.alcohol_drinks || 0 });
-      if (dAlc) s.days[x.date] = { ...(s.days[x.date] || {}), alcohol: Math.max(0, Math.round(((s.days[x.date]?.alcohol || 0) + dAlc) * 10) / 10) };
-    });
-    toast('Repas corrigé ✅', 1400);
-    body.close();
-    openMeal(id, done);
-  });
+  bindCorrection(body, () => m, (r) => { applyCorrection(id, r); body.close(); openMeal(id, done); });
   $$('[data-mslot]', body).forEach((b) => (b.onclick = () => {
     const k = b.dataset.mslot;
     store.update((s) => { const x = s.meals.find((y) => y.id === id); if (x) { x.snack = k === 'grignotage'; x.slot = k === 'grignotage' ? 'collation' : k; } });
@@ -137,6 +138,7 @@ export function openMealEdit(id, done) {
   const base = { ...n }; // nutriments d'origine : base de la mise à l'échelle
   const touched = new Set();
   const body = sheet(`
+    ${store.get().settings.apiKey ? `<div class="note" style="display:block;margin-bottom:4px">${correctionHtml(true)}<p class="tiny muted" style="margin:6px 0 0">Écris ce que tu as vraiment mangé : l’IA refait le calcul complet. Ou modifie tout à la main ci-dessous.</p></div>` : ''}
     <label class="lbl">Nom du repas</label><input id="e-title" value="${esc(m.title)}">
     <label class="lbl">Aliments</label>
     <div id="e-items"></div>
@@ -148,6 +150,7 @@ export function openMealEdit(id, done) {
     <select id="e-nova">${[[1, 'Brut / fait maison'], [2, 'Ingrédient culinaire'], [3, 'Transformé (fromage, pain…)'], [4, 'Ultra-transformé (biscuits, soda…)']].map(([v, l]) => `<option value="${v}" ${Number(m.nova) === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
     <button class="btn block" id="e-save" style="margin-top:16px">${icon('check', 18)} Enregistrer les modifications</button>`, { title: 'Modifier le repas', full: true, onClose: done });
 
+  bindCorrection(body, () => m, (r) => { applyCorrection(id, r); body.close(); setTimeout(() => openMealEdit(id, done), 200); });
   const setN = (k, v) => { n[k] = r1(v); const el = $('#e-' + k, body); if (el && document.activeElement !== el) el.value = n[k]; };
   // calories totales = somme des aliments ; les autres nutriments non retouchés suivent proportionnellement
   const syncKcal = () => {
