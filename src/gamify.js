@@ -120,7 +120,7 @@ export function progress(st, now = new Date()) {
   const level = levelOf(xp);
   const floor = 50 * level * (level - 1), next = 50 * (level + 1) * level;
   return {
-    xp, level, title: LEVELS[Math.min(LEVELS.length - 1, level - 1)], into: xp - floor, need: next - floor,
+    xp, level, title: LEVELS[Math.min(LEVELS.length - 1, level - 1)], into: xp - floor, span: next - floor, // span : XP du niveau en cours (« need » = quêtes du jour)
     today: todayXp, pending: xpForDay(st, today, idx), validated: okToday, need: needToday, yesterday, atStake: okToday ? 0 : Math.min(xp, missPenalty(level0, Math.min(doneToday, needToday - blockedBy(goalsToday).length), needToday)),
   };
 }

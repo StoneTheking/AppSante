@@ -40,6 +40,7 @@ Application Android native **et** application web installable, qui croise **somm
 - un **bilan sommeil de la semaine** : heures dormies, heures conseillées pour ton âge, dette de sommeil et décalage horaire social ;
 - des **démonstrations 3D lisibles** avec Diana en entier : corps d'un seul tenant à la **même peau hologramme que son visage** (bleu nuit, contour cyan, grille qui suit la peau), muscles au travail qui s'allument en orange, léger transfert de poids pendant les maintiens ; flèche lumineuse qui suit le geste (main, pied ou bassin) jusqu'à la position visée, pastilles d'étapes, compte à rebours des maintiens (« tiens · 3 s »), **ralenti au toucher**, caméra rapprochée pour les petits gestes (menton rentré) ;
 - la **routine posture en quête obligatoire** dès que ton bilan posture est « à travailler » (score sous 60), levée quand le bilan redevient correct ;
+- **Ta ville** (dans « Ta progression ») : une ville 3D qui vit au rythme de ta santé. Ton niveau agrandit le terrain et débloque 26 bâtiments, des améliorations et des interactions ; tes quêtes des 7 derniers jours font sa vitalité (bouger → salle de sport et club de course, assiette → étals du primeur, sommeil → ciel dégagé ou brume, eau → fontaines et herbe verte, humeur → habitants qui se parlent). Gestion avec des pièces gagnées par les quêtes et les recettes des commerces, objectifs de maire, habitants avec leur bonheur détaillé, personnalisation (nom, saison, couleurs, drapeau, heure) ;
 - le **sport de chambre** dans les activités (≈ 100 kcal pour 25 min chez l'homme, ≈ 70 kcal chez la femme, intensité modérée ; Frappier 2013), avec ses repères (sommeil, bien-être, cœur) et son lien avec ton sommeil et ton humeur ; jamais proposé dans la semaine type, jamais transmis au coach IA, notification neutre ;
 - des **vidéos de démonstration** seulement pour les exercices techniques, à choisir une par une ou à importer d'une liste (`docs/videos-exercices.txt`).
 
@@ -90,6 +91,7 @@ npx cap sync android && cd android && ./gradlew assembleRelease   # APK
 | `src/reminders.js` | rappels (notifications locales natives / web) |
 | `src/native.js` | Health Connect et temps d'écran (Capacitor) |
 | `src/wearable.js` | données de montre : phases du sommeil, zones cardio, cœur la nuit, **forme du jour** (récupération comparée à tes 4 dernières semaines) |
+| `src/town.js` / `src/town3d.js` / `src/views/town.js` | Ta ville : règles du jeu (vitalité, population, bonheur, pièces, objectifs), rendu three.js (bâtiments fusionnés, habitants en instances, ciel et météo) et écran de gestion |
 | `src/ai.js` | Claude : photo, captures, menus, coach avec recherche scientifique |
 | `src/workouts.js` | bibliothèque d'exercices et générateur de séances |
 | `src/sport.js` | activités (MET), zones cardiaques, semaine type, séances et chronomètre |

@@ -3,6 +3,7 @@ import * as store from '../store.js';
 import * as G from '../gamify.js';
 import * as S from '../science.js';
 import { icon, esc, sheet, toast, srcLinks, onTapHold, $, $$ } from '../ui.js';
+import * as Town from './town.js';
 
 // Carte « Quêtes du jour » pour l'accueil.
 export function questsCard(st) {
@@ -68,7 +69,8 @@ export function openProgress() {
     const n = G.dayGoals(st, k).filter((g) => g.done).length;
     cells.push({ k, n, frozen: s.frozenDays.includes(k), today: i === 0 });
   }
-  sheet(`
+  const body = sheet(`
+    ${Town.townCard(st)}
     <div class="streak-hero">
       <div class="flame">🔥</div>
       <div><div class="big">${s.current}</div><div class="small muted">jour${s.current > 1 ? 's' : ''} de série · record ${s.best}</div></div>
@@ -78,8 +80,8 @@ export function openProgress() {
 
     <div class="card" style="padding:14px">
       <div class="between"><b>Niveau ${p.level} · ${esc(p.title)}</b><span class="small muted">${p.xp} XP</span></div>
-      <div class="meter"><div class="track" style="height:10px"><div class="fill" style="width:${Math.round((p.into / p.need) * 100)}%;background:linear-gradient(90deg,#fbbf24,#f97316)"></div></div></div>
-      <div class="tiny muted">${p.need - p.into} XP avant le niveau ${p.level + 1}${p.yesterday ? ` · hier : ${p.yesterday > 0 ? '+' : ''}${p.yesterday} XP` : ''}.</div>
+      <div class="meter"><div class="track" style="height:10px"><div class="fill" style="width:${Math.round((p.into / p.span) * 100)}%;background:linear-gradient(90deg,#fbbf24,#f97316)"></div></div></div>
+      <div class="tiny muted">${p.span - p.into} XP avant le niveau ${p.level + 1}${p.yesterday ? ` · hier : ${p.yesterday > 0 ? '+' : ''}${p.yesterday} XP` : ''}.</div>
       <p class="tiny" style="margin:8px 0 0;line-height:1.5">${p.validated ? `<b style="color:var(--good)">Journée validée : +${p.today} XP.</b>` : `<b>Aujourd’hui : +${p.pending} XP en attente</b>, gagnés dès ${p.need} quêtes réussies.${p.atStake ? ` <b style="color:var(--bad)">Sinon −${p.atStake} XP</b> à minuit.` : ''}`}<br>
       <span class="muted">Journée validée (${p.need} quêtes sur 5) : tu gagnes 10 XP par quête, +20 si parfaite, 1 XP par minute de sport, 2 par repas noté. Journée ratée : tu perds ${8} XP × ton niveau par quête manquante, donc la chute fait plus mal en haut. Un gel de série protège un jour raté. Tu peux redescendre de niveau.</span></p>
     </div>
@@ -94,6 +96,8 @@ export function openProgress() {
       <div class="badge-grid">${bs.map((b) => `<div class="badge-item ${b.unlocked ? 'on' : ''}"><span>${icon(b.icon, 22)}</span><small>${esc(b.label)}</small></div>`).join('')}</div>
     </div>
     ${srcLinks(['lally2010', 'harkin2016', 'mazeas2022', 'patel2019'])}`, { title: 'Ta progression', full: true });
+  // la ville s'ouvre par-dessus ; sa carte se met à jour au retour
+  $('[data-town]', body).onclick = () => Town.openTown({ onClose: () => { const c = $('[data-town]', body); if (c) { c.outerHTML = Town.townCard(store.get()); $('[data-town]', body).onclick = () => Town.openTown(); } } });
 }
 
 // Célébrations : nouvelles quêtes réussies, journée validée, nouveaux badges.
