@@ -49,3 +49,16 @@ test('étirement des ischios : une seule jambe sur la marche à la fois, puis l�
   }
   assert.ok(up.L > 20 && up.R > 20);
 });
+
+test('le pied d’appui ne copie plus l’orientation du pied qui bouge', async () => {
+  const X = await import('../src/exercise3d.js');
+  // étirement des ischios : talon gauche sur la marche (pointe vers le haut), pied droit à plat au sol
+  const tl = X.timeline(X.ANIMS['Étirement des ischios (jambe tendue sur une marche)']);
+  const key = tl.keys.findIndex((k) => k.fL[1] > 0.2);
+  const S = X.skeleton(tl.keys[key]);
+  const r = S.side.R, toeUp = r.toe[1] - r.ankle[1];
+  assert.ok(Math.abs(toeUp) < 0.03, `pied droit à plat attendu, pointe à ${toeUp.toFixed(2)} m au-dessus de la cheville`);
+  // pose symétrique (allongé) : les deux pieds gardent la même orientation
+  const br = X.timeline(X.ANIMS['Pont fessier']).keys[0];
+  assert.deepEqual(br.tR, [-br.tL[0], br.tL[1], br.tL[2]]);
+});

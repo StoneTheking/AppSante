@@ -54,6 +54,12 @@ function floor(from, dir, l) {
   return hz < 1e-4 ? [0, y, r] : [dir[0] / hz * r, y, dir[2] / hz * r];
 }
 
+// Les deux pieds sont-ils placés en miroir (pose symétrique) ? Un seul pied donné compte comme symétrique.
+function feetSym(P) {
+  if (!P.fL || !P.fR) return true;
+  return Math.hypot(P.fL[0] + P.fR[0], P.fL[1] - P.fR[1], P.fL[2] - P.fR[2]) < 0.05;
+}
+
 // Pose → points du squelette.
 export function skeleton(P) {
   const R = mm(Ry(P.yaw * D), mm(Rx(P.tilt * D), mm(Rz(P.roll * D), Rx(P.pitch * D))));
@@ -76,7 +82,7 @@ export function skeleton(P) {
     const kP = P['k' + k] || P.kP || [0.15, 0, 1];
     const [elbow, wrist, eb] = ik(shoulder, hand, L.arm, L.fore, mv(T2, [s * eP[0], eP[1], eP[2]]), mv(T2, [s, -0.3, -0.2]));
     const [knee, ankle, kb] = ik(hip, foot, L.thigh, L.shin, mv(R, [s * kP[0], kP[1], kP[2]]), mv(R, [s * 0.3, 0, 1]));
-    const t = P['t' + k] || (P.tL && P['t' + k] === undefined && k === 'R' ? [-P.tL[0], P.tL[1], P.tL[2]] : null) || mv(Ry(P.yaw * D), [0, 0, 1]);
+    const t = P['t' + k] || (k === 'R' && P.tL && P.tR === undefined && feetSym(P) ? [-P.tL[0], P.tL[1], P.tL[2]] : null) || mv(Ry(P.yaw * D), [0, 0, 1]);
     const toe = add(ankle, mul(floor(ankle, norm(t), L.foot), L.foot));
     const handEnd = add(wrist, mul(floor(wrist, norm(sub(wrist, elbow)), 0.075), 0.075));
     out.side[k] = { shoulder, hip, elbow, wrist, knee, ankle, toe, handEnd, eb, kb };
@@ -405,8 +411,12 @@ function resolve(P) {
   const fwd = mv(Ry((P.yaw || 0) * D), [0, 0, 1]);
   o.hR = P.hR || mir(P.hL); o.hL = P.hL || mir(P.hR);
   o.fR = P.fR || mir(P.fL); o.fL = P.fL || mir(P.fR);
-  o.tL = P.tL || fwd;
-  o.tR = P.tR || (P.tR === undefined && P.tL ? mir(P.tL) : null) || fwd;
+  // l'orientation d'un pied n'est recopiée sur l'autre que si les deux pieds sont placés en miroir :
+  // sinon le pied d'appui suivait le pied qui bouge (pointe vers le haut quand l'autre talon est sur une
+  // marche, pied avant d'une fente sur la pointe…). Un pied non précisé reste à plat, pointe devant.
+  const sym = feetSym(P);
+  o.tL = P.tL || (P.tR && sym ? mir(P.tR) : null) || fwd;
+  o.tR = P.tR || (P.tL && sym ? mir(P.tL) : null) || fwd;
   for (const c of ['e', 'k']) for (const s of ['L', 'R']) o[c + s] = P[c + s] || P[c + 'P'] || (c === 'e' ? [0.5, -1, -0.5] : [0.15, 0, 1]);
   delete o.eP; delete o.kP;
   return o;
