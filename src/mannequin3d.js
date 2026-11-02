@@ -5,7 +5,7 @@
 // Les poses viennent du squelette par cinématique inverse d'exercise3d.js ; la caméra tourne au doigt.
 import { THREE, blit, available, envMap, onReset, generation } from './gl3d.js';
 import { HEAD_VERT, HEAD_FRAG, headUniforms, setMood, bandMesh, haloSprite } from './diana3d.js';
-import { ANIMS, skeleton, timeline, poseAt, D, RAD } from './exercise3d.js';
+import { ANIMS, skeleton, timeline, poseAt, phaseAt, movePaths, D, RAD } from './exercise3d.js';
 
 export const supported = () => available();
 
@@ -309,6 +309,72 @@ function platform(R0) {
   return g;
 }
 
+// ---------- Aides à la lecture du mouvement ----------
+// Flèches de trajectoire : un trait lumineux suit le vrai chemin de la main, du pied ou du bassin jusqu'à
+// la position visée, avec une pointe au bout. Pendant le geste, seule la partie restante est dessinée ;
+// pendant un maintien, le geste suivant est annoncé en transparence. Toujours visibles par-dessus le corps.
+const ARROW = 0xffd166;
+function buildArrows(paths) {
+  const root = new THREE.Group();
+  const mat = () => new THREE.MeshBasicMaterial({ color: ARROW, transparent: true, opacity: 0.9, depthTest: false, depthWrite: false, toneMapped: false });
+  const list = paths.map((group) => group.map((pts) => {
+    const curve = new THREE.CatmullRomCurve3(pts.map(V));
+    const segs = 40, radial = 6;
+    const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, segs, 0.012, radial, false), mat());
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.034, 0.085, 14), mat());
+    const end = curve.getPoint(1), dir = curve.getTangent(1).normalize();
+    tip.position.copy(end).addScaledVector(dir, 0.02);
+    tip.quaternion.setFromUnitVectors(UP, dir);
+    tube.renderOrder = tip.renderOrder = 20;
+    const g = new THREE.Group(); g.add(tube, tip); g.visible = false;
+    root.add(g);
+    return { g, tube, tip, segs, radial };
+  }));
+  return { root, list };
+}
+function showArrows(A, ph) {
+  if (!A) return;
+  const n = A.list.length;
+  A.list.forEach((group, i) => group.forEach((x) => { x.g.visible = false; }));
+  const set = (i, from, op) => {
+    for (const x of A.list[i] || []) {
+      x.g.visible = true;
+      const start = Math.min(x.segs - 1, Math.floor(from * x.segs));
+      x.tube.geometry.setDrawRange(start * x.radial * 6, (x.segs - start) * x.radial * 6);
+      x.tube.material.opacity = x.tip.material.opacity = op;
+    }
+  };
+  if (ph.moving) set(ph.i, ph.u, 0.92 * Math.min(1, (1 - ph.u) * 6)); // s'efface en arrivant
+  else set((ph.i + 1) % n, 0, 0.35); // annonce du geste suivant
+}
+
+// Bandeau d'étapes (une pastille par pose), compte à rebours des maintiens et vitesse, ajoutés au cadre .ex3d.
+function overlay(canvas, tl) {
+  const box = canvas.closest?.('.ex3d');
+  if (!box || typeof document === 'undefined') return null;
+  box.querySelectorAll('.ex3d-steps,.ex3d-hold,.ex3d-speed').forEach((x) => x.remove());
+  const steps = document.createElement('div'); steps.className = 'ex3d-steps';
+  steps.innerHTML = tl.keys.map(() => '<i></i>').join('');
+  const hold = document.createElement('div'); hold.className = 'ex3d-hold';
+  const sp = document.createElement('div'); sp.className = 'ex3d-speed'; sp.textContent = 'touche : ralenti';
+  box.append(steps, hold, sp);
+  const dots = [...steps.children];
+  let last = '';
+  return {
+    phase(ph) {
+      const key = `${ph.i}|${ph.moving}|${Math.ceil(ph.holdLeft)}`;
+      if (key === last) return;
+      last = key;
+      dots.forEach((d, j) => { d.className = j === ph.i ? (ph.moving ? 'go' : 'on') : ''; });
+      const showHold = !ph.moving && ph.hold >= 1;
+      hold.textContent = showHold ? `tiens · ${Math.ceil(ph.holdLeft)} s` : '';
+      hold.classList.toggle('in', showHold);
+    },
+    speed(v) { sp.textContent = v === 1 ? 'touche : ralenti' : 'ralenti ×0,5 · touche pour revenir'; sp.classList.toggle('on', v !== 1); },
+    remove() { steps.remove(); hold.remove(); sp.remove(); },
+  };
+}
+
 // Anime une démonstration dans un canvas. Renvoie une fonction d'arrêt (ou null si la 3D n'est pas disponible).
 export function play(canvas, label, { onCue, at, yaw } = {}) {
   const a = ANIMS[label];
@@ -320,8 +386,15 @@ export function play(canvas, label, { onCue, at, yaw } = {}) {
   for (const p of a.props || []) if (Array.isArray(p)) { const b = p[1]; pts.push([b[0] - b[3] / 2, b[1] - b[4] / 2, b[2] - b[5] / 2], [b[0] + b[3] / 2, b[1] + b[4] / 2, b[2] + b[5] / 2]); }
   const lo = [0, 1, 2].map((i) => Math.min(...(i === 1 ? [0] : []), ...pts.map((p) => p[i])));
   const hi = [0, 1, 2].map((i) => Math.max(...pts.map((p) => p[i])));
-  const center = new THREE.Vector3((lo[0] + hi[0]) / 2, Math.max(0.45, (lo[1] + hi[1]) / 2), (lo[2] + hi[2]) / 2);
-  const radius = Math.max(0.85, Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) / 2 + 0.12);
+  let center = new THREE.Vector3((lo[0] + hi[0]) / 2, Math.max(0.45, (lo[1] + hi[1]) / 2), (lo[2] + hi[2]) / 2);
+  let radius = Math.max(0.85, Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) / 2 + 0.12);
+  // petit geste (menton rentré…) : caméra rapprochée sur la tête et les épaules, sinon il ne se voit pas
+  if (a.focus === 'head') {
+    const S0 = skeleton(poseAt(tl, 0).pose);
+    center = new THREE.Vector3(S0.head[0], S0.head[1] - 0.2, S0.head[2]);
+    radius = 0.55;
+  }
+  const paths = movePaths(tl, { focus: a.focus });
 
   let G = null, gen = -1;
   const build = () => {
@@ -343,17 +416,25 @@ export function play(canvas, label, { onCue, at, yaw } = {}) {
     const props = buildProps(M, a);
     const halo = haloSprite(radius * 2.6, 0.12); halo.position.copy(center);
     scene.add(halo, floor, body.root, props.root);
-    G = { scene, cam, key, rim, fill, body, props, M, floor };
+    const arrows = buildArrows(paths);
+    scene.add(arrows.root);
+    G = { scene, cam, key, rim, fill, body, props, M, floor, arrows };
     gen = generation();
   };
 
-  let yaw0 = (yaw ?? a.cam ?? 60) * D, drag = 0, dragging = false, lastX = 0, idle = 0, vel = 0;
+  let yaw0 = (yaw ?? a.cam ?? 60) * D, drag = 0, dragging = false, lastX = 0, idle = 0, vel = 0, downX = 0, downT = 0;
+  // un appui bref (sans glisser) passe au ralenti (×0,5) ou revient à vitesse normale
+  let speed = 1, simT = 0;
+  const ui = overlay(canvas, tl);
   const tilt = (a.tilt ?? 14) * D;
   const t0 = performance.now();
   let raf = 0, lastCue = null, visible = true, lastT = t0;
-  const onDown = (e) => { dragging = true; lastX = e.clientX; vel = 0; canvas.setPointerCapture?.(e.pointerId); };
+  const onDown = (e) => { dragging = true; lastX = downX = e.clientX; downT = performance.now(); vel = 0; canvas.setPointerCapture?.(e.pointerId); };
   const onMove = (e) => { if (!dragging) return; const d = (e.clientX - lastX) * 0.012; drag += d; vel = d * 60; lastX = e.clientX; idle = performance.now(); };
-  const onUp = () => { dragging = false; idle = performance.now(); };
+  const onUp = (e) => {
+    dragging = false; idle = performance.now();
+    if (e?.type === 'pointerup' && Math.abs(e.clientX - downX) < 6 && performance.now() - downT < 350) { speed = speed === 1 ? 0.5 : 1; ui?.speed(speed); vel = 0; }
+  };
   canvas.addEventListener('pointerdown', onDown);
   canvas.addEventListener('pointermove', onMove);
   canvas.addEventListener('pointerup', onUp);
@@ -371,9 +452,13 @@ export function play(canvas, label, { onCue, at, yaw } = {}) {
     const cw = canvas.clientWidth, ch = canvas.clientHeight;
     if (canvas.width !== Math.round(cw * dpr) || canvas.height !== Math.round(ch * dpr)) { canvas.width = Math.round(cw * dpr); canvas.height = Math.round(ch * dpr); }
     const dt = Math.min(0.05, (now - lastT) / 1000); lastT = now;
-    const time = at ?? (now - t0) / 1000;
+    simT += dt * speed;
+    const time = at ?? simT;
     const { pose, cue } = poseAt(tl, time);
     if (cue !== lastCue) { lastCue = cue; onCue?.(cue); }
+    const ph = phaseAt(tl, time);
+    showArrows(G.arrows, ph);
+    ui?.phase(ph);
     // élan après un lancer du doigt, puis lent balancement
     if (!dragging && Math.abs(vel) > 0.01) { drag += vel * dt; vel *= Math.exp(-dt * 4); idle = now; }
     const sway = at != null ? 0 : dragging || now - idle < 2500 ? 0 : Math.sin(time * 0.35) * 0.3;
@@ -405,6 +490,7 @@ export function play(canvas, label, { onCue, at, yaw } = {}) {
     cancelAnimationFrame(raf); raf = -1;
     io?.disconnect();
     unReset();
+    ui?.remove();
     canvas.removeEventListener('pointerdown', onDown);
     canvas.removeEventListener('pointermove', onMove);
     canvas.removeEventListener('pointerup', onUp);
@@ -412,6 +498,7 @@ export function play(canvas, label, { onCue, at, yaw } = {}) {
     if (G) {
       G.scene.traverse((o) => { if (o.geometry && !Object.values(GEO).includes(o.geometry)) o.geometry.dispose(); });
       Object.values(G.M).forEach((m) => m.dispose?.());
+      G.arrows?.list.flat().forEach((x) => { x.tube.material.dispose(); x.tip.material.dispose(); });
       G.key.shadow.map?.dispose();
     }
     G = null;

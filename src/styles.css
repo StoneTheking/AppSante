@@ -744,6 +744,14 @@ span.qcam-side { background: none; }
 @keyframes cueIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 .ex3d-hint { position: absolute; right: 8px; bottom: 6px; font-size: .66rem; color: rgba(214, 246, 255, .55); display: inline-flex; gap: 3px; align-items: center; pointer-events: none; }
 .ex3d-tag { font-size: .62rem; font-weight: 800; color: #5ad7ff; border: 1px solid rgba(90, 215, 255, .5); border-radius: 6px; padding: 0 4px; vertical-align: 1px; }
+.ex3d-steps { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); display: flex; gap: 5px; pointer-events: none; }
+.ex3d-steps i { width: 7px; height: 7px; border-radius: 4px; background: rgba(214, 246, 255, .28); transition: width .25s, background .25s; }
+.ex3d-steps i.go { width: 18px; background: #ffd166; }
+.ex3d-steps i.on { width: 18px; background: #5ad7ff; }
+.ex3d-hold { position: absolute; left: 50%; top: 52px; transform: translateX(-50%) scale(.9); opacity: 0; padding: 2px 9px; border-radius: 10px; background: rgba(90, 215, 255, .18); border: 1px solid rgba(90, 215, 255, .5); color: #d6f6ff; font-size: .72rem; font-weight: 750; pointer-events: none; transition: opacity .2s, transform .2s; }
+.ex3d-hold.in { opacity: 1; transform: translateX(-50%) scale(1); }
+.ex3d-speed { position: absolute; left: 8px; bottom: 6px; font-size: .66rem; color: rgba(214, 246, 255, .55); pointer-events: none; }
+.ex3d-speed.on { color: #ffd166; font-weight: 700; }
 @media (prefers-reduced-motion: reduce) { .ex3d-cue.in { animation: none; } }
 .instant-foot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
 
@@ -769,3 +777,4 @@ details.po-ex { padding: 8px 0; border-top: 1px solid var(--line); }
 details.po-ex summary { display: flex; justify-content: space-between; align-items: center; cursor: pointer; list-style: none; }
 details.po-ex summary::-webkit-details-marker { display: none; }
 .seg button { padding-left: 2px; padding-right: 2px; }
+[hidden] { display: none !important; }

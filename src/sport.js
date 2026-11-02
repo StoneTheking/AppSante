@@ -17,8 +17,13 @@ export const ACTIVITIES = [
   { id: 'collectif', label: 'Sport collectif', icon: 'users', met: 7.0, kind: 'cardio' },
   { id: 'raquette', label: 'Tennis / padel / badminton', icon: 'target', met: 6.8, kind: 'cardio' },
   { id: 'danse', label: 'Danse', icon: 'sparkles', met: 5.0, kind: 'cardio' },
+  // Sport de chambre : ~4 kcal/min (hommes) et ~3 kcal/min (femmes) mesurés (Frappier 2013), soit ≈ 3,3 MET
+  // au sens du Compendium (1 kcal/kg/h) : intensité modérée. Jamais proposé dans la semaine type ni au coach IA.
+  { id: 'intime', label: 'Sport de chambre', icon: 'heart', met: 3.3, kind: 'intime', private: true },
   { id: 'autre', label: 'Autre activité', icon: 'activity', met: 4.0, kind: 'cardio' },
 ];
+// Activités qu'on peut planifier ou préférer (le sport de chambre se note, il ne se programme pas).
+export const PLANNABLE = ACTIVITIES.filter((a) => !a.private);
 export const activity = (id) => ACTIVITIES.find((a) => a.id === id) || ACTIVITIES.at(-1);
 
 export const INTENSITY = {
@@ -84,9 +89,11 @@ export function removeWorkout(id) {
 }
 
 // ---------- Chronomètre ----------
+// Libellé de la notification (visible sur l'écran verrouillé) : neutre pour une activité privée.
+export const notifLabel = (type) => (activity(type).private ? 'Activité' : activity(type).label);
 export function startWorkout(type, intensity = 'moderee') {
   store.update((s) => { s.workoutNow = { type, intensity, start: new Date().toISOString() }; });
-  N.workoutNotif(store.get().workoutNow, activity(type).label); // notification avec chronomètre sur le téléphone
+  N.workoutNotif(store.get().workoutNow, notifLabel(type)); // notification avec chronomètre sur le téléphone
 }
 export function stopWorkout() {
   const cur = store.get().workoutNow;

@@ -19,7 +19,8 @@ export function correlations(st, { days = 60, now = new Date() } = {}) {
   const next = (k) => { const d = new Date(k + 'T12:00'); d.setDate(d.getDate() + 1); return key(d); };
   const prev = (k) => { const d = new Date(k + 'T12:00'); d.setDate(d.getDate() - 1); return key(d); };
   const late = new Set((st.meals || []).filter((m) => (m.time || '') >= '21:00').map((m) => m.date));
-  const trained = new Set((st.workouts || []).map((w) => w.date));
+  const trained = new Set((st.workouts || []).filter((w) => w.type !== 'intime').map((w) => w.date));
+  const intimate = new Set((st.workouts || []).filter((w) => w.type === 'intime').map((w) => w.date));
   const screens = keys.map((k) => day(k).screenMin).filter((x) => x != null).sort((a, b) => a - b);
   const screenCut = screens.length ? screens[Math.floor(screens.length / 2)] : null;
   const h = (m) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ' ' + String(m % 60).padStart(2, '0') : ''}`);
@@ -32,6 +33,8 @@ export function correlations(st, { days = 60, now = new Date() } = {}) {
     { id: 'late', on: 'un dîner après 21 h', days: 'les jours de dîner tardif', f: (k) => ((st.meals || []).some((m) => m.date === k) ? late.has(k) : null) },
     { id: 'screen', on: `plus de ${screenCut != null ? h(screenCut) : '?'} d’écran`, days: `les jours à plus de ${screenCut != null ? h(screenCut) : '?'} d’écran`, f: (k) => (screenCut != null && day(k).screenMin != null ? day(k).screenMin > screenCut : null) },
     { id: 'social', on: 'plus d’1 h de réseaux sociaux', days: 'les jours à plus d’1 h de réseaux sociaux', f: (k) => (day(k).socialMin != null ? day(k).socialMin > 60 : null) },
+    // sport de chambre (noté dans Sport) : lien avec le sommeil de la nuit et l'humeur, d'après tes propres jours
+    { id: 'intime', on: 'un jour avec du sport de chambre', days: 'les jours avec du sport de chambre', f: (k) => (intimate.has(k) ? true : Object.keys(day(k)).length ? false : null) },
     { id: 'slept', on: 'une nuit de 7 h ou plus', days: 'après une nuit de 7 h ou plus', f: (k) => { const m = sleepMin(day(k)); return m != null ? m >= 420 : null; }, sameDayOnly: true },
   ];
   // Résultats : sommeil de la nuit suivante, humeur / énergie du jour même

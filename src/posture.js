@@ -41,6 +41,9 @@ export function assess(st, days = []) {
   const done7 = Object.keys(st.posture?.done || {}).filter((k) => days.some((d) => d.key === k)).length;
   let score = 100 - risk * 6;
   if (walk != null) score += walk >= 100 ? 8 : walk >= 60 ? 3 : walk < 30 ? -8 : 0;
+  // score « de fond » (bilan + marche + écrans), sans le bonus de la routine : c'est lui qui décide si la
+  // routine devient obligatoire, sinon la faire 1 jour lèverait l'obligation et la quête clignoterait
+  const baseScore = Math.max(5, Math.min(100, Math.round(score)));
   score += Math.min(10, done7 * 2);
   score = Math.max(5, Math.min(100, Math.round(score)));
   const tips = [];
@@ -51,7 +54,7 @@ export function assess(st, days = []) {
   if ((ans.back ?? 0) >= 1) tips.push(['steps', 'Marche, même quand le dos tire un peu', 'Un programme de marche progressif a presque doublé le temps sans nouvelle crise de mal de dos. Consulte si la douleur descend dans la jambe, réveille la nuit ou s’accompagne de fièvre.', ['pocovi2024']]);
   if (walk != null && walk < 100) tips.push(['steps', `Vise 100 min de marche par jour (tu en es à ~${walk})`, 'Au-delà de 100 min par jour, le risque de lombalgie chronique baisse d’environ 23 % ; même à allure tranquille, c’est le volume qui compte.', ['haddadj2025']]);
   tips.push(['smile', 'Grandis-toi quand tu marches', 'Tête haute, épaules basses, bras qui balancent : se tenir droit améliore aussi l’humeur et la confiance face au stress.', ['nair2015']]);
-  return { score, answered, complete: answered === QUESTIONS.length, walk, avgSteps, screenH, done7, tips, level: score >= 80 ? 'bonne' : score >= 60 ? 'correcte' : 'à travailler' };
+  return { score, baseScore, answered, complete: answered === QUESTIONS.length, walk, avgSteps, screenH, done7, tips, level: score >= 80 ? 'bonne' : score >= 60 ? 'correcte' : 'à travailler' };
 }
 
 export const SOURCES = ['pocovi2024', 'haddadj2025', 'hansraj2014', 'swain2020', 'sheikhhoseini2018', 'nair2015', 'waongenngarm2020'];
@@ -65,5 +68,24 @@ export function applyCheck(s, r, today, addDays) {
   if (r.usable === false || r.is_person === false) return 'unusable';
   if (isBad(r)) { s.posture.required = { from: today, until: addDays(today, 21), score: r.score }; return 'required'; }
   if (s.posture.required && (!s.posture.required.until || s.posture.required.until > today)) { s.posture.required.until = today; return 'lifted'; }
+  return 'ok';
+}
+
+// Bilan (questionnaire) « à travailler » (score de fond < 60) → routine obligatoire pendant 21 jours, comme après
+// une photo ; réévaluée ensuite. Un bilan redevenu correct lève l'obligation qu'il avait posée (pas celle d'une photo).
+// Ne touche jamais aux jours passés : l'obligation commence aujourd'hui.
+export const QUIZ_MIN_ANSWERS = 4;
+export function syncRequirement(s, days, today, addDays) {
+  const a = assess(s, days);
+  s.posture ||= {};
+  const r = s.posture.required;
+  const active = !!r && today >= r.from && (!r.until || today < r.until);
+  if (a.answered < QUIZ_MIN_ANSWERS) return 'none';
+  if (a.baseScore < 60) {
+    if (active) return 'kept';
+    s.posture.required = { from: today, until: addDays(today, 21), score: a.score, reason: 'bilan' };
+    return 'required';
+  }
+  if (active && r.reason === 'bilan') { r.until = today; return 'lifted'; }
   return 'ok';
 }

@@ -310,8 +310,8 @@ const breathStand = breath(STAND, ['Debout, épaules relâchées', 'Inspire par 
 const breathLying = { ...breath(k(SUPINE, { fL: [0.14, 0.08, 0.42], tL: [0, 0, 1], kP: [0.1, 0.3, 1], hL: [0.3, 0.06, 0.15] }), ['Allongé, genoux pliés', 'Deux inspirations par le nez', 'Longue expiration par la bouche']), tilt: 24 };
 
 // Posture : menton rentré, anges au mur, ouverture thoracique, marche droite
-const CHIN0 = k(STAND, { fL: [0.12, 0.08, 0], hL: [0.2, 0.92, 0.05], curve: 4, head: 14 });
-const chinTuck = { cam: 85, work: ['back'], keys: [k(CHIN0, { cue: 'Tête projetée en avant (posture « téléphone »)', hold: 0.5 }), k(CHIN0, { curve: -2, head: -6, root: [0, 0.96, 0], t: 1.2, cue: 'Rentre le menton : double menton, nuque longue', hold: 1.6 }), k(CHIN0, { t: 1 })] };
+const CHIN0 = k(STAND, { fL: [0.12, 0.08, 0], hL: [0.2, 0.92, 0.05], curve: 9, head: 24 });
+const chinTuck = { cam: 88, focus: 'head', work: ['back'], keys: [k(CHIN0, { cue: 'Tête projetée en avant (posture « téléphone »)', hold: 0.8 }), k(CHIN0, { curve: -4, head: -12, root: [0, 0.97, -0.02], t: 1.2, cue: 'Rentre le menton : double menton, nuque longue', hold: 1.6 }), k(CHIN0, { t: 1 })] };
 const WALL_B = ['box', [0, 1.1, -0.2, 0.9, 2.2, 0.08]];
 const ANGEL0 = k(STAND, { root: [0, 0.93, -0.06], fL: [0.14, 0.08, 0.12], hL: [0.36, 1.42, -0.1], eP: [1, -1, -0.3], head: -3 });
 const wallAngel = { cam: 25, work: ['back', 'shoulder'], props: [WALL_B], keys: [k(ANGEL0, { cue: 'Dos, tête et bras contre le mur, coudes à 90°', hold: 0.4 }), k(ANGEL0, { hL: [0.2, 1.92, -0.1], eP: [1, -0.3, -0.3], t: 1.6, cue: 'Glisse les bras vers le haut sans décoller du mur', hold: 0.3 }), k(ANGEL0, { t: 1.6, cue: 'Redescends en serrant les omoplates' })] };
@@ -527,6 +527,44 @@ export function poseAt(tl, time) {
   pose.head += br * 0.6;
   delete pose.t; delete pose.hold; delete pose.fly;
   return { pose, cue: (s.moving ? to.cue || from.cue : to.cue) || '' };
+}
+
+// Où en est l'animation : pose visée i, avancement u de la transition (0 → 1), ou maintien (temps restant).
+export function phaseAt(tl, time) {
+  let t = ((time % tl.total) + tl.total) % tl.total;
+  for (let i = 0; i < tl.keys.length; i++) {
+    const { dur, hold } = tl.seg[i];
+    if (t < dur) return { i, u: t / dur, moving: true, holdLeft: 0, hold };
+    t -= dur;
+    if (t < hold) return { i, u: 1, moving: false, holdLeft: hold - t, hold };
+    t -= hold;
+  }
+  return { i: 0, u: 0, moving: false, holdLeft: 0, hold: 0 };
+}
+
+// Trajectoires à montrer pour chaque transition (flèches) : la partie du corps qui bouge le plus (bassin,
+// buste ou tête) et/ou les mains et les pieds qui se déplacent nettement. Renvoie, pour chaque pose visée,
+// une liste de chemins [[x,y,z], …] échantillonnés le long du vrai mouvement.
+export function movePaths(tl, { min = 0.06, focus = null } = {}) {
+  const out = [];
+  let start = 0;
+  const N = 18;
+  for (let i = 0; i < tl.keys.length; i++) {
+    const { dur, hold } = tl.seg[i];
+    const frames = Array.from({ length: N + 1 }, (_, j) => skeleton(poseAt(tl, start + Math.min(dur * 0.999, (dur * j) / N)).pose));
+    const track = (f) => frames.map(f);
+    const torso = focus === 'head' ? [track((S) => S.head)] : [track((S) => S.pelvis), track((S) => S.chest), track((S) => S.head)];
+    const limbs = [track((S) => S.side.L.wrist), track((S) => S.side.R.wrist), track((S) => S.side.L.ankle), track((S) => S.side.R.ankle)];
+    const disp = (pts) => len(sub(pts[pts.length - 1], pts[0]));
+    // le bassin raconte le mieux un squat, une pompe ou un pont : il l'emporte sauf si le buste bouge bien plus
+    const bestTorso = torso.map((pts, j) => ({ pts, w: disp(pts) * (j === 0 && focus !== 'head' ? 1.5 : 1) })).sort((a, b) => b.w - a.w)[0].pts;
+    const cands = [bestTorso, ...limbs].map((pts) => ({ pts, d: disp(pts) })).filter((c) => c.d >= (focus === 'head' ? 0.025 : min));
+    const top = cands.length ? Math.max(...cands.map((c) => c.d)) : 0;
+    // jusqu'à 2 trajectoires (les deux mains d'un geste symétrique, par exemple)
+    out.push(cands.filter((c) => c.d >= top * 0.6).sort((a, b) => b.d - a.d).slice(0, 2).map((c) => c.pts));
+    start += dur + hold;
+  }
+  return out;
 }
 
 // ---------- Rendu ----------

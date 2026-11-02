@@ -109,3 +109,14 @@ test('sources : Fitbit reconnu', () => {
   assert.equal(W.sourceLabel('com.fitbit.FitbitMobile'), 'Fitbit');
   assert.ok(W.isFitbit({ sourceId: 'com.fitbit.FitbitMobile' }));
 });
+
+test('sport de chambre : intensité modérée, calories mesurées, jamais planifié ni envoyé au coach', async () => {
+  const SP = await import('../src/sport.js');
+  const S = await import('../src/science.js');
+  assert.equal(SP.whoClass('intime', 'moderee'), 'mod');
+  const k = SP.kcal('intime', 'moderee', 25, 75); // ≈ 100 kcal pour un homme de 75 kg (Frappier 2013)
+  assert.ok(k >= 90 && k <= 115, `obtenu ${k}`);
+  assert.ok(!SP.PLANNABLE.some((a) => a.id === 'intime'));
+  assert.equal(SP.notifLabel('intime'), 'Activité');
+  for (const id of ['frappier2013', 'lastella2019', 'dahabreh2011', 'levine2012', 'muise2015']) assert.ok(S.SOURCES[id]?.u.startsWith('https://doi.org/'), id);
+});

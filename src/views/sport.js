@@ -130,6 +130,9 @@ export function render(view, ctx) {
   $$('[data-del]', view).forEach((b) => (b.onclick = () => { const id = b.dataset.del; const undo = store.removing(() => {}); SP.removeWorkout(id); render(view, ctx); undoToast('Séance supprimée', undo); }));
 }
 
+// Repères sur le sport de chambre (affichés quand on le choisit). Reste sur le téléphone, jamais envoyé à l'IA.
+const intimeNote = () => `<div class="note" style="margin:8px 0">${icon('heart', 18)}<span>~25 min, ~100 kcal pour un homme et ~70 kcal pour une femme : une intensité modérée, comme une marche rapide. Il compte dans tes minutes d’activité et tes calories, et aide souvent à mieux dormir. <span class="muted">Noté seulement sur ce téléphone, jamais transmis au coach IA.</span></span></div>${srcLinks(['frappier2013', 'lastella2019', 'muise2015', 'dahabreh2011'])}`;
+
 // Démarrer une autre activité (chrono) ou saisir une séance passée.
 export function openWorkout(ctx, view, live) {
   const now = new Date();
@@ -140,6 +143,7 @@ export function openWorkout(ctx, view, live) {
     <label class="lbl">Intensité</label>
     <div class="seg">${Object.entries(SP.INTENSITY).map(([k, v]) => `<button data-int="${k}" class="${k === intensity ? 'on' : ''}">${v.label}</button>`).join('')}</div>
     <p class="tiny muted" id="talk">${SP.INTENSITY[intensity].talk}</p>
+    <div id="intime-info"></div>
     ${live ? '' : `<div class="grid2">
       <div><label class="lbl">Début</label><input type="datetime-local" id="start" value="${new Date(now.getTime() - 60 * 60000 - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16)}"></div>
       <div><label class="lbl">Durée (min)</label><input type="number" id="dur" inputmode="numeric" value="30"></div>
@@ -154,6 +158,8 @@ export function openWorkout(ctx, view, live) {
   $('#see', body)?.addEventListener('click', () => { body.close(); setTimeout(() => openSession(ctx, view, { activity: type, minutes: lmin, intensity }), 250); });
   const est = () => {
     $('#talk', body).textContent = `Repère : ${SP.INTENSITY[intensity].talk}.`;
+    $('#intime-info', body).innerHTML = type === 'intime' ? intimeNote() : '';
+    $('#see', body)?.toggleAttribute('hidden', type === 'intime'); // pas de séance d'exercices pour celle-ci
     if (live) return;
     const m = Number($('#dur', body).value) || 0;
     $('#est', body).textContent = `≈ ${SP.kcal(type, intensity, m, store.get().profile.weight || 70)} kcal · compte comme activité ${SP.whoClass(type, intensity) === 'vig' ? 'intense (×2 pour l’OMS)' : SP.whoClass(type, intensity) === 'mod' ? 'modérée' : 'légère'}`;
@@ -324,7 +330,7 @@ export function openWeekEditor(done) {
       ${tpl.map((d, i) => `<div class="week-day ${open === i ? 'open' : ''}">
         <button class="between wd-head" data-open="${i}"><b class="small">${SP.DAYS[i]}</b><span class="small">${d.type ? `${esc(SP.activity(d.type).label)} · ${d.minutes} min · ${SP.INTENSITY[d.intensity].label.toLowerCase()}` : '<span class="muted">Repos</span>'}</span></button>
         ${open === i ? `<div class="wd-body">
-          <div class="chips" style="flex-wrap:wrap"><button class="chip ${!d.type ? 'on' : ''}" data-type="">Repos</button>${SP.ACTIVITIES.filter((a) => a.id !== 'autre' && !(st.profile.excludedSports || []).includes(a.id)).map((a) => `<button class="chip ${d.type === a.id ? 'on' : ''}" data-type="${a.id}">${icon(a.icon, 13)} ${esc(a.label)}</button>`).join('')}</div>
+          <div class="chips" style="flex-wrap:wrap"><button class="chip ${!d.type ? 'on' : ''}" data-type="">Repos</button>${SP.PLANNABLE.filter((a) => a.id !== 'autre' && !(st.profile.excludedSports || []).includes(a.id)).map((a) => `<button class="chip ${d.type === a.id ? 'on' : ''}" data-type="${a.id}">${icon(a.icon, 13)} ${esc(a.label)}</button>`).join('')}</div>
           ${d.type ? `<label class="lbl">Durée</label><div class="chips">${[15, 20, 30, 40, 45, 60, 75, 90].map((m) => `<button class="chip ${d.minutes === m ? 'on' : ''}" data-dmin="${m}">${m} min</button>`).join('')}</div>
           <label class="lbl">Intensité</label><div class="seg">${Object.entries(SP.INTENSITY).map(([k, v]) => `<button data-int="${k}" class="${d.intensity === k ? 'on' : ''}">${v.label}</button>`).join('')}</div>` : ''}
         </div>` : ''}</div>`).join('')}
@@ -344,7 +350,7 @@ export function openWeekEditor(done) {
 
 // Préférences de sports : pour chaque sport, « J'aime » (proposé en priorité), neutre, ou « Jamais » (jamais proposé).
 export function sportPrefsHtml(fav = [], ex = []) {
-  return `<div class="sport-rows">${SP.ACTIVITIES.filter((a) => a.id !== 'autre').map((a) => {
+  return `<div class="sport-rows">${SP.PLANNABLE.filter((a) => a.id !== 'autre').map((a) => {
     const v = fav.includes(a.id) ? 1 : ex.includes(a.id) ? -1 : 0;
     return `<div class="sport-row"><span class="lab">${icon(a.icon, 16)} ${esc(a.label)}</span><span class="tri" data-sport="${a.id}">
       <button data-v="1" class="${v === 1 ? 'on like' : ''}" aria-label="J’aime">♥ J’aime</button><button data-v="0" class="${v === 0 ? 'on neutral' : ''}" aria-label="Neutre">–</button><button data-v="-1" class="${v === -1 ? 'on dislike' : ''}" aria-label="Jamais">✕ Jamais</button></span></div>`;

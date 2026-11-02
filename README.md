@@ -38,9 +38,12 @@ Application Android native **et** application web installable, qui croise **somm
 - une **IA gratuite possible** : une clé Google Gemini (aistudio.google.com, sans carte bancaire) marche comme une clé Claude ;
 - la **recherche de produits par nom** (Open Food Facts) quand on n'a pas l'emballage, avec toutes les valeurs nutritives ;
 - un **bilan sommeil de la semaine** : heures dormies, heures conseillées pour ton âge, dette de sommeil et décalage horaire social ;
+- des **démonstrations 3D lisibles** : flèche lumineuse qui suit le geste (main, pied ou bassin) jusqu'à la position visée, pastilles d'étapes, compte à rebours des maintiens (« tiens · 3 s »), **ralenti au toucher**, caméra rapprochée pour les petits gestes (menton rentré) ;
+- la **routine posture en quête obligatoire** dès que ton bilan posture est « à travailler » (score sous 60), levée quand le bilan redevient correct ;
+- le **sport de chambre** dans les activités (≈ 100 kcal pour 25 min chez l'homme, ≈ 70 kcal chez la femme, intensité modérée ; Frappier 2013), avec ses repères (sommeil, bien-être, cœur) et son lien avec ton sommeil et ton humeur ; jamais proposé dans la semaine type, jamais transmis au coach IA, notification neutre ;
 - des **vidéos de démonstration** seulement pour les exercices techniques, à choisir une par une ou à importer d'une liste (`docs/videos-exercices.txt`).
 
-Tout repose sur une **bibliothèque de 115 publications** (OMS, Lancet, BMJ, JAMA, NEJM, Nature…) consultable dans l'appli (Santé → Science) et dans `src/science.js`. Chaque DOI a été vérifié auprès de Crossref.
+Tout repose sur une **bibliothèque de 139 publications** (OMS, Lancet, BMJ, JAMA, NEJM, Nature…) consultable dans l'appli (Santé → Science) et dans `src/science.js`. Chaque DOI a été vérifié auprès de Crossref.
 
 ## Installer
 

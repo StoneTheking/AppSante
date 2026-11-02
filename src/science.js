@@ -132,6 +132,11 @@ export const SOURCES = {
   dhurandhar2015: { t: 'Dhurandhar et al. – Les apports déclarés sous-estiment la réalité : limites du bilan énergétique auto-rapporté (Int J Obes 2015)', u: 'https://doi.org/10.1038/ijo.2014.199' },
   subar2015: { t: 'Subar et al. – Valeur et limites des données alimentaires auto-déclarées (J Nutr 2015)', u: 'https://doi.org/10.3945/jn.115.219634' },
   lichtman1992: { t: 'Lichtman et al. – Écart entre calories déclarées et réelles (−47 % chez certains sujets) (N Engl J Med 1992)', u: 'https://doi.org/10.1056/NEJM199212313272701' },
+  frappier2013: { t: 'Frappier et al. – Dépense énergétique de l’activité sexuelle chez de jeunes couples : ~25 min, ~100 kcal (hommes) et ~70 kcal (femmes), intensité modérée (PLoS One 2013)', u: 'https://doi.org/10.1371/journal.pone.0079342' },
+  lastella2019: { t: 'Lastella et al. – Rapports sexuels avec orgasme et sommeil perçu : 64 % disent mieux dormir ensuite (Front Public Health 2019)', u: 'https://doi.org/10.3389/fpubh.2019.00033' },
+  dahabreh2011: { t: 'Dahabreh & Paulus – Effort physique ou sexuel ponctuel et accident cardiaque : risque relatif transitoire, risque absolu très faible, atténué par l’activité régulière (JAMA 2011)', u: 'https://doi.org/10.1001/jama.2011.336' },
+  levine2012: { t: 'Levine et al. – Activité sexuelle et maladies cardiovasculaires, déclaration scientifique de l’American Heart Association (Circulation 2012)', u: 'https://doi.org/10.1161/CIR.0b013e3182447787' },
+  muise2015: { t: 'Muise et al. – Fréquence des rapports et bien-être : bénéfice jusqu’à une fois par semaine, pas au-delà (Soc Psychol Personal Sci 2015)', u: 'https://doi.org/10.1177/1948550615616462' },
   hall2013: { t: 'Hall & Chow – Pourquoi la règle « 3500 kcal = 1 livre » est fausse à long terme (Int J Obes 2013)', u: 'https://doi.org/10.1038/ijo.2013.112' },
   zheng2014: { t: 'Zheng et al. – Se peser régulièrement aide à perdre du poids et à ne pas le reprendre, revue systématique (Obesity 2015)', u: 'https://doi.org/10.1002/oby.20946' },
   burke2011: { t: 'Burke et al. – Noter ce qu’on mange, son activité et son poids est associé à une meilleure perte de poids, revue (J Am Diet Assoc 2011)', u: 'https://doi.org/10.1016/j.jada.2010.10.008' },
@@ -541,6 +546,13 @@ export const EVIDENCE = [
     ['Des liens sociaux solides augmentent de 50 % les chances de survie, autant qu’arrêter de fumer.', ['holtlunstad2010']],
     ['5 min/jour de respiration lente (« soupir cyclique » : double inspiration, longue expiration) améliorent l’humeur.', ['balban2023']],
     ['Améliorer son alimentation réduit les symptômes dépressifs (essai SMILES, méta-analyse de 16 essais).', ['jacka2017', 'firth2019']],
+  ] },
+  { theme: 'Vie intime', icon: 'heart', color: 'var(--c-mood)', facts: [
+    ['Un rapport dure en moyenne ~25 min et dépense ~100 kcal chez l’homme, ~70 kcal chez la femme (environ 4 et 3 kcal/min) : une intensité modérée, proche d’une marche rapide, mais trois fois moins qu’un footing de même durée.', ['frappier2013']],
+    ['Après un rapport avec orgasme, 64 % des adultes disent s’endormir plus facilement et mieux dormir.', ['lastella2019']],
+    ['Le bien-être augmente avec la fréquence des rapports jusqu’à environ une fois par semaine, sans gain au-delà : la qualité compte plus que la quantité.', ['muise2015']],
+    ['Comme tout effort, il augmente brièvement le risque d’accident cardiaque, mais le risque absolu reste minime et diminue nettement chez les personnes actives régulièrement.', ['dahabreh2011']],
+    ['Avec une maladie cardiaque, la reprise est en général possible si l’on monte 2 étages d’un bon pas sans essoufflement ni douleur : demande l’avis de ton médecin.', ['levine2012']],
   ] },
 ];
 

@@ -514,7 +514,19 @@ function weekSummary(st) {
 }
 
 // ---------- Posture ----------
+// Posture « à travailler » d'après le bilan : la routine devient une quête du jour (voir posture.js).
+export function checkPostureQuest() {
+  const st = store.get();
+  if (!st.onboarded) return;
+  const days = store.lastDays(7).map((k) => ({ key: k, ...(st.days[k] || {}) }));
+  const before = JSON.stringify(st.posture?.required || null);
+  const probe = structuredClone({ posture: st.posture || {}, days: st.days });
+  PO.syncRequirement(probe, days, store.today(), (k, n) => G.dayKeyOffset(n, new Date(k + 'T12:00')));
+  if (JSON.stringify(probe.posture.required || null) !== before) store.update((s) => { s.posture ||= {}; s.posture.required = probe.posture.required; });
+}
+
 function renderPosture(el) {
+  checkPostureQuest();
   const st = store.get();
   const days = store.lastDays(7).map((k) => ({ key: k, ...(st.days[k] || {}) }));
   const a = PO.assess(st, days);
@@ -588,7 +600,7 @@ function photoCard(st, today) {
   const hasKey = !!st.settings.apiKey;
   return `<section class="card">
     <div class="card-head"><h2><span style="color:var(--c-screen)">${icon('camera', 18)}</span> Analyse photo de ta posture</h2></div>
-    ${req ? `<div class="note warn" style="margin-top:0">${icon('alert', 18)}<span><b>Routine posture obligatoire</b> jusqu’au ${frDate(addDays(req.until, -1))} : c’est une quête du jour, la journée n’est validée qu’avec elle. Refais une photo quand tu te sens mieux aligné·e : si elle est correcte, l’obligation est levée.</span></div>` : ''}
+    ${req ? `<div class="note warn" style="margin-top:0">${icon('alert', 18)}<span><b>Routine posture obligatoire</b> jusqu’au ${frDate(addDays(req.until, -1))} : c’est une quête du jour, la journée n’est validée qu’avec elle. ${req.reason === 'bilan' ? 'Ton bilan posture est « à travailler » : elle sera levée quand ton bilan (ou une photo) redeviendra correct.' : 'Refais une photo quand tu te sens mieux aligné·e : si elle est correcte, l’obligation est levée.'}</span></div>` : ''}
     ${last ? `<button data-po-last style="display:flex;gap:10px;align-items:center;width:100%;border:0;background:none;color:inherit;text-align:left;padding:0;margin:4px 0 12px"><span class="badge ${VERDICT_PO[last.verdict]?.[1] || 'moyen'}" style="flex:none">${last.score}/100</span><div><div class="small" style="font-weight:600">Dernière photo : ${VERDICT_PO[last.verdict]?.[0] || last.verdict}</div><div class="tiny muted">${frDate(last.date)} · ${esc(last.summary || '')}</div></div></button>` : ''}
     <p class="small muted" style="margin-top:0">Debout, détendu·e, <b>de profil</b>, corps entier dans le cadre, tenue près du corps. Pose le téléphone à hauteur de taille avec le retardateur, ou demande à quelqu’un.</p>
     ${hasKey ? `<div class="grid2"><button class="btn" data-po-photo="camera">${icon('camera', 18)} Me prendre en photo</button><button class="btn soft" data-po-photo="gallery">${icon('image', 18)} Galerie</button></div>
@@ -648,6 +660,7 @@ function postureQuiz(done) {
       ans[q.id] = Number(b.dataset.k);
       if (i < PO.QUESTIONS.length - 1) { i++; draw(); return; }
       store.update((s) => { s.posture ||= {}; s.posture.answers = ans; s.posture.at = Date.now(); });
+      checkPostureQuest();
       body.close();
       done?.();
     }));

@@ -60,7 +60,7 @@ export function suggestSlot({ date = new Date(), duration = 30, intensity = 'mod
 
 // Heure habituelle des séances (médiane des 20 dernières), pour favoriser la régularité.
 export function usualHour(workouts) {
-  const hs = workouts.slice(-20).map((w) => { const d = new Date(w.start); return d.getHours() + d.getMinutes() / 60; }).sort((a, b) => a - b);
+  const hs = workouts.filter((w) => w.type !== 'intime').slice(-20).map((w) => { const d = new Date(w.start); return d.getHours() + d.getMinutes() / 60; }).sort((a, b) => a - b);
   return hs.length >= 3 ? hs[Math.floor(hs.length / 2)] : null;
 }
 

@@ -39,3 +39,21 @@ test('nouvelle photo correcte : obligation levée ; photo inexploitable : rien n
 test('sans photo de posture : toujours 5 quêtes', () => {
   assert.equal(G.dayGoals(base(), today).length, 5);
 });
+
+test('bilan posture « à travailler » : la routine devient une quête obligatoire à partir d’aujourd’hui', async () => {
+  const PO = await import('../src/posture.js');
+  const G = await import('../src/gamify.js');
+  const add = (k, n) => G.dayKeyOffset(n, new Date(k + 'T12:00'));
+  const bad = { posture: { answers: { sit: 2, phone: 2, breaks: 2, screen: 1, neck: 1, back: 1 } }, days: {} };
+  const days = [{ key: '2026-11-02', steps: 4000 }];
+  assert.equal(PO.syncRequirement(bad, days, '2026-11-02', add), 'required');
+  assert.ok(G.postureRequired(bad, '2026-11-02'));
+  assert.ok(!G.postureRequired(bad, '2026-11-01')); // les jours passés ne changent pas
+  // faire la routine n'enlève pas la quête le lendemain
+  bad.posture.done = { '2026-11-02': true };
+  assert.equal(PO.syncRequirement(bad, days, '2026-11-03', add), 'kept');
+  // bilan refait et correct : obligation levée
+  bad.posture.answers = { sit: 0, phone: 0, breaks: 0, screen: 0, neck: 0, back: 0 };
+  assert.equal(PO.syncRequirement(bad, [{ key: '2026-11-04', steps: 9000 }], '2026-11-04', add), 'lifted');
+  assert.ok(!G.postureRequired(bad, '2026-11-04'));
+});

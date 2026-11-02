@@ -157,7 +157,7 @@ function syncWorkoutNotif() {
   const key = w ? `${w.type}|${w.start}` : '';
   if (key === syncWorkoutNotif.last) return;
   syncWorkoutNotif.last = key;
-  N.workoutNotif(w, w && SPO.activity(w.type).label);
+  N.workoutNotif(w, w && SPO.notifLabel(w.type));
 }
 
 function go(t, after, dir) {
@@ -285,6 +285,7 @@ function boot() {
 
 function start() {
   boot();
+  Health.checkPostureQuest();
   if (!store.get().onboarded) {
     Onboarding.render(app, () => { shell(); go('home'); refreshReminders(); }, 'in');
     return;
@@ -395,7 +396,7 @@ window.addEventListener('store-restored', () => { if (!document.querySelector('.
 // Réseau retrouvé : les photos de repas mises de côté sont analysées.
 window.addEventListener('online', () => { if (store.get().onboarded) A.processPendingPhotos().then((n) => { if (n && ['home', 'nutrition'].includes(tab)) renderView(); }); });
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && store.get().onboarded) { onForeground(); refreshReminders(); askMoodToday(); Diana.greet(1200, { again: true }); }
+  if (document.visibilityState === 'visible' && store.get().onboarded) { Health.checkPostureQuest(); onForeground(); refreshReminders(); askMoodToday(); Diana.greet(1200, { again: true }); }
 });
 
 // Humeur : demandée une fois par jour à la première ouverture (après 7 h, hors nuit en cours).
