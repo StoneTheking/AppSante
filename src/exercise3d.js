@@ -155,9 +155,10 @@ const IR_DOWN = k(SUPINE, { root: [0, 0.32, -0.08], pitch: -76, hL: [0.24, 0.73,
 const IR_UP = k(IR_DOWN, { root: [0, 0.48, 0.05], pitch: -66, cue: 'Tire la poitrine vers la table, omoplates serrées' });
 const invRow = { cam: 80, work: ['back', 'arm'], props: [TABLE], keys: [k(IR_DOWN, { cue: 'Sous la table, corps gainé, bras tendus', hold: 0.3 }), k(IR_UP, { t: 1.1, hold: 0.3 }), k(IR_DOWN, { t: 1.2, cue: 'Redescends lentement' })] };
 // Rowing un bras, genou et main sur un banc
-const ROW_BENCH = ['box', [0.2, 0.22, 0.2, 0.36, 0.44, 0.95]];
-const OAR_DOWN = k(BASE, { root: [0, 0.82, -0.05], pitch: 82, head: -10, hL: [0.22, 0.47, 0.55], hR: [-0.2, 0.28, 0.2], eP: [0.5, -1, -0.6], eR: [0.3, -1, -0.6], fL: [0.2, 0.5, -0.3], tL: [0, 0.2, -1], kL: [0.1, -1, 0.3], fR: [-0.22, 0.08, -0.05], tR: [0, 0, 1] });
-const OAR_UP = k(OAR_DOWN, { hR: [-0.2, 0.64, -0.02], cue: 'Tire le coude vers la hanche' });
+// banc : genou et main gauches posés dessus, tibia à plat sur le banc
+const ROW_BENCH = ['box', [0.2, 0.22, 0.05, 0.36, 0.44, 1.3]];
+const OAR_DOWN = k(BASE, { root: [0, 0.93, -0.05], pitch: 84, head: -12, hL: [0.22, 0.47, 0.55], hR: [-0.2, 0.42, 0.28], eP: [0.5, -1, -0.6], eR: [0.3, -1, -0.6], fL: [0.17, 0.5, -0.5], tL: [0, -0.2, -1], kL: [0.1, 0, 1], fR: [-0.26, 0.08, -0.12], tR: [0, 0, 1], kR: [0.2, 0, 1] });
+const OAR_UP = k(OAR_DOWN, { hR: [-0.2, 0.78, 0.02], cue: 'Tire le coude vers la hanche' });
 const oneArmRow = { cam: -85, work: ['back', 'arm'], props: [ROW_BENCH, 'dbR'], keys: [k(OAR_DOWN, { cue: 'Genou et main sur le banc, dos plat', hold: 0.3 }), k(OAR_UP, { t: 1, hold: 0.3 }), k(OAR_DOWN, { t: 1.1, cue: 'Redescends en contrôlant' })] };
 // Tirage horizontal assis
 const SEAT_BOX = ['box', [0, 0.22, -0.05, 0.4, 0.44, 0.45]];
@@ -199,7 +200,7 @@ const hipThrust = (props) => ({ cam: 82, work: ['glute', 'hams'], props: [HT_BEN
 // Gainage
 const breathe = (p, cue) => ({ cam: 60, work: ['core'], keys: [k(p, { cue, hold: 1 }), k(p, { root: add(p.root, [0, 0.012, 0]), t: 1.5, cue: 'Respire normalement, fessiers serrés' }), k(p, { t: 1.5 })] });
 const plank = breathe(PLANK, 'Coudes sous les épaules, corps aligné');
-const SIDE = k(PLANK, { root: [0, 0.42, 0], pitch: 90, roll: -90, tilt: -12, head: 0, hL: [0.02, 1.0, 0.42], eL: [0, -1, 0], hR: [0.25, 0.04, 0.5], eR: [1, 0, 0.3], fL: [0, 0.17, -0.86], fR: [0, 0.07, -0.88], tL: [1, 0, 0.1], tR: [1, 0, 0.1], kP: [0, 0, 1] });
+const SIDE = k(PLANK, { root: [0, 0.42, 0], pitch: 90, roll: -90, tilt: -12, head: 0, hL: [0.02, 1.22, 0.42], eL: [0.3, 0, -1], hR: [0.25, 0.04, 0.5], eR: [1, 0, 0.3], fL: [0, 0.17, -0.86], fR: [0, 0.07, -0.88], tL: [1, 0, 0.1], tR: [1, 0, 0.1], kP: [0, 0, 1] });
 const sidePlank = { ...breathe(SIDE, 'Coude sous l’épaule, bassin haut'), cam: 80 };
 const plankThenSide = { cam: 55, work: ['core'], keys: [k(PLANK, { cue: 'Gainage face au sol', hold: 1.4 }), k(SIDE, { t: 1, cue: 'Pivote sur le côté, bassin haut', hold: 1.4 }), k(PLANK, { t: 1 })] };
 const ROT_PLANK = k(HIGH_PLANK, { root: [0, 0.48, 0], pitch: 74 });
@@ -525,6 +526,11 @@ export function poseAt(tl, time) {
   const br = Math.sin(time * Math.PI * 2 / 3.6);
   pose.curve += br * 0.9;
   pose.head += br * 0.6;
+  // équilibre : le poids oscille très légèrement d'un pied à l'autre (mains et pieds restent posés),
+  // plus visible pendant un maintien ; un corps vivant n'est jamais parfaitement immobile
+  const sw = (s.moving ? 0.35 : 1) * Math.sin(time * 0.9);
+  pose.root = [pose.root[0] + sw * 0.006, pose.root[1], pose.root[2] + Math.sin(time * 0.6 + 1) * 0.003];
+  pose.roll = (pose.roll || 0) + sw * 0.8;
   delete pose.t; delete pose.hold; delete pose.fly;
   return { pose, cue: (s.moving ? to.cue || from.cue : to.cue) || '' };
 }

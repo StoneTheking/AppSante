@@ -1,7 +1,7 @@
-// Démonstrations des exercices en vraie 3D (three.js) : mannequin anatomique de Diana (tête hologramme avec
-// son bandeau), muscles modelés (pectoraux, abdos, deltoïdes, biceps, triceps, dorsaux, fessiers, quadriceps,
-// ischios, mollets) qui s'allument en orange quand ils travaillent, articulations lumineuses, ombre portée
-// douce sur une plateforme, agrès et charges en métal (haltères hexagonaux, barre et disques, banc, câble).
+// Démonstrations des exercices en vraie 3D (three.js) : Diana en entier, tête hologramme avec son bandeau et
+// corps d'un seul tenant à la même peau que son visage (bleu nuit, contour cyan, grille qui suit la peau) ;
+// les muscles qui travaillent s'allument en orange. Ombre portée douce sur une plateforme, agrès et charges
+// en métal (haltères hexagonaux, barre et disques, banc, câble).
 // Les poses viennent du squelette par cinématique inverse d'exercise3d.js ; la caméra tourne au doigt.
 import { THREE, blit, available, envMap, onReset, generation } from './gl3d.js';
 import { HEAD_VERT, HEAD_FRAG, headUniforms, setMood, bandMesh, haloSprite } from './diana3d.js';
@@ -54,7 +54,7 @@ const GEO = {};
 function geos() {
   if (GEO.ready) return GEO;
   // profils d'après la silhouette d'un corps athlétique (rayon relatif le long du segment)
-  GEO.thigh = lathe([[0, 0], [0.02, 0.78], [0.1, 0.97], [0.3, 1], [0.55, 0.9], [0.8, 0.72], [0.95, 0.62], [1, 0]]);
+  GEO.thigh = lathe([[0, 0], [0.02, 0.86], [0.1, 1], [0.3, 0.97], [0.55, 0.86], [0.8, 0.7], [0.95, 0.62], [1, 0]]);
   GEO.shin = lathe([[0, 0], [0.02, 0.85], [0.18, 1], [0.32, 1.02], [0.6, 0.72], [0.85, 0.55], [1, 0]]);
   GEO.arm = lathe([[0, 0], [0.03, 0.9], [0.2, 1], [0.5, 0.95], [0.85, 0.78], [1, 0]]);
   GEO.fore = lathe([[0, 0], [0.03, 0.92], [0.2, 1], [0.55, 0.8], [0.92, 0.6], [1, 0]]);
@@ -109,26 +109,91 @@ function frame(a, b, ref) {
   return [[x[0], y[0], z[0]], [x[1], y[1], z[1]], [x[2], y[2], z[2]]];
 }
 
-// Construit le mannequin (une fois par démonstration).
+// ---------- Peau hologramme (la même que le visage de Diana) ----------
+// Bleu nuit éclairé en haut à gauche, contour cyan (Fresnel), grille fine qui suit la peau (anneaux le long
+// du membre, lignes autour), léger balayage. Opaque : les pièces qui se chevauchent aux articulations se
+// fondent en une seule silhouette. Les muscles qui travaillent passent en orange qui respire.
+const BODY_VERT = /* glsl */ `
+varying vec3 vObj; varying vec3 vN; varying vec3 vView;
+void main() {
+  vObj = position;
+  vN = normalize(normalMatrix * normal);
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  vView = -mv.xyz;
+  gl_Position = projectionMatrix * mv;
+}`;
+const BODY_FRAG = /* glsl */ `
+precision highp float;
+uniform float uTime, uHot, uCols, uRows, uScan, uGrid, uFade;
+varying vec3 vObj; varying vec3 vN; varying vec3 vView;
+const vec3 NAVY = vec3(20., 50., 98.) / 255., NAVY_DEEP = vec3(6., 16., 38.) / 255., GLOW = vec3(52., 110., 180.) / 255.;
+const vec3 HOLO = vec3(90., 215., 255.) / 255., WORK = vec3(255., 140., 58.) / 255.;
+const vec3 LIGHT = vec3(-0.438, 0.613, 0.657);
+void main() {
+  vec3 n = normalize(vN);
+  if (!gl_FrontFacing) n = -n;
+  vec3 v = normalize(vView);
+  float nz = max(0., dot(n, v));
+  float d = max(0., dot(n, LIGHT));
+  // même dégradé que le visage : plus sombre sur les côtés, plus lumineux face à la lumière
+  vec3 base = mix(NAVY_DEEP, NAVY, smoothstep(-0.2, 0.9, nz));
+  base = mix(base, GLOW, 0.45 * smoothstep(0.55, 1., d));
+  float pulse = 0.5 + 0.5 * sin(uTime * 3.);
+  // muscle au travail : l'orange se concentre au milieu du membre et s'estompe vers les articulations
+  float hot = uHot * mix(1., smoothstep(0., 0.35, vObj.y) * smoothstep(1., 0.65, vObj.y), uFade);
+  base = mix(base, WORK * (0.75 + 0.25 * pulse), hot * 0.85);
+  vec3 h = normalize(LIGHT + v);
+  float spec = 0.45 * pow(max(0., dot(n, h)), 48.) + 0.3 * pow(max(0., dot(n, h)), 260.);
+  vec3 r = reflect(-v, n);
+  float box = smoothstep(0.72, 0.86, r.y) * smoothstep(0.7, 0.15, abs(r.x + 0.35)) * 0.1;
+  vec3 c = base * (0.3 + 0.82 * d) + vec3(spec + box);
+  // grille qui suit la peau : lignes autour du membre et anneaux le long (repère de l'objet)
+  float lon = atan(vObj.x, vObj.z) / 6.2831853 * uCols;
+  float lat = vObj.y * uRows;
+  vec2 g = vec2(lon, lat);
+  vec2 fw = max(fwidth(g), vec2(1e-4));
+  vec2 dd = abs(fract(g - 0.5) - 0.5) / fw;
+  float line = 1. - min(min(dd.x, dd.y) / 1.2, 1.);
+  float fres = pow(1. - nz, 2.2);
+  float grid = line * uGrid * (0.1 + 0.22 * smoothstep(0.2, 0.95, 1. - nz * 0.7));
+  float scan = 1. - uScan * (0.5 - 0.5 * sin(gl_FragCoord.y * 2.1 - uTime * 6.));
+  vec3 rim = mix(HOLO, vec3(1., 0.8, 0.55), hot * 0.6);
+  c = (c + rim * (0.1 + 0.85 * fres + grid)) * scan;
+  gl_FragColor = vec4(c, 1.);
+}`;
+function skin(cols, rows, hot = false, fade = 0) {
+  return new THREE.ShaderMaterial({
+    uniforms: { uTime: { value: 0 }, uHot: { value: hot ? 1 : 0 }, uCols: { value: Math.max(4, Math.round(cols * 0.7)) }, uRows: { value: Math.max(1, Math.round(rows * 0.6)) }, uScan: { value: 0.06 }, uGrid: { value: 0.55 }, uFade: { value: fade } },
+    vertexShader: BODY_VERT, fragmentShader: BODY_FRAG,
+  });
+}
+
+// Construit le mannequin (une fois par démonstration) : silhouette lisse d'une seule teinte, sans rotules
+// ni « bulles » de muscles ; les articulations sont des sphères du même rayon que les membres qui s'y
+// rejoignent, la forme des muscles vient du profil des membres.
 function buildBody(M, work) {
   const g = geos();
   const root = new THREE.Group();
+  const mats = [];
   const hotOf = (tags) => tags.some((t) => work.includes(t));
-  const mk = (geo, mat, shadow = true) => { const m = new THREE.Mesh(geo, mat); m.matrixAutoUpdate = false; m.castShadow = shadow; root.add(m); return m; };
-  const mus = (tags) => mk(g.sphere, hotOf(tags) ? M.hot : M.muscle);
+  const mk = (geo, cols, rows, tags = []) => {
+    const mat = skin(cols, rows, hotOf(tags), geo === g.sphere ? 0 : 1); mats.push(mat);
+    const m = new THREE.Mesh(geo, mat); m.matrixAutoUpdate = false; m.castShadow = true; root.add(m); return m;
+  };
   const B = {
-    pelvis: mk(g.sphere, M.body), abdomen: mk(g.abdomen, M.body), chest: mk(g.chest, M.body), neck: mk(g.neck, M.body),
-    abs: [0, 1, 2].flatMap(() => [mus(['core']), mus(['core'])]), obl: [mus(['core']), mus(['core'])],
-    pec: [mus(['chest']), mus(['chest'])], lat: [mus(['back']), mus(['back'])], trap: mus(['back', 'shoulder']), lower: [mus(['back']), mus(['back'])],
-    glute: [mus(['glute']), mus(['glute'])],
+    pelvis: mk(g.sphere, 12, 3), abdomen: mk(g.abdomen, 12, 5, ['core']), waist: mk(g.sphere, 12, 2, ['core']),
+    chest: mk(g.chest, 12, 6, ['chest', 'back']), neck: mk(g.neck, 10, 3),
+    // trapèzes et clavicules : relient le cou aux épaules (sinon l'épaule flotte à côté du buste)
+    yoke: [mk(g.sphere, 8, 2, ['shoulder', 'back']), mk(g.sphere, 8, 2, ['shoulder', 'back'])],
+    pec: [mk(g.sphere, 8, 2, ['chest']), mk(g.sphere, 8, 2, ['chest'])],
+    glute: [mk(g.sphere, 8, 3, ['glute']), mk(g.sphere, 8, 3, ['glute'])],
     side: {},
   };
   for (const k of ['L', 'R']) {
     B.side[k] = {
-      clav: mk(g.cyl, M.body), delt: mus(['shoulder', 'chest']), arm: mk(g.arm, M.body), bi: mus(['arm']), tri: mus(['arm']),
-      fore: mk(g.fore, M.body), hand: mk(g.hand, M.body), thigh: mk(g.thigh, M.body), quad: mus(['thigh']), ham: mus(['hams']),
-      shin: mk(g.shin, M.body), calf: mus(['calf']), foot: mk(g.foot, M.shoe),
-      j: ['shoulder', 'elbow', 'wrist', 'hip', 'knee', 'ankle'].reduce((o, n) => ((o[n] = mk(g.sphere, M.joint)), o), {}),
+      delt: mk(g.sphere, 8, 3, ['shoulder', 'chest']), arm: mk(g.arm, 10, 6, ['arm', 'shoulder']), fore: mk(g.fore, 10, 5, ['arm']),
+      hand: mk(g.hand, 8, 3), thigh: mk(g.thigh, 12, 8, ['thigh', 'hams', 'glute']), shin: mk(g.shin, 10, 8, ['calf']), foot: mk(g.foot, 8, 4),
+      j: { shoulder: mk(g.sphere, 8, 3, ['shoulder']), elbow: mk(g.sphere, 8, 2), wrist: mk(g.sphere, 6, 2), hip: mk(g.sphere, 10, 3), knee: mk(g.sphere, 8, 2), ankle: mk(g.sphere, 6, 2) },
     };
   }
   // tête de Diana (même shader que dans l'en-tête)
@@ -139,30 +204,29 @@ function buildBody(M, work) {
   const band = bandMesh();
   head.add(sph, band);
   root.add(head);
-  B.head = head; B.headU = uniforms;
+  B.head = head; B.headU = uniforms; B.mats = mats;
   return { root, B };
 }
 
 function poseBody(B, S, t) {
+  for (const m of B.mats) m.uniforms.uTime.value = t;
   const fwdP = col(S.pelvisR, 2), fwdC = col(S.chestR, 2);
-  const breath = 1 + 0.015 * Math.sin(t * 2.2);
-  // bassin, ventre, cage thoracique (colonne en deux segments, élargie aux épaules)
-  blob(B.pelvis, S.pelvis, S.pelvisR, [0, -0.025, -0.005], [0.155, 0.105, 0.11]);
-  along(B.abdomen, addv(S.pelvis, mv(S.pelvisR, [0, 0.0, 0])), S.mid, 0.122, 0.095, fwdP);
-  const top = addv(S.chest, mv(S.chestR, [0, 0.035, 0]));
-  along(B.chest, S.mid, top, 0.158 * breath, 0.112 * breath, fwdC);
-  along(B.neck, addv(S.chest, mv(S.chestR, [0, 0.02, -0.01])), addv(S.head, mv(S.headR, [0, -0.07, -0.01])), 0.042, 0.045, fwdC);
-  // muscles du tronc
+  const breath = 1 + 0.012 * Math.sin(t * 2.2);
   const C = S.chestR, Mi = S.midR, P = S.pelvisR;
-  for (const [i, s] of [[0, 1], [1, -1]]) {
-    blob(B.pec[i], S.chest, C, [s * 0.068, -0.075, 0.085], [0.074, 0.056, 0.042]);
-    blob(B.lat[i], S.chest, C, [s * 0.1, -0.13, -0.045], [0.06, 0.12, 0.05]);
-    blob(B.lower[i], S.mid, Mi, [s * 0.04, -0.02, -0.075], [0.035, 0.11, 0.035]);
-    blob(B.glute[i], S.pelvis, P, [s * 0.072, -0.055, -0.07], [0.082, 0.085, 0.065]);
-    blob(B.obl[i], S.mid, Mi, [s * 0.098, 0.01, 0.025], [0.035, 0.09, 0.05]);
+  // bassin, taille, ventre, cage thoracique : les rayons se raccordent pour une silhouette continue
+  blob(B.pelvis, S.pelvis, P, [0, -0.03, -0.005], [0.158, 0.118, 0.108]);
+  along(B.abdomen, addv(S.pelvis, mv(P, [0, 0.01, 0])), S.mid, 0.118, 0.09, fwdP);
+  blob(B.waist, S.mid, Mi, [0, 0, 0], [0.112, 0.07, 0.086]);
+  const top = addv(S.chest, mv(C, [0, 0.035, 0]));
+  along(B.chest, S.mid, top, 0.15 * breath, 0.106 * breath, fwdC);
+  along(B.neck, addv(S.chest, mv(C, [0, 0.02, -0.01])), addv(S.head, mv(S.headR, [0, -0.07, -0.01])), 0.042, 0.045, fwdC);
+  for (const [i, sg] of [[0, 1], [1, -1]]) {
+    blob(B.pec[i], S.chest, C, [sg * 0.062, -0.08, 0.07], [0.068, 0.05, 0.036]);
+    blob(B.glute[i], S.pelvis, P, [sg * 0.064, -0.065, -0.042], [0.074, 0.08, 0.06]);
+    const sh = S.side[sg > 0 ? 'L' : 'R'].shoulder, base = addv(S.chest, mv(C, [sg * 0.05, 0.01, -0.012]));
+    const Fy = frame(base, sh, fwdC), ly = Math.hypot(...sub(sh, base));
+    blob(B.yoke[i], base, Fy, [0, ly * 0.5, 0], [0.05, ly * 0.62, 0.052]);
   }
-  blob(B.trap, S.chest, C, [0, 0.0, -0.06], [0.11, 0.05, 0.04]);
-  for (let r = 0; r < 3; r++) for (const [i, s] of [[0, 1], [1, -1]]) blob(B.abs[r * 2 + i], S.mid, Mi, [s * 0.034, 0.09 - r * 0.075, 0.083], [0.03, 0.032, 0.022]);
   // tête
   const H = S.headR;
   B.head.matrix.makeBasis(V(col(H, 0)), V(col(H, 1)), V(col(H, 2))).scale(_a.set(RAD.head, RAD.head, RAD.head)).setPosition(S.head[0], S.head[1], S.head[2]);
@@ -171,37 +235,27 @@ function poseBody(B, S, t) {
   for (const k of ['L', 'R']) {
     const s = S.side[k], b = B.side[k], sg = k === 'L' ? 1 : -1;
     const out = mul(col(C, 0), sg);
-    along(b.clav, addv(S.chest, mv(C, [0, -0.03, -0.01])), s.shoulder, 0.045, 0.045, fwdC);
-    // bras : l'avant du bras regarde vers le pli du coude
     const armFwd = nrm(addv(sub(s.wrist, s.elbow), mul(fwdC, 0.2)));
-    along(b.arm, s.shoulder, s.elbow, 0.052, 0.05, armFwd);
-    const Fa = frame(s.shoulder, s.elbow, armFwd), la = Math.hypot(...sub(s.elbow, s.shoulder));
-    blob(b.delt, s.shoulder, Fa, [0, 0.02, 0], [0.066, 0.085, 0.064]);
-    blob(b.bi, s.shoulder, Fa, [0, la * 0.55, 0.025], [0.036, la * 0.3, 0.032]);
-    blob(b.tri, s.shoulder, Fa, [0, la * 0.45, -0.026], [0.038, la * 0.34, 0.034]);
+    along(b.arm, s.shoulder, s.elbow, 0.05, 0.048, armFwd);
+    const Fa = frame(s.shoulder, s.elbow, armFwd);
+    // épaule arrondie (deltoïde) posée sur le haut du bras, légèrement vers l'extérieur
+    blob(b.delt, s.shoulder, Fa, [0, 0.025, 0], [0.058, 0.075, 0.056]);
     along(b.fore, s.elbow, s.wrist, 0.044, 0.038, out);
-    along(b.hand, s.wrist, addv(s.handEnd, mul(nrm(sub(s.handEnd, s.wrist)), 0.02)), 0.038, 0.02, out);
-    // jambes : l'avant de la cuisse regarde vers le genou
-    const legFwd = nrm(addv(sub(s.knee, s.hip), sub(s.knee, mul(addv(s.hip, s.ankle), 0.5))));
+    along(b.hand, s.wrist, addv(s.handEnd, mul(nrm(sub(s.handEnd, s.wrist)), 0.02)), 0.036, 0.019, out);
     const kneeFwd = nrm(sub(s.knee, mul(addv(s.hip, s.ankle), 0.5)));
     const thighRef = Math.hypot(...kneeFwd) > 0.01 ? kneeFwd : fwdP;
-    along(b.thigh, s.hip, s.knee, 0.083, 0.08, thighRef);
-    const Ft = frame(s.hip, s.knee, thighRef), lt = Math.hypot(...sub(s.knee, s.hip));
-    blob(b.quad, s.hip, Ft, [0, lt * 0.52, 0.03], [0.062, lt * 0.36, 0.05]);
-    blob(b.ham, s.hip, Ft, [0, lt * 0.48, -0.028], [0.058, lt * 0.36, 0.045]);
-    along(b.shin, s.knee, s.ankle, 0.054, 0.056, thighRef);
-    const Fs = frame(s.knee, s.ankle, thighRef), ls = Math.hypot(...sub(s.ankle, s.knee));
-    blob(b.calf, s.knee, Fs, [0, ls * 0.3, -0.03], [0.045, ls * 0.24, 0.04]);
-    // pied : du talon à la pointe, semelle claire
+    along(b.thigh, s.hip, s.knee, 0.086, 0.08, thighRef);
+    along(b.shin, s.knee, s.ankle, 0.055, 0.057, thighRef);
     const dir = nrm(sub(s.toe, s.ankle));
     const heel = addv(s.ankle, mul(dir, -0.05));
     const legUp = nrm(sub(s.knee, s.ankle));
     const upRef = sub(legUp, mul(dir, dir[0] * legUp[0] + dir[1] * legUp[1] + dir[2] * legUp[2]));
     const drop = mul(nrm(upRef), -0.03);
-    along(b.foot, addv(heel, drop), addv(addv(s.toe, mul(dir, 0.03)), drop), 0.046, 0.038, upRef);
+    along(b.foot, addv(heel, drop), addv(addv(s.toe, mul(dir, 0.03)), drop), 0.044, 0.036, upRef);
+    // articulations du même rayon que les membres qui s'y raccordent (pas de rotule visible)
     const J = b.j, js = (m, p, r) => { m.matrix.makeScale(r, r, r).setPosition(p[0], p[1], p[2]); m.matrixWorldNeedsUpdate = true; };
-    js(J.shoulder, s.shoulder, 0.05); js(J.elbow, s.elbow, 0.04); js(J.wrist, s.wrist, 0.032);
-    js(J.hip, s.hip, 0.07); js(J.knee, s.knee, 0.052); js(J.ankle, s.ankle, 0.04);
+    js(J.shoulder, s.shoulder, 0.048); js(J.elbow, s.elbow, 0.039); js(J.wrist, s.wrist, 0.026);
+    js(J.hip, s.hip, 0.074); js(J.knee, s.knee, 0.05); js(J.ankle, s.ankle, 0.031);
   }
 }
 
@@ -470,7 +524,6 @@ export function play(canvas, label, { onCue, at, yaw } = {}) {
     const bl = (time % 4.3) / 0.16;
     setMood(G.body.B.headU, (a.work || []).length && Math.sin(time * 1.3) > 0.6 ? 'cheer' : 'happy', bl < 1 ? Math.sin(Math.PI * bl) : 0, 0);
     G.body.B.headU.uTime.value = time;
-    G.M.hot.emissiveIntensity = 0.25 + 0.3 * (0.5 + 0.5 * Math.sin(time * 3));
     // caméra en orbite autour de la scène
     const cam = G.cam;
     cam.aspect = canvas.width / Math.max(1, canvas.height);
@@ -498,6 +551,7 @@ export function play(canvas, label, { onCue, at, yaw } = {}) {
     if (G) {
       G.scene.traverse((o) => { if (o.geometry && !Object.values(GEO).includes(o.geometry)) o.geometry.dispose(); });
       Object.values(G.M).forEach((m) => m.dispose?.());
+      G.body.B.mats.forEach((m) => m.dispose());
       G.arrows?.list.flat().forEach((x) => { x.tube.material.dispose(); x.tip.material.dispose(); });
       G.key.shadow.map?.dispose();
     }
